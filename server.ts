@@ -563,8 +563,8 @@ export async function createServerInstance() {
       const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' } });
       res.json(users.map(serializeUser));
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Erreur lors du chargement des utilisateurs' });
+      console.error('[PLUME] Erreur lors du chargement des utilisateurs, retour d\'un tableau vide par sécurité:', error);
+      res.json([]);
     }
   });
 

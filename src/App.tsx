@@ -127,11 +127,18 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [serverFriendIds, setServerFriendIds] = useState<string[]>([]);
 
-  const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = localStorage.getItem('plume_current_user');
-    if (saved) return JSON.parse(saved);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('plume_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch (e) {
+      console.error('[PLUME] Erreur de lecture de plume_current_user depuis localStorage:', e);
+    }
     // Default to the Reader profile
-    return USERS[0];
+    return USERS[0] || null;
   });
 
   const [groups, setGroups] = useState<ReadingGroup[]>(() => {
@@ -201,6 +208,7 @@ export default function App() {
 
 
   const handleMarkNotificationsRead = (type?: AppNotification['type'] | 'all') => {
+    if (!currentUser) return;
     const nextNotifications = notifications.map((notification) => {
       if (notification.targetUserId !== currentUser.id) return notification;
       if (!type || type === 'all' || notification.type === type) {
@@ -408,7 +416,7 @@ export default function App() {
       ...comment,
       likedBy,
       likes: likedBy.length,
-      likedByMe: likedBy.includes(currentUser.id),
+      likedByMe: currentUser ? likedBy.includes(currentUser.id) : false,
     };
   };
 
@@ -472,35 +480,59 @@ export default function App() {
   }, [isAuthenticated, currentUser?.id]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
-    const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
-    if (savedUserFavorites) return JSON.parse(savedUserFavorites);
+    if (!currentUser?.id) return ['story_cosmos_1'];
+    try {
+      const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
+      if (savedUserFavorites) return JSON.parse(savedUserFavorites);
+    } catch (e) {
+      console.error(e);
+    }
 
-    const legacyFavorites = localStorage.getItem('plume_favorites');
-    return legacyFavorites ? JSON.parse(legacyFavorites) : ['story_cosmos_1']; // Initial seeded favorite
+    try {
+      const legacyFavorites = localStorage.getItem('plume_favorites');
+      return legacyFavorites ? JSON.parse(legacyFavorites) : ['story_cosmos_1']; // Initial seeded favorite
+    } catch {
+      return ['story_cosmos_1'];
+    }
   });
 
   const [likedStories, setLikedStories] = useState<string[]>(() => {
-    const saved = localStorage.getItem(getLikedStoriesStorageKey(currentUser.id));
-    return saved ? JSON.parse(saved) : [];
+    if (!currentUser?.id) return [];
+    try {
+      const saved = localStorage.getItem(getLikedStoriesStorageKey(currentUser.id));
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
-    const savedLikes = localStorage.getItem(getLikedStoriesStorageKey(currentUser.id));
-    setLikedStories(savedLikes ? JSON.parse(savedLikes) : []);
-  }, [currentUser.id]);
+    if (!currentUser?.id) return;
+    try {
+      const savedLikes = localStorage.getItem(getLikedStoriesStorageKey(currentUser.id));
+      setLikedStories(savedLikes ? JSON.parse(savedLikes) : []);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [currentUser?.id]);
 
   useEffect(() => {
-    const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
-    const legacyFavorites = localStorage.getItem('plume_favorites');
+    if (!currentUser?.id) return;
+    try {
+      const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
+      const legacyFavorites = localStorage.getItem('plume_favorites');
 
-    setFavorites(
-      savedUserFavorites
-        ? JSON.parse(savedUserFavorites)
-        : legacyFavorites
-          ? JSON.parse(legacyFavorites)
-          : []
-    );
-  }, [currentUser.id]);
+      setFavorites(
+        savedUserFavorites
+          ? JSON.parse(savedUserFavorites)
+          : legacyFavorites
+            ? JSON.parse(legacyFavorites)
+            : []
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }, [currentUser?.id]);
 
   const [currentlyReading, setCurrentlyReading] = useState<string[]>(() => {
     const saved = localStorage.getItem('plume_currently_reading');
@@ -692,8 +724,9 @@ export default function App() {
   }, [groupMessages]);
 
   useEffect(() => {
+    if (!currentUser?.id) return;
     localStorage.setItem(getLikedStoriesStorageKey(currentUser.id), JSON.stringify(likedStories));
-  }, [likedStories, currentUser.id]);
+  }, [likedStories, currentUser?.id]);
 
 
   useEffect(() => {
@@ -774,13 +807,14 @@ export default function App() {
 
   // Update profile attributes (bio, preferences)
   const handleUpdateProfile = (updatedFields: Partial<User>) => {
-    const nextUser = { ...currentUser, ...updatedFields };
+    if (!currentUser) return;
+    const nextUser = { ...currentUser, ...updatedFields } as User;
     setCurrentUser(nextUser);
     saveLocalUserEdit(nextUser);
     setAllUsers(prev => {
-      const exists = prev.some(u => u.id === currentUser.id);
+      const exists = prev.some(u => u.id === currentUser!.id);
       return exists
-        ? prev.map(u => u.id === currentUser.id ? nextUser : u)
+        ? prev.map(u => u.id === currentUser!.id ? nextUser : u)
         : [...prev, nextUser];
     });
 
@@ -864,22 +898,22 @@ export default function App() {
     const evalResult = countAndEvaluateCertification(currentUser.role, nextStats, currentUser.id);
     if (evalResult.shouldCertify && !currentUser.isVerified) {
       // Auto verify!
-      const nextUser = { ...currentUser, isVerified: true };
+      const nextUser = { ...currentUser!, isVerified: true };
       setCurrentUser(nextUser);
-      setAllUsers(prev => prev.map(u => u.id === currentUser.id ? nextUser : u));
+      setAllUsers(prev => prev.map(u => u.id === currentUser!.id ? nextUser : u));
 
-      fetch(`/api/users/${currentUser.id}`, {
+      fetch(`/api/users/${currentUser!.id}`, {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(nextUser)
       }).catch(e => console.error('[PLUME] Erreur de certification auto :', e));
     } else if (!evalResult.shouldCertify && currentUser.isVerified) {
       // Auto decertify!
-      const nextUser = { ...currentUser, isVerified: false };
+      const nextUser = { ...currentUser!, isVerified: false };
       setCurrentUser(nextUser);
-      setAllUsers(prev => prev.map(u => u.id === currentUser.id ? nextUser : u));
+      setAllUsers(prev => prev.map(u => u.id === currentUser!.id ? nextUser : u));
 
-      fetch(`/api/users/${currentUser.id}`, {
+      fetch(`/api/users/${currentUser!.id}`, {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(nextUser)
@@ -1068,6 +1102,7 @@ export default function App() {
   // Les mentions du profil de l'auteur sont calculées à partir de story.likes.
   // Donc chaque like reçu sur un livre augmente automatiquement la section « Mentions ».
   const handleToggleStoryLike = (storyId: string) => {
+    if (!currentUser) return;
     const targetStory = stories.find((story) => story.id === storyId) || selectedStoryForReading;
 
     if (!targetStory || targetStory.id !== storyId) return;
@@ -1705,14 +1740,14 @@ export default function App() {
 
   // Filter out draft books for display on home tab
   const publishedStories = allowedStories.filter(s => s.status === 'Publié' && !s.isFlagged);
-  const userWritings = stories.filter(s => s.authorId === currentUser.id);
+  const userWritings = currentUser ? stories.filter(s => s.authorId === currentUser.id) : [];
 
   const handleRecordStoryView = (storyId: string) => {
     const targetStory = stories.find((story) => story.id === storyId) || selectedStoryForReading;
     if (!targetStory || targetStory.id !== storyId) return targetStory || null;
 
     // L'auteur ne doit pas augmenter les vues de son propre livre.
-    if (targetStory.authorId === currentUser.id) return targetStory;
+    if (targetStory.authorId === currentUser?.id) return targetStory;
 
     const viewMap = readLikeMap(STORY_VIEWERS_STORAGE_KEY);
     const initialViewedBy = mergeLikeIds(
@@ -1807,21 +1842,21 @@ export default function App() {
               activeTab={activeTab}
               onChangeTab={(tab) => {
                 setViewedUser(null); // Reset peer visitation
-                if (tab === 'admin' && currentUser.role !== 'Administrateur') {
+                if (tab === 'admin' && currentUser?.role !== 'Administrateur') {
                   setActiveTab('home');
-                } else if (tab === 'write' && currentUser.role === 'Lecteur') {
+                } else if (tab === 'write' && currentUser?.role === 'Lecteur') {
                   setActiveTab('home');
                 } else {
                   setActiveTab(tab);
                 }
                 setSelectedStoryForReading(null); // Quits reading screen on tab alteration
               }}
-              currentUser={currentUser}
+              currentUser={currentUser!}
               onOpenSidebar={() => setIsSidebarOpen(true)}
               darkMode={darkMode}
               onToggleDarkMode={handleToggleDarkMode}
               onQuickRoleChange={handleQuickRoleChange}
-              notifications={notifications.filter((notification) => notification.targetUserId === currentUser.id)}
+              notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
             />
 
@@ -1842,7 +1877,7 @@ export default function App() {
                 <ReadingView
                   story={selectedStoryForReading}
                   onBack={() => setSelectedStoryForReading(null)}
-                  currentUser={currentUser}
+                  currentUser={currentUser!}
                   onFollowAuthor={handleFollowAuthor}
                   comments={comments}
                   onAddComment={handleAddComment}
@@ -1852,7 +1887,7 @@ export default function App() {
                   onToggleFavorite={handleToggleFavorite}
                   isFavorited={favorites.includes(selectedStoryForReading.id)}
                   onToggleStoryLike={handleToggleStoryLike}
-                  isLiked={(selectedStoryForReading.likedBy || []).includes(currentUser.id) || likedStories.includes(selectedStoryForReading.id)}
+                  isLiked={(selectedStoryForReading.likedBy || []).includes(currentUser?.id || '') || likedStories.includes(selectedStoryForReading.id)}
                   onMarkChapterRead={handleMarkChapterRead}
                   readChapters={readChapters.map(key => key.includes(':') ? key.split(':').pop() || key : key)}
                   onOpenDiscussion={handleOpenDiscussion}
@@ -1869,7 +1904,7 @@ export default function App() {
                 <>
                   {activeTab === 'home' && (
                     <HomeView
-                      currentUser={currentUser}
+                      currentUser={currentUser!}
                       allUsers={allUsers}
                       stories={allowedStories}
                       favorites={favorites}
@@ -1894,9 +1929,9 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'write' && currentUser.role !== 'Lecteur' && (
+                  {activeTab === 'write' && currentUser?.role !== 'Lecteur' && (
                     <WriteView
-                      currentUser={currentUser}
+                      currentUser={currentUser!}
                       userStories={userWritings}
                       onCreateStory={handleCreateStory}
                       onUpdateStory={handleUpdateStory}
@@ -1910,7 +1945,7 @@ export default function App() {
 
                   {activeTab === 'messages' && (
                     <MessagesView
-                      currentUser={currentUser}
+                      currentUser={currentUser!}
                       allUsers={allUsers}
                       messages={messages}
                       onSendMessage={handleSendMessage}
@@ -1928,7 +1963,7 @@ export default function App() {
 
                   {activeTab === 'profile' && (
                     <ProfileView
-                      currentUser={currentUser}
+                      currentUser={currentUser!}
                       viewedUser={viewedUser}
                       onBackToMyProfile={() => setViewedUser(null)}
                       onUpdateProfile={handleUpdateProfile}
