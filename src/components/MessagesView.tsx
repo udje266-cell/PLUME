@@ -415,7 +415,6 @@ export default function MessagesView({
 
     setGroups(prev => [newGrp, ...prev]);
     setActiveGroupId(newGrpId);
-    setActiveInterlocutorId(''); // clear active single
     setActiveTab('groups');
     setIsNewGroupOpen(false);
     setMobileShowThread(true);

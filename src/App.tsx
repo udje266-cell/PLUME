@@ -19,7 +19,7 @@ import {
   TrendingUp,
   BookmarkCheck
 } from 'lucide-react';
-import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage } from './types';
+import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
 import { USERS, INITIAL_STORIES, INITIAL_COMMENTS, INITIAL_MESSAGES } from './data';
 import MainNavigation from './components/MainNavigation';
 import LateralMenu from './components/LateralMenu';
@@ -134,16 +134,18 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
-      const saved = localStorage.getItem('plume_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.id) return parsed;
+      const isLogged = localStorage.getItem('plume_is_logged_in') === 'true';
+      if (isLogged) {
+        const saved = localStorage.getItem('plume_current_user');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.id) return parsed;
+        }
       }
     } catch (e) {
       console.error('[PLUME] Erreur de lecture de plume_current_user depuis localStorage:', e);
     }
-    // Default to the Reader profile
-    return USERS[0] || null;
+    return null;
   });
 
   const [groups, setGroups] = useState<ReadingGroup[]>(() => {
@@ -152,6 +154,9 @@ export default function App() {
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error(e);
+    }
+    if (localStorage.getItem('plume_is_logged_in') === 'true') {
+      return [];
     }
     return [
       {
@@ -179,6 +184,9 @@ export default function App() {
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error(e);
+    }
+    if (localStorage.getItem('plume_is_logged_in') === 'true') {
+      return [];
     }
     return [
       {
@@ -305,6 +313,11 @@ export default function App() {
   };
 
   const ensureSimulatorAccounts = (backendUsers: User[]): User[] => {
+    const isAuth = isAuthenticated || !!localStorage.getItem('plume_auth_token');
+    if (isAuth) {
+      return backendUsers.map(u => mergeLocalUserEdit(u, true));
+    }
+
     const mergedById = new Map<string, User>();
     const backendIds = new Set(backendUsers.map(u => u.id));
 
@@ -1098,6 +1111,11 @@ export default function App() {
   // On sauvegarde donc aussi le suivi en local, par ID utilisateur, pour que
   // Lecteur / Auteur / Administrateur gardent chacun leurs suivis après refresh.
   const handleFollowAuthor = (authorId: string) => {
+    console.log("currentUser.id =", currentUser?.id);
+    console.log("targetUser.id =", authorId);
+    if (currentUser?.id?.startsWith("user_") || authorId?.startsWith("user_")) {
+      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+    }
     if (!currentUser?.id || !authorId || authorId === currentUser.id) return;
 
     const author = allUsers.find((u) => u.id === authorId);
@@ -1783,6 +1801,15 @@ export default function App() {
   const handleSendMessage = (conversationId: string, content: string) => {
     if (!currentUser) return;
     
+    const conv = conversations.find(c => c.id === conversationId);
+    const otherParticipant = conv?.participants.find(p => p.id !== currentUser.id);
+    const targetUserId = otherParticipant?.id;
+    console.log("currentUser.id =", currentUser.id);
+    console.log("targetUser.id =", targetUserId);
+    if (currentUser.id.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
+      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+    }
+    
     const tempMsgId = `msg_temp_${Date.now()}`;
     const newMsg: Message = {
       id: tempMsgId,
@@ -1875,6 +1902,12 @@ export default function App() {
   };
 
   const handleStartConversation = async (participantIds: string[]): Promise<Conversation> => {
+    const targetUserId = participantIds.find(id => id !== currentUser?.id);
+    console.log("currentUser.id =", currentUser?.id);
+    console.log("targetUser.id =", targetUserId);
+    if (currentUser?.id?.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
+      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+    }
     try {
       const res = await fetch('/api/conversations', {
         method: 'POST',
@@ -2011,8 +2044,10 @@ export default function App() {
   // Log Out Simulation
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setCurrentUser(null);
     localStorage.removeItem('plume_is_logged_in');
     localStorage.removeItem('plume_auth_token');
+    localStorage.removeItem('plume_current_user');
   };
 
   // Wrap fetch globally to catch 401 errors

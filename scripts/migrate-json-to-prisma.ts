@@ -115,13 +115,37 @@ async function main() {
 
   for (const message of db.messages ?? []) {
     if (!message.senderId || !message.receiverId) continue;
+    
+    // Find or create a conversation for these two participants
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        AND: [
+          { participants: { some: { id: message.senderId } } },
+          { participants: { some: { id: message.receiverId } } }
+        ]
+      }
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          participants: {
+            connect: [
+              { id: message.senderId },
+              { id: message.receiverId }
+            ]
+          }
+        }
+      });
+    }
+
     await prisma.message.upsert({
       where: { id: message.id },
       update: {},
       create: {
         id: message.id,
         senderId: message.senderId,
-        receiverId: message.receiverId,
+        conversationId: conversation.id,
         content: message.content ?? '',
         isRead: message.isRead ?? false,
       },

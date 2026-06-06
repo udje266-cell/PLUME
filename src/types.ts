@@ -115,11 +115,15 @@ export interface Message {
   senderId: string;
   senderName?: string;
   senderAvatar?: string;
-  conversationId: string;
+  conversationId?: string;
   content: string;
   date: string;
   isRead: boolean;
   sender?: User;
+  receiverId?: string;
+  receiverName?: string;
+  receiverAvatar?: string;
+  createdAt?: string;
 }
 
 export interface Conversation {

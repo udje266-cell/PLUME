@@ -1117,6 +1117,12 @@ export async function createServerInstance() {
   app.post('/api/conversations', requireAuth, async (req: any, res) => {
     try {
       const { participantIds } = req.body;
+      const targetUserId = participantIds?.find((id: string) => id !== req.user.id);
+      console.log("currentUser.id =", req.user.id);
+      console.log("targetUser.id =", targetUserId);
+      if (req.user.id.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
+        console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+      }
       console.log(`[CONVERSATION] tentative de création de conversation - participantIds: ${JSON.stringify(participantIds)}, initiateur: ${req.user.id}`);
       
       if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
@@ -1304,6 +1310,14 @@ export async function createServerInstance() {
         return res.status(404).json({ error: 'Conversation non trouvée' });
       }
 
+      const otherParticipant = conversation.participants.find(p => p.id !== senderId);
+      const targetUserId = otherParticipant?.id;
+      console.log("currentUser.id =", senderId);
+      console.log("targetUser.id =", targetUserId);
+      if (senderId.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
+        console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+      }
+
       const isParticipant = conversation.participants.some(p => p.id === req.user.id);
       if (!isParticipant) {
         console.warn(`[MESSAGE] Utilisateur ${req.user.id} non participant à la conversation ${conversationId}`);
@@ -1430,8 +1444,12 @@ export async function createServerInstance() {
   // Follow
   app.post('/api/users/:id/follow', requireAuth, async (req: any, res) => {
     const followingId = req.params.id;
+    console.log("currentUser.id =", req.user.id);
+    console.log("targetUser.id =", followingId);
+    if (req.user.id.startsWith("user_") || followingId.startsWith("user_")) {
+      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+    }
     try {
-      console.log(`[FOLLOW] tentative d'abonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
       if (followingId === req.user.id) {
         return res.status(400).json({ error: 'Tu ne peux pas te suivre toi-même' });
       }
@@ -1486,8 +1504,12 @@ export async function createServerInstance() {
 
   app.delete('/api/users/:id/follow', requireAuth, async (req: any, res) => {
     const followingId = req.params.id;
+    console.log("currentUser.id =", req.user.id);
+    console.log("targetUser.id =", followingId);
+    if (req.user.id.startsWith("user_") || followingId.startsWith("user_")) {
+      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
+    }
     try {
-      console.log(`[FOLLOW] tentative de désabonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
       await prisma.follow.deleteMany({
         where: {
           followerId: req.user.id,
