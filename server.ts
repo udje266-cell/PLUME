@@ -30,17 +30,21 @@ function parseJsonArray(value: string | null | undefined) {
   }
 }
 
-function roleToPrisma(role: string | undefined) {
-  if (role === 'Auteur') return 'AUTEUR' as any;
-  if (role === 'Utilisateur Mixte') return 'UTILISATEUR_MIXTE' as any;
-  if (role === 'Administrateur') return 'ADMINISTRATEUR' as any;
-  return 'LECTEUR' as any;
+function roleToPrisma(role: string | undefined | null) {
+  if (!role) return 'Lecteur';
+  const r = role.toUpperCase();
+  if (r === 'AUTEUR' || role === 'Auteur') return 'Auteur';
+  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Utilisateur Mixte';
+  if (r === 'ADMINISTRATEUR' || role === 'Administrateur') return 'Administrateur';
+  return 'Lecteur';
 }
 
-function roleFromPrisma(role: string | undefined) {
-  if (role === 'AUTEUR') return 'Auteur';
-  if (role === 'UTILISATEUR_MIXTE') return 'Utilisateur Mixte';
-  if (role === 'ADMINISTRATEUR') return 'Administrateur';
+function roleFromPrisma(role: string | undefined | null) {
+  if (!role) return 'Lecteur';
+  const r = role.toUpperCase();
+  if (r === 'AUTEUR' || role === 'Auteur') return 'Auteur';
+  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Utilisateur Mixte';
+  if (r === 'ADMINISTRATEUR' || role === 'Administrateur') return 'Administrateur';
   return 'Lecteur';
 }
 

@@ -13,7 +13,7 @@ model User {
   username          String   @unique
   email             String   @unique
   passwordHash      String?
-  role              String   @default("LECTEUR")
+  role              String   @default("Lecteur")
   avatar            String?
   bio               String   @default("")
   isVerified        Boolean  @default(false)
