@@ -482,6 +482,8 @@ export default function App() {
     });
 
     socket.on('new_message', (message: Message) => {
+      if (message.senderId === (currentUser?.id || '')) return;
+
       setConversations((prev) => {
         const convIndex = prev.findIndex((c) => c.id === message.conversationId);
         if (convIndex === -1) {
@@ -755,6 +757,33 @@ export default function App() {
     };
     fetchApiData();
   }, []);
+
+  // Load full messages when selecting a conversation
+  useEffect(() => {
+    if (!activeConversationId) return;
+
+    fetch(`/api/conversations/${activeConversationId}/messages`, { headers: authHeaders() })
+      .then(res => {
+        if (res.ok) return res.json();
+      })
+      .then(fetchedMessages => {
+        if (fetchedMessages) {
+          setConversations(prev => prev.map(c => {
+            if (c.id === activeConversationId) {
+              return {
+                ...c,
+                messages: fetchedMessages.map((m: any) => ({
+                  ...m,
+                  date: m.createdAt
+                }))
+              };
+            }
+            return c;
+          }));
+        }
+      })
+      .catch(err => console.error('[PLUME] Erreur chargement messages conversation:', err));
+  }, [activeConversationId]);
 
   // Synchronizers to local storage for navigation preferences and session state
   useEffect(() => {
@@ -1664,8 +1693,14 @@ export default function App() {
           return c;
         }));
       } else {
-        const data = await res.json();
-        alert(data.error || 'Erreur lors de l’envoi du message');
+        let errMsg = 'Erreur lors de l’envoi du message';
+        try {
+          const data = await res.json();
+          errMsg = data.error || errMsg;
+        } catch (jsonErr) {
+          // response is not JSON
+        }
+        alert(errMsg);
         // Revert optimistic update
         setConversations(prev => prev.map(c => {
           if (c.id === conversationId) {
@@ -1680,6 +1715,7 @@ export default function App() {
     })
     .catch(e => {
       console.error('[PLUME] Erreur envoi message backend :', e);
+      alert('Impossible d’envoyer le message. Problème de connexion réseau ou serveur.');
       // Revert optimistic update
       setConversations(prev => prev.map(c => {
         if (c.id === conversationId) {

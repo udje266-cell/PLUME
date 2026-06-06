@@ -1248,7 +1248,12 @@ export async function createServerInstance() {
   app.post('/api/messages', requireAuth, async (req: any, res) => {
     try {
       const { conversationId, content } = req.body;
+      const senderId = req.body.senderId || req.user.id;
+      
+      console.log(`[MESSAGE] Tentative d’envoi - conversationId: ${conversationId}, senderId: ${senderId}, content: "${content ? content.slice(0, 30) : ''}"`);
+
       if (!conversationId || !content) {
+        console.warn(`[MESSAGE] Paramètres manquants : conversationId=${conversationId}, content=${content}`);
         return res.status(400).json({ error: 'conversationId et content sont requis' });
       }
 
@@ -1265,6 +1270,7 @@ export async function createServerInstance() {
       const now = Date.now();
       const lastTime = lastMessageTimes.get(req.user.id) || 0;
       if (now - lastTime < 300) {
+        console.warn(`[MESSAGE] Bloqué par l’anti-spam - utilisateur: ${req.user.id}`);
         return res.status(429).json({ error: 'Veuillez patienter avant d’envoyer un autre message (anti-spam)' });
       }
       lastMessageTimes.set(req.user.id, now);
@@ -1275,32 +1281,41 @@ export async function createServerInstance() {
       });
 
       if (!conversation) {
+        console.warn(`[MESSAGE] Conversation non trouvée : ${conversationId}`);
         return res.status(404).json({ error: 'Conversation non trouvée' });
       }
 
       const isParticipant = conversation.participants.some(p => p.id === req.user.id);
       if (!isParticipant) {
+        console.warn(`[MESSAGE] Utilisateur ${req.user.id} non participant à la conversation ${conversationId}`);
         return res.status(403).json({ error: 'Action interdite' });
       }
 
-      // Create message
-      const senderId = req.body.senderId || req.user.id;
       const isSenderParticipant = conversation.participants.some(p => p.id === senderId);
       if (!isSenderParticipant) {
+        console.warn(`[MESSAGE] L’expéditeur ${senderId} n’est pas participant à la conversation ${conversationId}`);
         return res.status(400).json({ error: 'L’expéditeur doit être un participant de la conversation' });
       }
 
-      const message = await prisma.message.create({
-        data: {
-          conversationId,
-          senderId,
-          content: trimmed,
-          isRead: false
-        },
-        include: {
-          sender: true
-        }
-      });
+      // Create message
+      let message;
+      try {
+        message = await prisma.message.create({
+          data: {
+            conversationId,
+            senderId,
+            content: trimmed,
+            isRead: false
+          },
+          include: {
+            sender: true
+          }
+        });
+        console.log(`[MESSAGE] Message sauvegardé - messageId: ${message.id}`);
+      } catch (dbErr) {
+        console.error(`[MESSAGE] Erreur sauvegarde :`, dbErr);
+        throw dbErr;
+      }
 
       // Update conversation updatedAt timestamp
       await prisma.conversation.update({
@@ -1335,11 +1350,12 @@ export async function createServerInstance() {
       // Broadcast message to all conversation participants
       conversation.participants.forEach(p => {
         io.to(`user:${p.id}`).emit('new_message', message);
+        console.log(`[SOCKET] Message émis au destinataire user:${p.id}`);
       });
 
       res.status(201).json(message);
     } catch (error) {
-      console.error(error);
+      console.error('[MESSAGE] Erreur sauvegarde globale :', error);
       res.status(500).json({ error: 'Erreur lors de l’envoi du message' });
     }
   });
