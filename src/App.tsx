@@ -126,6 +126,10 @@ export default function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  React.useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
   const [serverFriendIds, setServerFriendIds] = useState<string[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -278,8 +282,19 @@ export default function App() {
     localStorage.setItem('plume_current_user', JSON.stringify(user));
   };
 
-  const mergeLocalUserEdit = (user: User): User => {
+  const mergeLocalUserEdit = (user: User, isBackendUser: boolean = false): User => {
     const edits = getLocalUserEdits();
+    const hasToken = !!localStorage.getItem('plume_auth_token');
+    const shouldSkipLocalMerge = hasToken && isBackendUser;
+
+    if (shouldSkipLocalMerge) {
+      const { followers, following, favoriteGenres, ...otherEdits } = edits[user.id] || {};
+      return {
+        ...user,
+        ...otherEdits,
+      };
+    }
+
     return {
       ...user,
       ...(edits[user.id] || {}),
@@ -291,11 +306,13 @@ export default function App() {
 
   const ensureSimulatorAccounts = (backendUsers: User[]): User[] => {
     const mergedById = new Map<string, User>();
+    const backendIds = new Set(backendUsers.map(u => u.id));
 
     [...backendUsers, ...USERS].forEach((user) => {
       if (!user?.id) return;
       const existing = mergedById.get(user.id);
-      mergedById.set(user.id, mergeLocalUserEdit(existing ? { ...user, ...existing } : user));
+      const isBackend = backendIds.has(user.id);
+      mergedById.set(user.id, mergeLocalUserEdit(existing ? { ...user, ...existing } : user, isBackend));
     });
 
     const users = Array.from(mergedById.values());
@@ -305,7 +322,7 @@ export default function App() {
       if (!users.some((user) => user.role === role)) {
         const seed = USERS.find((user) => user.role === role);
         if (seed) {
-          users.push(mergeLocalUserEdit(seed));
+          users.push(mergeLocalUserEdit(seed, false));
         }
       }
     });
@@ -449,7 +466,18 @@ export default function App() {
     });
 
     socketRef.current = socket;
-    socket.emit('join', currentUser.id);
+    
+    const joinRoom = () => {
+      if (currentUser?.id) {
+        socket.emit('join', currentUser.id);
+      }
+    };
+
+    if (socket.connected) {
+      joinRoom();
+    }
+
+    socket.on('connect', joinRoom);
 
     socket.on('new_notification', (notification: any) => {
       const mapped = mapServerNotification(notification);
@@ -484,6 +512,17 @@ export default function App() {
     socket.on('new_message', (message: Message) => {
       if (message.senderId === (currentUser?.id || '')) return;
 
+      const isCurrentActive = message.conversationId === activeConversationIdRef.current;
+
+      if (isCurrentActive) {
+        // Mark as read immediately on the server
+        fetch('/api/messages/read', {
+          method: 'PUT',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ conversationId: message.conversationId })
+        }).catch(e => console.error('[PLUME] Erreur marquage lu message temps réel :', e));
+      }
+
       setConversations((prev) => {
         const convIndex = prev.findIndex((c) => c.id === message.conversationId);
         if (convIndex === -1) {
@@ -496,8 +535,8 @@ export default function App() {
         const updatedConv = {
           ...conv,
           updatedAt: message.createdAt || new Date().toISOString(),
-          messages: [...conv.messages, { ...message, date: message.createdAt }],
-          unreadCount: (conv.unreadCount || 0) + (message.senderId !== (currentUser?.id || '') ? 1 : 0)
+          messages: [...conv.messages, { ...message, isRead: isCurrentActive, date: message.createdAt }],
+          unreadCount: (conv.unreadCount || 0) + (isCurrentActive ? 0 : 1)
         };
 
         const next = [...prev];
@@ -528,6 +567,7 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect');
       socket.off('new_notification');
       socket.off('conversation_created');
       socket.off('new_message');
@@ -626,12 +666,30 @@ export default function App() {
     return saved ? saved : 'user_author';
   });
 
-  const handleOpenDiscussion = (userId: string) => {
-    if (userId === currentUser.id) return;
-    setActiveInterlocutorId(userId);
-    localStorage.setItem('plume_active_interlocutor_id', userId);
+  const handleOpenDiscussion = async (userId: string) => {
+    if (!currentUser?.id || userId === currentUser.id) return;
     setSelectedStoryForReading(null); // Leave reading screen in order to view messages
     setActiveTab('messages');
+
+    // Look for an existing 1-to-1 conversation with this user
+    const existing = conversations.find(c => {
+      const pIds = c.participants.map(p => p.id);
+      return pIds.length === 2 && pIds.includes(userId) && pIds.includes(currentUser.id);
+    });
+
+    if (existing) {
+      setActiveConversationId(existing.id);
+    } else {
+      try {
+        const newConv = await handleStartConversation([userId]);
+        if (newConv) {
+          setActiveConversationId(newConv.id);
+        }
+      } catch (err: any) {
+        console.error('[CONVERSATION] Erreur démarrage discussion :', err);
+        alert(`Impossible de démarrer la conversation : ${err.message || 'erreur serveur'}`);
+      }
+    }
   };
 
   const [activeFilter, setActiveFilter] = useState<{ type: string; value: string } | null>(null);
@@ -665,7 +723,7 @@ export default function App() {
         if (token) {
           const meRes = await fetch('/api/auth/me', { headers: authHeaders() });
           if (meRes.ok) {
-            const me = mergeLocalUserEdit(await meRes.json());
+            const me = mergeLocalUserEdit(await meRes.json(), true);
             setCurrentUser(me);
             localStorage.setItem('plume_current_user', JSON.stringify(me));
             setIsAuthenticated(true);
@@ -891,7 +949,22 @@ export default function App() {
   // Update profile attributes (bio, preferences)
   const handleUpdateProfile = (updatedFields: Partial<User>) => {
     if (!currentUser) return;
-    const nextUser = { ...currentUser, ...updatedFields } as User;
+    const originalCurrentUser = currentUser;
+    const originalAllUsers = allUsers;
+    
+    let nextUser = { ...currentUser, ...updatedFields } as User;
+    
+    // Evaluate stats for isVerified when changing role/type of account
+    let certifiedUser: User | null = null;
+    if (updatedFields.role) {
+      const stats = getUserStats(currentUser.id);
+      const evalResult = countAndEvaluateCertification(updatedFields.role, stats);
+      if (evalResult.shouldCertify && !nextUser.isVerified) {
+        certifiedUser = { ...nextUser, isVerified: true };
+        nextUser = certifiedUser;
+      }
+    }
+
     setCurrentUser(nextUser);
     saveLocalUserEdit(nextUser);
     setAllUsers(prev => {
@@ -909,28 +982,44 @@ export default function App() {
       }
     }
 
-    // Sync profile modification to the backend server
-    fetch(`/api/users/${currentUser.id}`, {
-      method: 'PUT',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(nextUser)
-    }).catch(e => console.error('[PLUME] Erreur de synchro profil backend :', e));
+    if (isAuthenticated) {
+      // Sync profile modification to the backend server
+      fetch(`/api/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(nextUser)
+      })
+      .then(async (res) => {
+        if (res.ok) {
+          const syncedUser = await res.json();
+          // Remove local edits to avoid stale override
+          const edits = getLocalUserEdits();
+          delete edits[currentUser.id];
+          localStorage.setItem('plume_user_edits_by_id', JSON.stringify(edits));
 
-    // Evaluate stats for isVerified when changing role/type of account
-    if (updatedFields.role) {
-      const stats = getUserStats(currentUser.id);
-      const evalResult = countAndEvaluateCertification(updatedFields.role, stats);
-      if (evalResult.shouldCertify && !nextUser.isVerified) {
-        const certifiedUser = { ...nextUser, isVerified: true };
-        setCurrentUser(certifiedUser);
-        saveLocalUserEdit(certifiedUser);
-        setAllUsers(prev => prev.map(u => u.id === currentUser.id ? certifiedUser : u));
-        fetch(`/api/users/${currentUser.id}`, {
-          method: 'PUT',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(certifiedUser)
-        }).catch(e => console.error('[PLUME] Erreur de certification auto lors du changement de rôle :', e));
-      }
+          setCurrentUser(syncedUser);
+          localStorage.setItem('plume_current_user', JSON.stringify(syncedUser));
+          setAllUsers(prev => prev.map(u => u.id === syncedUser.id ? syncedUser : u));
+        } else {
+          let errorMsg = "Impossible de mettre à jour le profil sur le serveur.";
+          try {
+            const errData = await res.json();
+            if (errData.error) errorMsg += ` (${errData.error})`;
+          } catch {}
+          alert(errorMsg);
+          
+          // Revert state
+          setCurrentUser(originalCurrentUser);
+          setAllUsers(originalAllUsers);
+        }
+      })
+      .catch(e => {
+        console.error('[PLUME] Erreur de mise à jour du profil backend :', e);
+        alert("Erreur de connexion. Le profil n'a pas pu être enregistré.");
+        // Revert state
+        setCurrentUser(originalCurrentUser);
+        setAllUsers(originalAllUsers);
+      });
     }
   };
 
@@ -1014,6 +1103,9 @@ export default function App() {
     const author = allUsers.find((u) => u.id === authorId);
     if (!author) return;
 
+    const originalCurrentUser = currentUser;
+    const originalAllUsers = allUsers;
+
     const currentFollowing = currentUser.following || [];
     const authorFollowers = author.followers || [];
 
@@ -1051,28 +1143,69 @@ export default function App() {
     setCurrentUser(nextUser);
     setAllUsers(nextAllUsers);
 
-    // Sauvegarde locale durable, séparée par compte.
-    // C'est ce qui empêche la perte des suivis après un rafraîchissement.
-    saveLocalUserEdit(nextUser);
-    saveLocalUserEdit(nextAuthor);
-
-    if (!isCurrentlyFollowing && !isAuthenticated) {
-      createLocalNotification({
-        type: 'follow',
-        targetUserId: authorId,
-        actorId: currentUser.id,
-        actorName: currentUser.username,
-        actorAvatar: currentUser.avatar,
-        title: 'Nouvel abonné',
-        message: `${currentUser.username} vous suit.`,
-      });
+    // If NOT authenticated, keep it local only
+    if (!isAuthenticated) {
+      saveLocalUserEdit(nextUser);
+      saveLocalUserEdit(nextAuthor);
+      
+      if (!isCurrentlyFollowing) {
+        createLocalNotification({
+          type: 'follow',
+          targetUserId: authorId,
+          actorId: currentUser.id,
+          actorName: currentUser.username,
+          actorAvatar: currentUser.avatar,
+          title: 'Nouvel abonné',
+          message: `${currentUser.username} vous suit.`,
+        });
+      }
+      return;
     }
 
+    // Authenticated: Sync with server!
     fetch(`/api/users/${authorId}/follow`, {
       method: isCurrentlyFollowing ? 'DELETE' : 'POST',
       headers: authHeaders(),
-    }).catch((e) => {
-      console.warn('[PLUME] Suivi conservé localement. Backend non authentifié ou indisponible :', e);
+    })
+    .then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.currentUser && data.targetUser) {
+          // Remove local edits to avoid overriding
+          const edits = getLocalUserEdits();
+          delete edits[currentUser.id];
+          delete edits[authorId];
+          localStorage.setItem('plume_user_edits_by_id', JSON.stringify(edits));
+
+          setCurrentUser(data.currentUser);
+          localStorage.setItem('plume_current_user', JSON.stringify(data.currentUser));
+          setAllUsers(prev => prev.map(u => {
+            if (u.id === data.currentUser.id) return data.currentUser;
+            if (u.id === data.targetUser.id) return data.targetUser;
+            return u;
+          }));
+        }
+      } else {
+        let errorMsg = isCurrentlyFollowing 
+          ? "Impossible de se désabonner de l'utilisateur."
+          : "Impossible de s'abonner à l'utilisateur.";
+        try {
+          const errData = await res.json();
+          if (errData.error) errorMsg += ` (${errData.error})`;
+        } catch {}
+        alert(errorMsg);
+
+        // Revert
+        setCurrentUser(originalCurrentUser);
+        setAllUsers(originalAllUsers);
+      }
+    })
+    .catch((e) => {
+      console.error('[PLUME] Erreur de suivi backend :', e);
+      alert("Erreur de connexion. Le suivi n'a pas pu être enregistré.");
+      // Revert
+      setCurrentUser(originalCurrentUser);
+      setAllUsers(originalAllUsers);
     });
   };
 
@@ -1881,6 +2014,30 @@ export default function App() {
     localStorage.removeItem('plume_is_logged_in');
     localStorage.removeItem('plume_auth_token');
   };
+
+  // Wrap fetch globally to catch 401 errors
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (input, init) => {
+      try {
+        const response = await originalFetch(input, init);
+        if (response.status === 401) {
+          const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          if (!urlStr.includes('/api/auth/login') && !urlStr.includes('/api/auth/verify-otp') && !urlStr.includes('/api/auth/otp/request')) {
+            console.warn('[AUTH] Intercepted 401 Unauthorized response, logging out user.');
+            handleLogout();
+            alert("Votre session a expiré. Veuillez vous reconnecter.");
+          }
+        }
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
 
   // Filter stories the logged-in user is allowed to access
   const userAge = calculateAge(currentUser?.birthDate);

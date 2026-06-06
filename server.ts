@@ -267,8 +267,10 @@ export async function createServerInstance() {
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
       if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
       req.user = user;
+      console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username}`);
       next();
-    } catch {
+    } catch (err: any) {
+      console.warn(`[AUTH] Echec authentification :`, err.message || err);
       return res.status(401).json({ error: 'Session invalide' });
     }
   }
@@ -288,9 +290,12 @@ export async function createServerInstance() {
   }
 
   io.on('connection', (socket) => {
+    console.log(`[SOCKET] utilisateur connecté - socketId: ${socket.id}`);
+
     socket.on('join', (userId: string) => {
       if (!userId) return;
       socket.join(`user:${userId}`);
+      console.log(`[SOCKET] room join - userId: ${userId}, room: user:${userId}, socketId: ${socket.id}`);
       socket.emit('joined', { userId });
     });
 
@@ -300,6 +305,10 @@ export async function createServerInstance() {
 
     socket.on('stop_typing', (payload: { senderId: string; receiverId: string }) => {
       if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
+    });
+
+    socket.on('disconnect', () => {
+      console.log(`[SOCKET] utilisateur déconnecté - socketId: ${socket.id}`);
     });
   });
 
@@ -446,6 +455,7 @@ export async function createServerInstance() {
         },
         include: { followers: true, following: true, blockedUsers: true },
       });
+      console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (inscription)`);
       res.status(201).json({ token: createToken(user.id), user: serializeUser(user) });
     } catch (error) {
       console.error(error);
@@ -464,6 +474,7 @@ export async function createServerInstance() {
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+      console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (connexion)`);
       res.json({ token: createToken(user.id), user: serializeUser(user) });
     } catch (error) {
       console.error(error);
@@ -1106,6 +1117,8 @@ export async function createServerInstance() {
   app.post('/api/conversations', requireAuth, async (req: any, res) => {
     try {
       const { participantIds } = req.body;
+      console.log(`[CONVERSATION] tentative de création de conversation - participantIds: ${JSON.stringify(participantIds)}, initiateur: ${req.user.id}`);
+      
       if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
         return res.status(400).json({ error: 'participantIds (tableau non vide) est requis' });
       }
@@ -1118,6 +1131,7 @@ export async function createServerInstance() {
         where: { id: { in: targetIds } }
       });
       if (users.length !== targetIds.length) {
+        console.warn(`[CONVERSATION] erreur création : certains participants n'existent pas dans targetIds: ${JSON.stringify(targetIds)}`);
         return res.status(400).json({ error: 'Un ou plusieurs participants n’existent pas' });
       }
 
@@ -1142,6 +1156,7 @@ export async function createServerInstance() {
       }
 
       if (existingConversation) {
+        console.log(`[CONVERSATION] conversation existante renvoyée - conversationId: ${existingConversation.id}`);
         return res.json(existingConversation);
       }
 
@@ -1162,10 +1177,11 @@ export async function createServerInstance() {
         io.to(`user:${id}`).emit('conversation_created', conversation);
       });
 
+      console.log(`[CONVERSATION] conversation créée - conversationId: ${conversation.id}`);
       res.status(201).json(conversation);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Erreur lors de la création de la conversation' });
+    } catch (error: any) {
+      console.error(`[CONVERSATION] erreur création :`, error);
+      res.status(500).json({ error: `Erreur lors de la création de la conversation : ${error.message || 'erreur serveur'}` });
     }
   });
 
@@ -1216,17 +1232,20 @@ export async function createServerInstance() {
 
   app.get('/api/conversations/:id/messages', requireAuth, async (req: any, res) => {
     try {
+      console.log(`[CONVERSATION] accès aux messages - conversationId: ${req.params.id}, userId: ${req.user.id}`);
       const conversation = await prisma.conversation.findUnique({
         where: { id: req.params.id },
         include: { participants: true }
       });
 
       if (!conversation) {
+        console.warn(`[CONVERSATION] erreur accès - conversationId: ${req.params.id} non trouvée`);
         return res.status(404).json({ error: 'Conversation non trouvée' });
       }
 
       const isParticipant = conversation.participants.some(p => p.id === req.user.id);
       if (!isParticipant && req.user.role !== 'ADMINISTRATEUR') {
+        console.warn(`[CONVERSATION] erreur accès - conversationId: ${req.params.id}, action interdite pour userId: ${req.user.id}`);
         return res.status(403).json({ error: 'Action interdite' });
       }
 
@@ -1240,7 +1259,7 @@ export async function createServerInstance() {
 
       res.json(messages);
     } catch (error) {
-      console.error(error);
+      console.error(`[CONVERSATION] erreur accès - conversationId: ${req.params.id}:`, error);
       res.status(500).json({ error: 'Erreur lors de la récupération des messages' });
     }
   });
@@ -1250,7 +1269,7 @@ export async function createServerInstance() {
       const { conversationId, content } = req.body;
       const senderId = req.body.senderId || req.user.id;
       
-      console.log(`[MESSAGE] Tentative d’envoi - conversationId: ${conversationId}, senderId: ${senderId}, content: "${content ? content.slice(0, 30) : ''}"`);
+      console.log(`[MESSAGE] tentative - conversationId: ${conversationId}, senderId: ${senderId}, content: "${content ? content.slice(0, 30) : ''}"`);
 
       if (!conversationId || !content) {
         console.warn(`[MESSAGE] Paramètres manquants : conversationId=${conversationId}, content=${content}`);
@@ -1311,9 +1330,9 @@ export async function createServerInstance() {
             sender: true
           }
         });
-        console.log(`[MESSAGE] Message sauvegardé - messageId: ${message.id}`);
+        console.log(`[MESSAGE] sauvegarde - messageId: ${message.id}`);
       } catch (dbErr) {
-        console.error(`[MESSAGE] Erreur sauvegarde :`, dbErr);
+        console.error(`[MESSAGE] erreur sauvegarde :`, dbErr);
         throw dbErr;
       }
 
@@ -1323,21 +1342,24 @@ export async function createServerInstance() {
         data: { updatedAt: new Date() }
       });
 
+      // Find the actual sender details
+      const actualSender = conversation.participants.find(p => p.id === senderId) || req.user;
+
       // Create system notification for all other participants and emit via socket
       await Promise.all(
         conversation.participants
-          .filter(p => p.id !== req.user.id)
+          .filter(p => p.id !== senderId)
           .map(async (p) => {
             const notification = await prisma.notification.create({
               data: {
                 userId: p.id,
                 type: 'MESSAGE' as any,
                 title: 'Nouveau message',
-                message: `Tu as reçu un nouveau message de ${req.user.username}.`,
+                message: `Tu as reçu un nouveau message de ${actualSender.username}.`,
                 data: {
-                  actorId: req.user.id,
-                  actorName: req.user.username,
-                  actorAvatar: req.user.avatar || '',
+                  actorId: actualSender.id,
+                  actorName: actualSender.username,
+                  actorAvatar: actualSender.avatar || '',
                   conversationId,
                   excerpt: trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed,
                 } as any
@@ -1350,7 +1372,7 @@ export async function createServerInstance() {
       // Broadcast message to all conversation participants
       conversation.participants.forEach(p => {
         io.to(`user:${p.id}`).emit('new_message', message);
-        console.log(`[SOCKET] Message émis au destinataire user:${p.id}`);
+        console.log(`[SOCKET] message émis - conversationId: ${conversationId}, messageId: ${message.id}, destinataire: ${p.id}`);
       });
 
       res.status(201).json(message);
@@ -1407,9 +1429,12 @@ export async function createServerInstance() {
 
   // Follow
   app.post('/api/users/:id/follow', requireAuth, async (req: any, res) => {
+    const followingId = req.params.id;
     try {
-      const followingId = req.params.id;
-      if (followingId === req.user.id) return res.status(400).json({ error: 'Tu ne peux pas te suivre toi-même' });
+      console.log(`[FOLLOW] tentative d'abonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
+      if (followingId === req.user.id) {
+        return res.status(400).json({ error: 'Tu ne peux pas te suivre toi-même' });
+      }
       const follow = await prisma.follow.upsert({
         where: { followerId_followingId: { followerId: req.user.id, followingId } },
         update: {},
@@ -1436,29 +1461,62 @@ export async function createServerInstance() {
       io.to(`user:${followingId}`).emit('user_followed', { followerId: req.user.id, followingId });
       io.to(`user:${req.user.id}`).emit('user_followed', { followerId: req.user.id, followingId });
 
-      res.status(201).json({ follow, notification });
+      // Fetch updated users
+      const updatedCurrentUser = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { followers: true, following: true, blockedUsers: true }
+      });
+      const updatedTargetUser = await prisma.user.findUnique({
+        where: { id: followingId },
+        include: { followers: true, following: true, blockedUsers: true }
+      });
+
+      console.log(`[FOLLOW] succès de l'abonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
+      res.status(201).json({ 
+        follow, 
+        notification,
+        currentUser: serializeUser(updatedCurrentUser),
+        targetUser: serializeUser(updatedTargetUser)
+      });
     } catch (error) {
-      console.error(error);
+      console.error(`[FOLLOW] erreur lors de l'abonnement - followerId: ${req.user.id}, followingId: ${followingId} :`, error);
       res.status(500).json({ error: "Erreur lors de l'abonnement" });
     }
   });
 
   app.delete('/api/users/:id/follow', requireAuth, async (req: any, res) => {
+    const followingId = req.params.id;
     try {
+      console.log(`[FOLLOW] tentative de désabonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
       await prisma.follow.deleteMany({
         where: {
           followerId: req.user.id,
-          followingId: req.params.id,
+          followingId,
         },
       });
 
       // Real-time synchronization socket events for unfollow
-      io.to(`user:${req.params.id}`).emit('user_unfollowed', { followerId: req.user.id, followingId: req.params.id });
-      io.to(`user:${req.user.id}`).emit('user_unfollowed', { followerId: req.user.id, followingId: req.params.id });
+      io.to(`user:${followingId}`).emit('user_unfollowed', { followerId: req.user.id, followingId });
+      io.to(`user:${req.user.id}`).emit('user_unfollowed', { followerId: req.user.id, followingId });
 
-      res.status(204).end();
-    } catch {
-      res.status(404).json({ error: 'Abonnement non trouvé' });
+      // Fetch updated users
+      const updatedCurrentUser = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { followers: true, following: true, blockedUsers: true }
+      });
+      const updatedTargetUser = await prisma.user.findUnique({
+        where: { id: followingId },
+        include: { followers: true, following: true, blockedUsers: true }
+      });
+
+      console.log(`[FOLLOW] succès de désabonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
+      res.status(200).json({
+        currentUser: serializeUser(updatedCurrentUser),
+        targetUser: serializeUser(updatedTargetUser)
+      });
+    } catch (error) {
+      console.error(`[FOLLOW] erreur lors du désabonnement - followerId: ${req.user.id}, followingId: ${followingId} :`, error);
+      res.status(500).json({ error: 'Abonnement non trouvé' });
     }
   });
 

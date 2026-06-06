@@ -510,9 +510,9 @@ export default function MessagesView({
       setIsNewChatOpen(false);
       setActiveTab('chats');
       setMobileShowThread(true);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Impossible de démarrer la conversation');
+      alert(`Impossible de démarrer la conversation : ${e.message || 'erreur serveur'}`);
     }
   };
 
