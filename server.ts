@@ -49,14 +49,18 @@ function roleFromPrisma(role: string | undefined | null) {
 }
 
 function genderToPrisma(gender: string | undefined | null) {
-  if (gender === 'Homme') return 'HOMME' as any;
-  if (gender === 'Femme') return 'FEMME' as any;
+  if (!gender) return null;
+  const g = gender.toUpperCase();
+  if (g === 'HOMME' || gender === 'Homme') return 'Homme';
+  if (g === 'FEMME' || gender === 'Femme') return 'Femme';
   return null;
 }
 
 function genderFromPrisma(gender: string | null | undefined) {
-  if (gender === 'HOMME') return 'Homme';
-  if (gender === 'FEMME') return 'Femme';
+  if (!gender) return undefined;
+  const g = gender.toUpperCase();
+  if (g === 'HOMME' || gender === 'Homme') return 'Homme';
+  if (g === 'FEMME' || gender === 'Femme') return 'Femme';
   return undefined;
 }
 
@@ -418,13 +422,23 @@ export async function createServerInstance() {
       await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
 
       const passwordHash = await bcrypt.hash(password, 12);
+      const finalRole = roleToPrisma(role);
+      const finalGender = genderToPrisma(gender);
+
+      console.log('[REGISTRATION] Tentative de création utilisateur avec les données normalisées :', {
+        username,
+        email: normalizedEmail,
+        role: finalRole,
+        gender: finalGender,
+      });
+
       const user = await prisma.user.create({
         data: {
           username,
           email: normalizedEmail,
           passwordHash,
-          role: roleToPrisma(role),
-          gender: genderToPrisma(gender),
+          role: finalRole,
+          gender: finalGender,
           birthDate: birthDate ? new Date(birthDate) : null,
           avatar: avatar || null,
           bio: bio || '',
