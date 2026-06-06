@@ -1,0 +1,6 @@
+{
+  "name": "PLUME",
+  "description": "Plateforme moderne de lecture, d'écriture et de partage d’histoires francophones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

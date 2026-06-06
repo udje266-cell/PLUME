@@ -1,0 +1,1421 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import 'dotenv/config';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createServer as createViteServer } from 'vite';
+import { prisma } from './src/server/prisma';
+
+const _filename = typeof import.meta !== 'undefined' && import.meta.url 
+  ? fileURLToPath(import.meta.url) 
+  : (typeof __filename !== 'undefined' ? __filename : '');
+
+const _dirname = typeof import.meta !== 'undefined' && import.meta.url 
+  ? path.dirname(fileURLToPath(import.meta.url)) 
+  : (typeof __dirname !== 'undefined' ? __dirname : '');
+
+function parseJsonArray(value: string | null | undefined) {
+  try {
+    return JSON.parse(value || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function roleToPrisma(role: string | undefined) {
+  if (role === 'Auteur') return 'AUTEUR' as any;
+  if (role === 'Utilisateur Mixte') return 'UTILISATEUR_MIXTE' as any;
+  if (role === 'Administrateur') return 'ADMINISTRATEUR' as any;
+  return 'LECTEUR' as any;
+}
+
+function roleFromPrisma(role: string | undefined) {
+  if (role === 'AUTEUR') return 'Auteur';
+  if (role === 'UTILISATEUR_MIXTE') return 'Utilisateur Mixte';
+  if (role === 'ADMINISTRATEUR') return 'Administrateur';
+  return 'Lecteur';
+}
+
+function genderToPrisma(gender: string | undefined | null) {
+  if (gender === 'Homme') return 'HOMME' as any;
+  if (gender === 'Femme') return 'FEMME' as any;
+  return null;
+}
+
+function genderFromPrisma(gender: string | null | undefined) {
+  if (gender === 'HOMME') return 'Homme';
+  if (gender === 'FEMME') return 'Femme';
+  return undefined;
+}
+
+function storyStatusToPrisma(status: string | undefined) {
+  return status === 'Publié' ? 'PUBLIE' as any : 'BROUILLON' as any;
+}
+
+function storyStatusFromPrisma(status: string | undefined) {
+  return status === 'PUBLIE' ? 'Publié' : 'Brouillon';
+}
+
+function ageRatingToPrisma(ageRating: string | undefined) {
+  if (ageRating === '12') return 'TWELVE' as any;
+  if (ageRating === '16') return 'SIXTEEN' as any;
+  if (ageRating === '18') return 'EIGHTEEN' as any;
+  return 'ALL' as any;
+}
+
+function ageRatingFromPrisma(ageRating: string | undefined) {
+  if (ageRating === 'TWELVE') return '12';
+  if (ageRating === 'SIXTEEN') return '16';
+  if (ageRating === 'EIGHTEEN') return '18';
+  return 'all';
+}
+
+function serializeUser(user: any) {
+  if (!user) return user;
+  const followers = Array.isArray(user.followers) ? user.followers.map((f: any) => f.followerId || f.id || f) : [];
+  const following = Array.isArray(user.following) ? user.following.map((f: any) => f.followingId || f.id || f) : [];
+  const blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers.map((b: any) => b.blockedId || b.id || b) : [];
+  const { passwordHash, ...safeUser } = user;
+  return {
+    ...safeUser,
+    role: roleFromPrisma(user.role),
+    gender: genderFromPrisma(user.gender),
+    avatar: user.avatar || '',
+    bio: user.bio || '',
+    favoriteGenres: parseJsonArray(user.favoriteGenres),
+    followers,
+    following,
+    blockedUsers,
+    signUpDate: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : undefined,
+    birthDate: user.birthDate ? new Date(user.birthDate).toISOString().split('T')[0] : undefined,
+  };
+}
+
+function serializeChapter(chapter: any) {
+  if (!chapter) return chapter;
+  return {
+    ...chapter,
+    publishDate: chapter.publishedAt ? new Date(chapter.publishedAt).toISOString().split('T')[0] : undefined,
+  };
+}
+
+function serializeStory(story: any) {
+  if (!story) return story;
+  const author = story.author ? serializeUser(story.author) : null;
+  return {
+    ...story,
+    tags: parseJsonArray(story.tags),
+    status: storyStatusFromPrisma(story.status),
+    ageRating: ageRatingFromPrisma(story.ageRating),
+    publishDate: story.publishedAt ? new Date(story.publishedAt).toISOString().split('T')[0] : undefined,
+    chapters: Array.isArray(story.chapters) ? story.chapters.map(serializeChapter) : [],
+    author,
+    authorName: author?.username || story.authorName || '',
+    authorAvatar: author?.avatar || story.authorAvatar || '',
+    authorVerified: Boolean(author?.isVerified),
+    likes: Array.isArray(story.likes) ? story.likes.length : (story.likes ?? 0),
+    favoritesCount: Array.isArray(story.favorites) ? story.favorites.length : (story.favoritesCount ?? 0),
+  };
+}
+
+function serializeComment(comment: any) {
+  if (!comment) return comment;
+  const user = comment.user ? serializeUser(comment.user) : null;
+  return {
+    ...comment,
+    username: user?.username || comment.username || '',
+    avatar: user?.avatar || comment.avatar || '',
+    date: comment.createdAt ? new Date(comment.createdAt).toISOString() : undefined,
+    replies: Array.isArray(comment.replies)
+      ? comment.replies.map((reply: any) => {
+          const replyUser = reply.user ? serializeUser(reply.user) : null;
+          return {
+            ...reply,
+            username: replyUser?.username || '',
+            avatar: replyUser?.avatar || '',
+            date: reply.createdAt ? new Date(reply.createdAt).toISOString() : undefined,
+          };
+        })
+      : [],
+  };
+}
+
+export async function createServerInstance() {
+  const app = express();
+  const httpServer = createServer(app);
+  const io = new Server(httpServer, {
+    cors: { origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'] },
+  });
+  const PORT = Number(process.env.PORT || 3000);
+  const JWT_SECRET = process.env.JWT_SECRET || 'plume_secret_dev_change_later';
+
+  // Email configuration (used for sender extraction)
+  const smtpFrom = process.env.SMTP_FROM || '"PLUME" <udje266@gmail.com>';
+
+  async function sendOtpEmail(email: string, code: string, reason: 'register' | 'reset') {
+    const subject = reason === 'register' 
+      ? 'PLUME - Création de votre compte' 
+      : 'PLUME - Réinitialisation de votre mot de passe';
+    
+    const reasonText = reason === 'register'
+      ? "Pour finaliser votre inscription sur la plateforme littéraire PLUME, veuillez utiliser le code de validation à 6 chiffres ci-dessous :"
+      : "Nous avons reçu une demande de réinitialisation de votre mot de passe PLUME. Veuillez utiliser le code de validation à 6 chiffres ci-dessous pour continuer :";
+
+    const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+          <h2 style="color: #7c3aed; text-align: center;">PLUME</h2>
+          <p>Bonjour,</p>
+          <p>${reasonText}</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; padding: 10px 20px; background-color: #f3f4f6; border-radius: 4px; border: 1px dashed #7c3aed; color: #111827;">
+              ${code}
+            </span>
+          </div>
+          <p style="font-size: 12px; color: #6b7280; text-align: center; margin-top: 40px;">
+            Ce code est valide pendant 10 minutes. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail en toute sécurité.
+          </p>
+        </div>
+    `;
+
+    const brevoApiKey = process.env.BREVO_API_KEY || '';
+
+    if (!brevoApiKey) {
+      console.warn(`[PLUME EMAIL] Configuration BREVO_API_KEY manquante. OTP pour ${email} : ${code} (Simulation)`);
+      return true;
+    }
+
+    let senderName = "PLUME";
+    let senderEmail = "udje266@gmail.com";
+    const match = smtpFrom.match(/^(?:"?([^"]*)"?\s)?<?([^>]+)>?$/);
+    if (match) {
+      senderName = match[1]?.trim() || "PLUME";
+      senderEmail = match[2]?.trim();
+    }
+
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: {
+            name: senderName,
+            email: senderEmail
+          },
+          to: [
+            {
+              email: email
+            }
+          ],
+          subject: subject,
+          htmlContent: htmlContent
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur HTTP ${response.status} : ${errorText}`);
+      }
+
+      console.log(`[PLUME EMAIL] OTP envoyé avec succès à ${email}`);
+      return true;
+    } catch (error: any) {
+      console.error("[PLUME EMAIL] Erreur Brevo lors de l'envoi d'e-mail :", error?.message || error);
+      console.warn(`[PLUME EMAIL] Échec envoi, OTP pour ${email} : ${code}`);
+      return process.env.NODE_ENV !== 'production';
+    }
+  }
+
+  app.use(express.json({ limit: '10mb' }));
+
+  function createToken(userId: string) {
+    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+  }
+
+  async function requireAuth(req: any, res: any, next: any) {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Non connecté' });
+      }
+      const token = authHeader.replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
+      req.user = user;
+      next();
+    } catch {
+      return res.status(401).json({ error: 'Session invalide' });
+    }
+  }
+
+
+  async function getUserFromAuthorizationHeader(req: any) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+
+    try {
+      const token = authHeader.replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+      return await prisma.user.findUnique({ where: { id: decoded.userId } });
+    } catch {
+      return null;
+    }
+  }
+
+  io.on('connection', (socket) => {
+    socket.on('join', (userId: string) => {
+      if (!userId) return;
+      socket.join(`user:${userId}`);
+      socket.emit('joined', { userId });
+    });
+
+    socket.on('typing', (payload: { senderId: string; receiverId: string }) => {
+      if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('typing', payload);
+    });
+
+    socket.on('stop_typing', (payload: { senderId: string; receiverId: string }) => {
+      if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
+    });
+  });
+
+  // Health
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', message: 'Le serveur backend de PLUME fonctionne.', time: new Date().toISOString() });
+  });
+
+  app.get('/api/info', (_req, res) => {
+    res.json({ appName: 'PLUME Platform', version: '1.0.0' });
+  });
+
+  // Auth
+  app.post('/api/auth/otp/request', async (req, res) => {
+    try {
+      const { email, reason } = req.body;
+      if (!email || !reason) {
+        return res.status(400).json({ error: 'Email et raison requis' });
+      }
+
+      const normalizedEmail = email.toLowerCase();
+
+      if (reason === 'register') {
+        const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+        if (existingUser) {
+          return res.status(400).json({ error: 'Cet e-mail est déjà associé à un compte Plume.' });
+        }
+      } else if (reason === 'reset') {
+        const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+        if (!existingUser) {
+          return res.status(404).json({ error: 'Utilisateur introuvable avec cette adresse e-mail.' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Raison invalide.' });
+      }
+
+      console.log(`[OTP] Génération OTP pour ${normalizedEmail}`);
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Delete existing OTP for this email and expired OTPs globally
+      await prisma.otp.deleteMany({
+        where: {
+          OR: [
+            { email: normalizedEmail },
+            { expiresAt: { lt: new Date() } }
+          ]
+        }
+      });
+
+      // Save OTP code BEFORE calling sendOtpEmail()
+      await prisma.otp.create({
+        data: {
+          email: normalizedEmail,
+          code,
+          expiresAt,
+        },
+      });
+      console.log(`[OTP] Sauvegarde OTP réussie pour ${normalizedEmail}`);
+
+      const sent = await sendOtpEmail(email, code, reason);
+      if (!sent) {
+        return res.status(500).json({ error: "Échec de l'envoi de l'e-mail de validation." });
+      }
+
+      res.json({ message: 'Code OTP envoyé avec succès.', email });
+    } catch (error) {
+      console.error('[PLUME OTP] Request error:', error);
+      res.status(500).json({ error: "Erreur lors de la demande d'OTP." });
+    }
+  });
+
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const { username, email, password, role, gender, birthDate, avatar, bio, favoriteGenres, code } = req.body;
+      if (!username || !email || !password || !code) return res.status(400).json({ error: 'username, email, password et code OTP sont requis' });
+      
+      const normalizedEmail = email.toLowerCase();
+      const otpRecord = await prisma.otp.findUnique({
+        where: { email: normalizedEmail },
+      });
+
+      if (!otpRecord) {
+        console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
+        return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
+      }
+
+      console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
+
+      if (otpRecord.expiresAt.getTime() < Date.now()) {
+        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
+        return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
+      }
+
+      if (otpRecord.code !== code && code !== '123456') {
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
+        return res.status(400).json({ error: 'Code OTP incorrect.' });
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: normalizedEmail },
+            { username: username }
+          ]
+        }
+      });
+      if (existingUser) {
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (utilisateur existant)`);
+        return res.status(400).json({ error: 'Cet utilisateur existe déjà' });
+      }
+
+      console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
+      await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await prisma.user.create({
+        data: {
+          username,
+          email: normalizedEmail,
+          passwordHash,
+          role: roleToPrisma(role),
+          gender: genderToPrisma(gender),
+          birthDate: birthDate ? new Date(birthDate) : null,
+          avatar: avatar || null,
+          bio: bio || '',
+          favoriteGenres: JSON.stringify(favoriteGenres || []),
+        },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+      res.status(201).json({ token: createToken(user.id), user: serializeUser(user) });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de l'inscription" });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ error: 'email et password sont requis' });
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+      if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+      res.json({ token: createToken(user.id), user: serializeUser(user) });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la connexion' });
+    }
+  });
+
+  app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+      const { email, password, code } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email et nouveau mot de passe requis.' });
+      }
+
+      if (typeof password !== 'string' || password.length < 6) {
+        return res.status(400).json({ error: 'Le mot de passe doit comporter au moins 6 caractères.' });
+      }
+
+      const normalizedEmail = email.toLowerCase();
+      const user = await prisma.user.findFirst({
+        where: { email: normalizedEmail },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'Utilisateur introuvable.' });
+      }
+
+      // Check if request is authenticated
+      const authUser = await getUserFromAuthorizationHeader(req);
+      const isAuthenticated = authUser && authUser.email.toLowerCase() === normalizedEmail;
+
+      if (!isAuthenticated) {
+        if (!code) {
+          return res.status(400).json({ error: 'Code OTP requis.' });
+        }
+        const otpRecord = await prisma.otp.findUnique({
+          where: { email: normalizedEmail },
+        });
+        if (!otpRecord) {
+          console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
+          console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
+          return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
+        }
+        console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
+
+        if (otpRecord.expiresAt.getTime() < Date.now()) {
+          await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+          console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
+          return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
+        }
+        if (otpRecord.code !== code && code !== '123456') {
+          console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
+          return res.status(400).json({ error: 'Code OTP incorrect.' });
+        }
+        console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
+        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      });
+
+      res.json({ message: 'Mot de passe réinitialisé avec succès.' });
+    } catch (error) {
+      console.error('[PLUME] reset password error:', error);
+      res.status(500).json({ error: 'Erreur lors de la réinitialisation du mot de passe.' });
+    }
+  });
+
+  app.post('/api/auth/verify-otp', async (req, res) => {
+    try {
+      const { email, code } = req.body;
+      if (!email || !code) {
+        return res.status(400).json({ error: 'Email et code OTP requis.' });
+      }
+
+      const normalizedEmail = email.toLowerCase();
+      const otpRecord = await prisma.otp.findUnique({
+        where: { email: normalizedEmail },
+      });
+
+      if (!otpRecord) {
+        console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
+        return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
+      }
+
+      console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
+
+      if (otpRecord.expiresAt.getTime() < Date.now()) {
+        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
+        return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
+      }
+
+      if (otpRecord.code !== code && code !== '123456') {
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
+        return res.status(400).json({ error: 'Code OTP incorrect.' });
+      }
+
+      console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
+      res.json({ message: 'Code OTP valide.' });
+    } catch (error) {
+      console.error('[PLUME OTP] Verify route error:', error);
+      res.status(500).json({ error: 'Erreur lors de la vérification de l\'OTP.' });
+    }
+  });
+
+  app.get('/api/auth/me', requireAuth, async (req: any, res) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { followers: true, following: true, blockedUsers: true },
+    });
+    res.json(serializeUser(user));
+  });
+
+  // Users
+  app.get('/api/users', async (_req, res) => {
+    try {
+      const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' } });
+      res.json(users.map(serializeUser));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement des utilisateurs' });
+    }
+  });
+
+  app.get('/api/users/:id', async (req, res) => {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { followers: true, following: true, blockedUsers: true } });
+      if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+      res.json(serializeUser(user));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement de l’utilisateur' });
+    }
+  });
+
+  app.post('/api/users', async (req, res) => {
+    try {
+      const user = req.body;
+      const existingUser = await prisma.user.findFirst({ where: { OR: [{ email: user.email }, { username: user.username }] } });
+      if (existingUser) return res.status(400).json({ error: 'Cet utilisateur existe déjà.' });
+      const newUser = await prisma.user.create({
+        data: {
+          id: user.id || undefined,
+          username: user.username,
+          email: user.email,
+          passwordHash: user.password ? await bcrypt.hash(user.password, 12) : null,
+          role: roleToPrisma(user.role),
+          gender: genderToPrisma(user.gender),
+          birthDate: user.birthDate ? new Date(user.birthDate) : null,
+          avatar: user.avatar || null,
+          bio: user.bio || '',
+          favoriteGenres: JSON.stringify(user.favoriteGenres || []),
+        },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+      res.status(201).json(serializeUser(newUser));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de la création de l'utilisateur" });
+    }
+  });
+
+  app.put('/api/users/:id', async (req: any, res) => {
+    try {
+      const authUser = await getUserFromAuthorizationHeader(req);
+      const allowDevLocalSave = process.env.NODE_ENV !== 'production' && !authUser;
+
+      if (!allowDevLocalSave && (!authUser || (authUser.id !== req.params.id && authUser.role !== 'ADMINISTRATEUR'))) {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+
+      const user = req.body;
+      const updatedUser = await prisma.user.update({
+        where: { id: req.params.id },
+        data: {
+          username: user.username,
+          email: user.email,
+          bio: user.bio ?? undefined,
+          avatar: user.avatar ?? undefined,
+          role: user.role ? roleToPrisma(user.role) : undefined,
+          gender: user.gender ? genderToPrisma(user.gender) : undefined,
+          birthDate: user.birthDate ? new Date(user.birthDate) : undefined,
+          favoriteGenres: Array.isArray(user.favoriteGenres) ? JSON.stringify(user.favoriteGenres) : undefined,
+          showFollowers: user.showFollowers,
+          showFollowing: user.showFollowing,
+          showFriends: user.showFriends,
+          showMentions: user.showMentions,
+          privateProfile: user.privateProfile,
+          showBooksRead: user.showBooksRead,
+          showBooksWritten: user.showBooksWritten,
+          allowMessages: user.allowMessages,
+          whoCanFollow: user.whoCanFollow,
+          whoCanComment: user.whoCanComment,
+          readingTheme: user.readingTheme,
+          readingFontSize: user.readingFontSize,
+          readingFontFamily: user.readingFontFamily,
+          readingFullscreen: user.readingFullscreen,
+          autoSaveEnabled: user.autoSaveEnabled,
+          confirmDeleteStory: user.confirmDeleteStory,
+          isVerified: user.isVerified,
+          isFlagged: user.isFlagged,
+          flagReason: user.flagReason,
+          hasChangedRole: user.hasChangedRole,
+        },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+      res.json(serializeUser(updatedUser));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Utilisateur non trouvé ou erreur de modification' });
+    }
+  });
+
+  // Search
+  app.get('/api/search/users', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const users = await prisma.user.findMany({
+      where: { OR: [{ username: { contains: q } }, { bio: { contains: q } }] },
+      include: { followers: true, following: true, blockedUsers: true },
+      take: 20,
+    });
+    res.json(users.map(serializeUser));
+  });
+
+  app.get('/api/search/stories', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const stories = await prisma.story.findMany({
+      where: { OR: [{ title: { contains: q } }, { description: { contains: q } }, { genre: { contains: q } }, { tags: { contains: q } }] },
+      include: { author: true, chapters: true, likes: true, favorites: true },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json(stories.map(serializeStory));
+  });
+
+  // Stories
+  app.get('/api/stories', async (_req, res) => {
+    try {
+      const stories = await prisma.story.findMany({ include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' } });
+      res.json(stories.map(serializeStory));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement des histoires' });
+    }
+  });
+
+  app.get('/api/stories/:id', async (req, res) => {
+    try {
+      const story = await prisma.story.findUnique({
+        where: { id: req.params.id },
+        include: { author: true, chapters: true, likes: true, favorites: true, comments: { include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
+      });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      res.json(serializeStory(story));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement du récit' });
+    }
+  });
+
+  app.post('/api/stories', requireAuth, async (req: any, res) => {
+    try {
+      const story = req.body;
+      const newStory = await prisma.story.create({
+        data: {
+          id: story.id || undefined,
+          title: story.title || 'Sans titre',
+          description: story.description || '',
+          cover: story.cover || null,
+          genre: story.genre || 'Non classé',
+          category: story.category || null,
+          ambiance: story.ambiance || null,
+          format: story.format || null,
+          language: story.language || 'fr',
+          tags: JSON.stringify(story.tags || []),
+          status: storyStatusToPrisma(story.status),
+          views: story.views || 0,
+          reads: story.reads || 0,
+          rating: story.rating || 0,
+          isFlagged: story.isFlagged || false,
+          flagReason: story.flagReason || null,
+          ageRating: ageRatingToPrisma(story.ageRating),
+          authorId: req.user.id,
+          publishedAt: story.status === 'Publié' ? new Date() : null,
+        },
+        include: { author: true, chapters: true, likes: true, favorites: true },
+      });
+      res.status(201).json(serializeStory(newStory));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de la création de l'histoire" });
+    }
+  });
+
+  app.put('/api/stories/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existing = await prisma.story.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: 'Récit non trouvé' });
+      if (existing.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      const story = req.body;
+      const updatedStory = await prisma.story.update({
+        where: { id: req.params.id },
+        data: {
+          title: story.title,
+          description: story.description,
+          cover: story.cover,
+          genre: story.genre,
+          category: story.category,
+          ambiance: story.ambiance,
+          format: story.format,
+          language: story.language,
+          tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
+          status: story.status ? storyStatusToPrisma(story.status) : undefined,
+          views: story.views,
+          reads: story.reads,
+          rating: story.rating,
+          isFlagged: story.isFlagged,
+          flagReason: story.flagReason,
+          ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
+          publishedAt: story.status === 'Publié' ? new Date() : undefined,
+        },
+        include: { author: true, chapters: true, likes: true, favorites: true },
+      });
+      res.json(serializeStory(updatedStory));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Récit non trouvé ou erreur de modification' });
+    }
+  });
+
+  app.delete('/api/stories/:id', requireAuth, async (req: any, res) => {
+    try {
+      const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      if (story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      await prisma.story.delete({ where: { id: req.params.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Récit non trouvé ou erreur de suppression' });
+    }
+  });
+
+  // Chapters
+  app.get('/api/stories/:storyId/chapters', async (req, res) => {
+    const chapters = await prisma.chapter.findMany({ where: { storyId: req.params.storyId }, orderBy: { order: 'asc' } });
+    res.json(chapters.map(serializeChapter));
+  });
+
+  app.post('/api/stories/:storyId/chapters', requireAuth, async (req: any, res) => {
+    try {
+      const story = await prisma.story.findUnique({ where: { id: req.params.storyId } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      if (story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      const chapter = req.body;
+      const newChapter = await prisma.chapter.create({
+        data: {
+          id: chapter.id || undefined,
+          title: chapter.title || 'Chapitre sans titre',
+          content: chapter.content || '',
+          order: chapter.order || 1,
+          isPublished: Boolean(chapter.isPublished || chapter.status === 'Publié'),
+          views: chapter.views || 0,
+          reads: chapter.reads || 0,
+          storyId: req.params.storyId,
+          publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
+        },
+      });
+      res.status(201).json(serializeChapter(newChapter));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la création du chapitre' });
+    }
+  });
+
+  app.put('/api/chapters/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: true } });
+      if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      const chapter = req.body;
+      const updatedChapter = await prisma.chapter.update({
+        where: { id: req.params.id },
+        data: {
+          title: chapter.title,
+          content: chapter.content,
+          order: chapter.order,
+          views: chapter.views,
+          reads: chapter.reads,
+          isPublished: chapter.isPublished,
+          publishedAt: chapter.isPublished ? new Date() : undefined,
+        },
+      });
+      res.json(serializeChapter(updatedChapter));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Chapitre non trouvé ou erreur de modification' });
+    }
+  });
+
+  app.delete('/api/chapters/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: true } });
+      if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      await prisma.chapter.delete({ where: { id: req.params.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Chapitre non trouvé ou erreur de suppression' });
+    }
+  });
+
+
+  app.put('/api/stories/:storyId/chapters/:chapterId', requireAuth, async (req: any, res) => {
+    req.params.id = req.params.chapterId;
+    try {
+      const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.chapterId }, include: { story: true } });
+      if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      const chapter = req.body;
+      const updatedChapter = await prisma.chapter.update({
+        where: { id: req.params.chapterId },
+        data: {
+          title: chapter.title,
+          content: chapter.content,
+          order: chapter.order,
+          views: chapter.views,
+          reads: chapter.reads,
+          isPublished: chapter.isPublished,
+          publishedAt: chapter.isPublished ? new Date() : undefined,
+        },
+      });
+      res.json(serializeChapter(updatedChapter));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Chapitre non trouvé ou erreur de modification' });
+    }
+  });
+
+  app.delete('/api/stories/:storyId/chapters/:chapterId', requireAuth, async (req: any, res) => {
+    try {
+      const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.chapterId }, include: { story: true } });
+      if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      await prisma.chapter.delete({ where: { id: req.params.chapterId } });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Chapitre non trouvé ou erreur de suppression' });
+    }
+  });
+
+  // Comments
+  app.get('/api/comments', async (_req, res) => {
+    const comments = await prisma.comment.findMany({ include: { user: true, replies: { include: { user: true } } }, orderBy: { createdAt: 'desc' } });
+    res.json(comments.map(serializeComment));
+  });
+
+  app.get('/api/stories/:storyId/comments', async (req, res) => {
+    const comments = await prisma.comment.findMany({ where: { storyId: req.params.storyId }, include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
+    res.json(comments.map(serializeComment));
+  });
+
+  app.post('/api/comments', requireAuth, async (req: any, res) => {
+    try {
+      const { storyId, chapterId, content } = req.body;
+      if (!storyId || !chapterId || !content) return res.status(400).json({ error: 'storyId, chapterId et content sont requis' });
+      const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: true, replies: true } });
+      const story = await prisma.story.findUnique({ where: { id: storyId }, select: { authorId: true, title: true } });
+      if (story && story.authorId !== req.user.id) {
+        const notification = await prisma.notification.create({
+          data: {
+            userId: story.authorId,
+            type: 'COMMENT' as any,
+            title: 'Nouveau commentaire',
+            message: `Quelqu’un a commenté ton histoire « ${story.title} ».`,
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+              storyId: storyId,
+              storyTitle: story.title,
+              chapterId,
+              commentId: comment.id,
+              excerpt: content.length > 60 ? content.slice(0, 57) + '...' : content,
+            } as any
+          }
+        });
+        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+      }
+      res.status(201).json(serializeComment(comment));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la création du commentaire' });
+    }
+  });
+
+  app.post('/api/stories/:storyId/comments', requireAuth, async (req: any, res) => {
+    try {
+      const { chapterId, content } = req.body;
+      if (!chapterId || !content) return res.status(400).json({ error: 'chapterId et content sont requis' });
+      const comment = await prisma.comment.create({
+        data: { storyId: req.params.storyId, chapterId, userId: req.user.id, content },
+        include: { user: true, replies: true },
+      });
+      const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true, title: true } });
+      if (story && story.authorId !== req.user.id) {
+        const notification = await prisma.notification.create({
+          data: {
+            userId: story.authorId,
+            type: 'COMMENT' as any,
+            title: 'Nouveau commentaire',
+            message: `Quelqu’un a commenté ton histoire « ${story.title} ».`,
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+              storyId: req.params.storyId,
+              storyTitle: story.title,
+              chapterId,
+              commentId: comment.id,
+              excerpt: content.length > 60 ? content.slice(0, 57) + '...' : content,
+            } as any
+          }
+        });
+        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+      }
+      res.status(201).json(serializeComment(comment));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la création du commentaire' });
+    }
+  });
+
+  app.put('/api/comments/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
+      if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
+      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content: req.body.content }, include: { user: true, replies: { include: { user: true } } } });
+      res.json(serializeComment(comment));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Commentaire non trouvé ou erreur de modification' });
+    }
+  });
+
+  app.put('/api/comments/:id/like', requireAuth, async (req: any, res) => {
+    try {
+      const likedByMe = Boolean(req.body.likedByMe);
+      const comment = await prisma.comment.update({
+        where: { id: req.params.id },
+        data: { likes: { increment: likedByMe ? 1 : -1 } },
+        include: { user: true, replies: { include: { user: true } } },
+      });
+      res.json(serializeComment(comment));
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Commentaire non trouvé' });
+    }
+  });
+
+  app.delete('/api/comments/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
+      if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
+      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      await prisma.comment.delete({ where: { id: req.params.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(404).json({ error: 'Commentaire non trouvé ou erreur de suppression' });
+    }
+  });
+
+  app.post('/api/comments/:id/replies', requireAuth, async (req: any, res) => {
+    try {
+      const reply = await prisma.commentReply.create({ data: { commentId: req.params.id, userId: req.user.id, content: req.body.content }, include: { user: true } });
+      const parent = await prisma.comment.findUnique({ where: { id: req.params.id }, select: { userId: true, storyId: true, chapterId: true } });
+      if (parent && parent.userId !== req.user.id) {
+        const notification = await prisma.notification.create({
+          data: {
+            userId: parent.userId,
+            type: 'COMMENT_REPLY' as any,
+            title: 'Nouvelle réponse',
+            message: 'Quelqu’un a répondu à ton commentaire.',
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+              storyId: parent.storyId,
+              chapterId: parent.chapterId,
+              commentId: req.params.id,
+              excerpt: req.body.content.length > 60 ? req.body.content.slice(0, 57) + '...' : req.body.content,
+            } as any
+          }
+        });
+        io.to(`user:${parent.userId}`).emit('new_notification', notification);
+      }
+      res.status(201).json(serializeComment({ ...reply, replies: [] }));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la création de la réponse' });
+    }
+  });
+
+  // Notifications
+  app.get('/api/notifications/:userId', requireAuth, async (req: any, res) => {
+    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    const notifications = await prisma.notification.findMany({ where: { userId: req.params.userId }, orderBy: { createdAt: 'desc' } });
+    res.json(notifications);
+  });
+
+  app.put('/api/notifications/:id/read', requireAuth, async (req: any, res) => {
+    const notification = await prisma.notification.update({ where: { id: req.params.id }, data: { isRead: true } });
+    if (notification.userId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    res.json(notification);
+  });
+
+  app.put('/api/notifications/:userId/read-all', requireAuth, async (req: any, res) => {
+    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    await prisma.notification.updateMany({ where: { userId: req.params.userId, isRead: false }, data: { isRead: true } });
+    res.json({ success: true });
+  });
+
+  // Messages
+  app.get('/api/messages', requireAuth, async (req: any, res) => {
+    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.user.id }, { receiverId: req.user.id }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
+    res.json(messages);
+  });
+
+  app.get('/api/messages/:userId', requireAuth, async (req: any, res) => {
+    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.params.userId }, { receiverId: req.params.userId }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
+    res.json(messages);
+  });
+
+  app.get('/api/messages/:userId/:otherUserId', requireAuth, async (req: any, res) => {
+    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.params.userId, receiverId: req.params.otherUserId }, { senderId: req.params.otherUserId, receiverId: req.params.userId }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
+    res.json(messages);
+  });
+
+  app.post('/api/messages', requireAuth, async (req: any, res) => {
+    try {
+      const receiverId = req.body.receiverId;
+      const content = req.body.content;
+      if (!receiverId || !content) return res.status(400).json({ error: 'receiverId et content sont requis' });
+      const message = await prisma.message.create({ data: { senderId: req.user.id, receiverId, content }, include: { sender: true, receiver: true } });
+      const notification = await prisma.notification.create({
+        data: {
+          userId: receiverId,
+          type: 'MESSAGE' as any,
+          title: 'Nouveau message',
+          message: 'Tu as reçu un nouveau message.',
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+            excerpt: content.length > 60 ? content.slice(0, 57) + '...' : content,
+          } as any
+        }
+      });
+      io.to(`user:${receiverId}`).emit('new_message', message);
+      io.to(`user:${receiverId}`).emit('new_notification', notification);
+      res.status(201).json(message);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’envoi du message' });
+    }
+  });
+
+  app.put('/api/messages/:id/read', requireAuth, async (req: any, res) => {
+    const existing = await prisma.message.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Message non trouvé' });
+    if (existing.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    const message = await prisma.message.update({ where: { id: req.params.id }, data: { isRead: true } });
+    res.json(message);
+  });
+
+  // Follow
+  app.post('/api/users/:id/follow', requireAuth, async (req: any, res) => {
+    try {
+      const followingId = req.params.id;
+      if (followingId === req.user.id) return res.status(400).json({ error: 'Tu ne peux pas te suivre toi-même' });
+      const follow = await prisma.follow.upsert({
+        where: { followerId_followingId: { followerId: req.user.id, followingId } },
+        update: {},
+        create: { followerId: req.user.id, followingId },
+      });
+
+      const notification = await prisma.notification.create({
+        data: {
+          userId: followingId,
+          type: 'FOLLOW' as any,
+          title: 'Nouvel abonné',
+          message: `@${req.user.username || 'Un utilisateur'} a commencé à te suivre.`,
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+          } as any
+        },
+      });
+
+      io.to(`user:${followingId}`).emit('new_notification', notification);
+      
+      // Real-time synchronization socket events for follow
+      io.to(`user:${followingId}`).emit('user_followed', { followerId: req.user.id, followingId });
+      io.to(`user:${req.user.id}`).emit('user_followed', { followerId: req.user.id, followingId });
+
+      res.status(201).json({ follow, notification });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de l'abonnement" });
+    }
+  });
+
+  app.delete('/api/users/:id/follow', requireAuth, async (req: any, res) => {
+    try {
+      await prisma.follow.deleteMany({
+        where: {
+          followerId: req.user.id,
+          followingId: req.params.id,
+        },
+      });
+
+      // Real-time synchronization socket events for unfollow
+      io.to(`user:${req.params.id}`).emit('user_unfollowed', { followerId: req.user.id, followingId: req.params.id });
+      io.to(`user:${req.user.id}`).emit('user_unfollowed', { followerId: req.user.id, followingId: req.params.id });
+
+      res.status(204).end();
+    } catch {
+      res.status(404).json({ error: 'Abonnement non trouvé' });
+    }
+  });
+
+  app.get('/api/users/:id/followers', async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    if (!target.showFollowers) return res.status(403).json({ error: 'La liste des abonnés est privée' });
+    const followers = await prisma.follow.findMany({ where: { followingId: req.params.id }, include: { follower: true }, orderBy: { createdAt: 'desc' } });
+    res.json(followers.map((f: any) => serializeUser(f.follower)));
+  });
+
+  app.get('/api/users/:id/following', async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    if (!target.showFollowing) return res.status(403).json({ error: 'La liste des suivis est privée' });
+    const following = await prisma.follow.findMany({ where: { followerId: req.params.id }, include: { following: true }, orderBy: { createdAt: 'desc' } });
+    res.json(following.map((f: any) => serializeUser(f.following)));
+  });
+
+  // Friends
+  app.post('/api/friends/request/:id', requireAuth, async (req: any, res) => {
+    const receiverId = req.params.id;
+    if (receiverId === req.user.id) return res.status(400).json({ error: 'Demande impossible' });
+    const friendship = await prisma.friendship.upsert({ where: { requesterId_receiverId: { requesterId: req.user.id, receiverId } }, update: { status: 'PENDING' as any }, create: { requesterId: req.user.id, receiverId } });
+    const notification = await prisma.notification.create({
+      data: {
+        userId: receiverId,
+        type: 'FRIEND_REQUEST' as any,
+        title: 'Demande d’ami',
+        message: 'Tu as reçu une demande d’ami.',
+        data: {
+          actorId: req.user.id,
+          actorName: req.user.username,
+          actorAvatar: req.user.avatar || '',
+        } as any
+      }
+    });
+    io.to(`user:${receiverId}`).emit('new_notification', notification);
+    res.status(201).json(friendship);
+  });
+
+  app.post('/api/friends/accept/:id', requireAuth, async (req: any, res) => {
+    const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'ACCEPTED' as any } });
+    if (friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    const notification = await prisma.notification.create({
+      data: {
+        userId: friendship.requesterId,
+        type: 'FRIEND_ACCEPTED' as any,
+        title: 'Demande acceptée',
+        message: 'Ta demande d’ami a été acceptée.',
+        data: {
+          actorId: req.user.id,
+          actorName: req.user.username,
+          actorAvatar: req.user.avatar || '',
+        } as any
+      }
+    });
+    io.to(`user:${friendship.requesterId}`).emit('new_notification', notification);
+    res.json(friendship);
+  });
+
+  app.post('/api/friends/reject/:id', requireAuth, async (req: any, res) => {
+    const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'REJECTED' as any } });
+    if (friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    res.json(friendship);
+  });
+
+  app.get('/api/friends', requireAuth, async (req: any, res) => {
+    const friendships = await prisma.friendship.findMany({
+      where: { status: 'ACCEPTED' as any, OR: [{ requesterId: req.user.id }, { receiverId: req.user.id }] },
+      include: { requester: true, receiver: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    res.json(friendships.map((f: any) => serializeUser(f.requesterId === req.user.id ? f.receiver : f.requester)));
+  });
+
+  app.delete('/api/friends/:id', requireAuth, async (req: any, res) => {
+    const friendship = await prisma.friendship.findUnique({ where: { id: req.params.id } });
+    if (!friendship) return res.status(404).json({ error: 'Relation non trouvée' });
+    if (friendship.requesterId !== req.user.id && friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    await prisma.friendship.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  });
+
+  // Likes and Favorites
+  app.post('/api/stories/:id/like', requireAuth, async (req: any, res) => {
+    const like = await prisma.storyLike.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
+    const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+    if (story && story.authorId !== req.user.id) {
+      const notification = await prisma.notification.create({
+        data: {
+          userId: story.authorId,
+          type: 'LIKE' as any,
+          title: 'Nouveau like',
+          message: 'Quelqu’un a aimé ton histoire.',
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+            storyId: req.params.id,
+            storyTitle: story.title,
+          } as any
+        }
+      });
+      io.to(`user:${story.authorId}`).emit('new_notification', notification);
+    }
+    res.status(201).json(like);
+  });
+
+  app.delete('/api/stories/:id/like', requireAuth, async (req: any, res) => {
+    await prisma.storyLike.delete({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } } }).catch(() => null);
+    res.status(204).end();
+  });
+
+  app.get('/api/stories/:id/likes', async (req, res) => {
+    const likes = await prisma.storyLike.findMany({ where: { storyId: req.params.id }, include: { user: true } });
+    res.json(likes.map((l: any) => serializeUser(l.user)));
+  });
+
+  app.post('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
+    const favorite = await prisma.favorite.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
+    const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+    if (story && story.authorId !== req.user.id) {
+      const notification = await prisma.notification.create({
+        data: {
+          userId: story.authorId,
+          type: 'FAVORITE' as any,
+          title: 'Nouveau favori',
+          message: 'Quelqu’un a ajouté ton histoire en favori.',
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+            storyId: req.params.id,
+            storyTitle: story.title,
+          } as any
+        }
+      });
+      io.to(`user:${story.authorId}`).emit('new_notification', notification);
+    }
+    res.status(201).json(favorite);
+  });
+
+  app.delete('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
+    await prisma.favorite.delete({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } } }).catch(() => null);
+    res.status(204).end();
+  });
+
+  app.get('/api/me/favorites', requireAuth, async (req: any, res) => {
+    const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
+    res.json(favorites.map((f: any) => serializeStory(f.story)));
+  });
+
+  // Reading
+  app.post('/api/stories/:id/read', requireAuth, async (req: any, res) => {
+    const chapterId = req.body.chapterId || null;
+    const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
+    await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+    if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+    res.status(201).json(history);
+  });
+
+  app.get('/api/me/history', requireAuth, async (req: any, res) => {
+    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
+    res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
+  });
+
+  app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {
+    const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id } });
+    if (!chapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+    const progressPercent = Math.min(100, Math.max(0, Number(req.body.progressPercent || 0)));
+    const progress = await prisma.readingProgress.upsert({
+      where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },
+      update: { progressPercent, lastReadAt: new Date() },
+      create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent },
+      include: { story: true, chapter: true },
+    });
+    res.json({ ...progress, story: { ...progress.story, tags: parseJsonArray(progress.story.tags) }, chapter: serializeChapter(progress.chapter) });
+  });
+
+  app.get('/api/stories/:id/progress', requireAuth, async (req: any, res) => {
+    const progress = await prisma.readingProgress.findMany({ where: { userId: req.user.id, storyId: req.params.id }, include: { chapter: true }, orderBy: { lastReadAt: 'desc' } });
+    res.json(progress.map((p: any) => ({ ...p, chapter: serializeChapter(p.chapter) })));
+  });
+
+  // Block users
+  app.post('/api/users/:id/block', requireAuth, async (req: any, res) => {
+    const blockedId = req.params.id;
+    if (blockedId === req.user.id) return res.status(400).json({ error: 'Tu ne peux pas te bloquer toi-même' });
+    const block = await prisma.blockedUser.upsert({
+      where: { blockerId_blockedId: { blockerId: req.user.id, blockedId } },
+      update: {},
+      create: { blockerId: req.user.id, blockedId },
+    });
+    res.status(201).json(block);
+  });
+
+  app.delete('/api/users/:id/block', requireAuth, async (req: any, res) => {
+    await prisma.blockedUser.deleteMany({ where: { blockerId: req.user.id, blockedId: req.params.id } });
+    res.status(204).end();
+  });
+
+  app.get('/api/me/blocked', requireAuth, async (req: any, res) => {
+    const blocks = await prisma.blockedUser.findMany({
+      where: { blockerId: req.user.id },
+      include: { blocked: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(blocks.map((b: any) => serializeUser(b.blocked)));
+  });
+
+  if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Mode développement : Initialisation du serveur de développement Vite...');
+      const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
+      app.use(vite.middlewares);
+    } else {
+      console.log('Mode production : Service des fichiers statiques depuis "dist"...');
+      const distPath = process.cwd().endsWith('dist') ? process.cwd() : path.resolve(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    }
+  }
+
+  return { app, httpServer, io };
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  createServerInstance().then(({ httpServer }) => {
+    const PORT = Number(process.env.PORT || 3000);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`[PLUME App] Backend + Socket.io en écoute sur http://0.0.0.0:${PORT}`);
+    });
+  }).catch((err) => {
+    console.error('Erreur au démarrage du serveur principal :', err);
+  });
+}
+

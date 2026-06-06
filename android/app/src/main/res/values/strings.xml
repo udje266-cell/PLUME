@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PLUME</string>
+    <string name="title_activity_main">PLUME</string>
+    <string name="package_name">com.plume.app</string>
+    <string name="custom_url_scheme">com.plume.app</string>
+</resources>

@@ -1,0 +1,2471 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ArrowLeft, 
+  BookOpen, 
+  ChevronLeft, 
+  ChevronRight, 
+  ChevronDown,
+  ChevronUp,
+  FileText, 
+  Heart, 
+  Star, 
+  MessageCircle, 
+  Type, 
+  Plus, 
+  Trash2,
+  BookmarkCheck,
+  Check,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Info,
+  Maximize2,
+  Minimize2,
+  Smile,
+  Copy,
+  Sliders,
+  Compass,
+  CornerDownRight,
+  Bookmark,
+  Download,
+  Palette,
+  Share2,
+  Image as ImageIcon
+} from 'lucide-react';
+import { Story, Chapter, Comment, User } from '../types';
+
+interface ReadingViewProps {
+  story: Story;
+  onBack: () => void;
+  currentUser: User;
+  onFollowAuthor: (authorId: string) => void;
+  comments: Comment[];
+  onAddComment: (chapterId: string, content: string) => void;
+  onLikeComment: (commentId: string) => void;
+  onAddReply: (commentId: string, content: string) => void;
+  onDeleteComment: (commentId: string) => void;
+  onToggleFavorite: (storyId: string) => void;
+  isFavorited: boolean;
+  onToggleStoryLike: (storyId: string) => void;
+  isLiked: boolean;
+  onMarkChapterRead: (storyId: string, chapterId: string) => void;
+  readChapters: string[];
+  onOpenDiscussion: (partnerId: string) => void;
+  currentlyReading: string[];
+  completedStories: string[];
+  readLater: string[];
+  onToggleCurrentlyReading: (storyId: string) => void;
+  onToggleCompletedStories: (storyId: string) => void;
+  onToggleReadLater: (storyId: string) => void;
+  onViewProfile?: (userId: string) => void;
+}
+
+type ReadingTheme = 'light' | 'sepia' | 'dark' | 'dimmed';
+type SoundscapeType = 'none' | 'rain' | 'forest' | 'fireplace' | 'library' | 'ocean' | 'breeze';
+type FontStyleType = 'sans' | 'serif' | 'classic' | 'mono';
+type LineSpacingType = 'tight' | 'normal' | 'loose';
+type PlumeCardBgType = 'sunset' | 'cosmic' | 'emerald' | 'aurora' | 'gold' | 'neon' | 'dark' | 'minimal' | 'custom';
+type PlumeCardFontType = 'serif' | 'sans' | 'mono' | 'handwritten' | 'playfair' | 'garamond' | 'cinzel' | 'cursive' | 'poetic' | 'bold';
+
+// Static Chapter Metadata for Augmented Reading
+const CHAPTER_METADATA: Record<string, {
+  summary: string;
+  quotes: string[];
+  characters: { name: string; role: string; avatar: string }[];
+  words: { word: string; definition: string }[];
+  universe: {
+    title: string;
+    description: string;
+    mapUrl: string;
+    fragments: string[];
+  };
+}> = {
+  'cosmos_c1': {
+    summary: "Dans l'observatoire chilien de Paranal, l'astrophysicienne Léa Thorne intercepte un surprenant signal binarisé provenant de la constellation d'Orion. Sa décompression informatique révèle un message rédigé en français moderne : un avertissement terrifiant envoyé depuis l'avenir.",
+    quotes: [
+      "« NE CHERCHEZ PAS À PASSER LA BARRIÈRE. NOUS SOMMES VOTRE DEMAIN, ET LE DEMAIN N’A PLUS DE CIEL. »",
+      "Une forme d'expression, structurée, compressée, venait de parcourir mille cinq cents années-lumière."
+    ],
+    characters: [
+      { name: "Léa Thorne", role: "Astrophysicienne chevronnée", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100" },
+      { name: "Thomas", role: "Assistant d'observation dubitatif", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100" }
+    ],
+    words: [
+      { word: "Shannon (Entropie)", definition: "La mesure mathématique de la densité de l'information utile contenue dans un signal binaire." },
+      { word: "Sinusoïde", definition: "Une courbe géométrique représentant une oscillation harmonique continue." },
+      { word: "Atacama", definition: "Un désert aride des Andes chiliennes offrant le ciel nocturne le plus pur de la Terre." }
+    ],
+    universe: {
+      title: "L'Univers Cosmique d'Orion",
+      description: "En 2142, l'humanité découvre sans le vouloir la Barrière Quantique de Shannon, un repli d'espace-temps traduisant la disparition du vide sidéral dans les générations futures.",
+      mapUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600",
+      fragments: [
+        "2130 : Automatisation robotique de la première grappe orbitale martienne.",
+        "Le protocole Shannon décompresse la gravité en matrices géométriques pures.",
+        "Selon les signaux, la Barrière d'Orion s'est contractée après le premier grand saut supraluminique."
+      ]
+    }
+  },
+  'cosmos_c2': {
+    summary: "Après la réception du terrifiant signal, Léa ordonne des poses optiques à haute résolution sur le cœur de la nébuleuse. Elle identifie une fente d'ombre absolue témoignant de l'ouverture d'un trou de ver gravitationnel artificiel.",
+    quotes: [
+      "« C’est une distorsion gravitationnelle, une singularité artificielle minuscule. »",
+      "Le signal provient précisément de coordonnées sidérales pures."
+    ],
+    characters: [
+      { name: "Léa Thorne", role: "Astrophysicienne résolue", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100" },
+      { name: "Thomas", role: "Assistant scientifique troublé", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100" }
+    ],
+    words: [
+      { word: "Singularité", definition: "Point infinitésimal de l'espace-temps où les forces de gravitation et la densité deviennent infinies." },
+      { word: "Neutrinos", definition: "Particules de masse extrêmement faible dénuées de charge électrique, traversant la matière sans obstacle." },
+      { word: "Trou de ver", definition: "Un raccourci théorique reliant deux régions distinctes de l'espace-temps." }
+    ],
+    universe: {
+      title: "Les Équations Quantiques d'Orion",
+      description: "Le plan binaire partagé par le signal fournit des technologies magnétiques permettant de canaliser les forces du vide gravitationnel.",
+      mapUrl: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=600",
+      fragments: [
+        "Planification du premier modulateur quantique portatif.",
+        "Opposition géopolitique entre le Conseil Mondial et les sociétés d'extraction orbitales.",
+        "Technologie d'intrication neutrino à longue portée."
+      ]
+    }
+  },
+  'cliff_c1': {
+    summary: "À la pointe du Raz en Bretagne, la gendarme Sarah Ménez tente de retrouver l'historien local Christian. Elle découvre sur un pan de granite submergé l'Œil de l'Abysse, marque gravée associée aux pilleurs d'épaves du XVIIe siècle.",
+    quotes: [
+      "« C’est la marque de l’Abysse... Les naufrageurs du XVIIe siècle l'utilisaient pour signer leurs trahisons. »"
+    ],
+    characters: [
+      { name: "Sarah Ménez", role: "Gendarme côtière pragmatique", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100" },
+      { name: "Éric", role: "Adjoint sous l'emprise des légendes", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100" }
+    ],
+    words: [
+      { word: "Naufrageur", definition: "Individu allumant des feux côtiers trompeurs pour provoquer l'échouement des bateaux et piller leurs cargaisons." },
+      { word: "Granit", definition: "Roche plutonique très cristalline et dure résistant à l'usure de l'océan breton." },
+      { word: "iode", definition: "Odeur forte et minérale produite par la faune et la flore marines échouées." }
+    ],
+    universe: {
+      title: "Secrets Finistériens",
+      description: "Le littoral breton est habité par la mémoire d'un galion espagnol coulé en 1802. Son trésor maudit se transmettrait discrètement au sein de familles d'élus.",
+      mapUrl: "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=600",
+      fragments: [
+        "L'histoire du San Sebastian brisé sur la roche de Sein en 1802.",
+        "Le Consistoire de Cornouaille occulte les registres fonciers côtiers.",
+        "Tranchée sous-marine de la Tête de Raz explorée de nuit."
+      ]
+    }
+  },
+  'wind_c1': {
+    summary: "Dans un monde fantastique où le vent propage des mélodies divines et fertiles, la jeune Alyssia lutte contre le Siphon d'Or, une oscillation anormale qui dévore les souvenirs de quiconque s'y expose.",
+    quotes: [
+      "« Chante, belle brise, chante pour nos greniers. »",
+      "Le vent de l'est apportait aujourd'hui une mélodie agile, un la bémol continu."
+    ],
+    characters: [
+      { name: "Alyssia", role: "Capteuse de brise mélodique", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100" }
+    ],
+    words: [
+      { word: "Siphon d'Or", definition: "Une résonance acoustique venteuse piégeant les ondes neuronales pour effacer les souvenirs d'enfance." },
+      { word: "Pistons", definition: "Tiges de régulation de cuivre modifiant la tonalité des tuyaux collecteurs d'Alyssia." },
+      { word: "Trois Soleils", definition: "Configuration cosmique fournissant de multiples vecteurs thermiques d'Olyria." }
+    ],
+    universe: {
+      title: "Royaume suspendu d'Olyria",
+      description: "Une géographie insulaire flottante où les forces créatives dépendent exclusivement des vents musicaux.",
+      mapUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600",
+      fragments: [
+        "La Tour des Murmures abrite des tuyaux d'orgues millénaires.",
+        "Les blés bleus d'Opal réclament spécifiquement un accord continu de La bémol.",
+        "Les exilés sans mémoire colonisent la plaine basse d'asphalte noir."
+      ]
+    }
+  }
+};
+
+interface FloatingEmoji {
+  id: number;
+  emoji: string;
+  x: number;
+  y: number;
+}
+
+// Client-side Web Audio Soundscape Synthesizer
+class WebAudioSoundSynth {
+  audioCtx: AudioContext | null = null;
+  gainNode: GainNode | null = null;
+  nodes: AudioNode[] = [];
+  intervalId: any = null;
+
+  start(type: string, volume: number) {
+    this.stop();
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      this.audioCtx = new AudioContextClass();
+      this.gainNode = this.audioCtx.createGain();
+      this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
+      this.gainNode.connect(this.audioCtx.destination);
+
+      const createNoiseBuffer = (duration = 2) => {
+        if (!this.audioCtx) return null;
+        const bSize = this.audioCtx.sampleRate * duration;
+        const buf = this.audioCtx.createBuffer(1, bSize, this.audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < bSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        return buf;
+      };
+
+      const setupNoiseSource = (filterFreq: number, filterType: BiquadFilterType = 'lowpass', q = 1, bufferDuration = 2) => {
+        if (!this.audioCtx || !this.gainNode) return null;
+        const buf = createNoiseBuffer(bufferDuration);
+        if (!buf) return null;
+        const src = this.audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+
+        const filter = this.audioCtx.createBiquadFilter();
+        filter.type = filterType;
+        filter.frequency.setValueAtTime(filterFreq, this.audioCtx.currentTime);
+        filter.Q.setValueAtTime(q, this.audioCtx.currentTime);
+
+        src.connect(filter);
+        filter.connect(this.gainNode);
+        src.start();
+        this.nodes.push(src);
+        return { src, filter };
+      };
+
+      if (type === 'rain') {
+        setupNoiseSource(600, 'lowpass', 1, 3);
+        
+        const crackleInterval = setInterval(() => {
+          if (!this.audioCtx || !this.gainNode) return;
+          const osc = this.audioCtx.createOscillator();
+          const pGain = this.audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(140 + Math.random() * 500, this.audioCtx.currentTime);
+          
+          pGain.gain.setValueAtTime(0.015 * Math.random(), this.audioCtx.currentTime);
+          pGain.gain.exponentialRampToValueAtTime(0.0001, this.audioCtx.currentTime + 0.04);
+          
+          osc.connect(pGain);
+          pGain.connect(this.gainNode);
+          osc.start();
+          osc.stop(this.audioCtx.currentTime + 0.05);
+        }, 140);
+        this.intervalId = crackleInterval;
+      } 
+      else if (type === 'forest') {
+        const air = setupNoiseSource(350, 'lowpass', 1.2, 4);
+        if (air) {
+          const lfo = this.audioCtx.createOscillator();
+          const lfoGain = this.audioCtx.createGain();
+          lfo.frequency.setValueAtTime(0.12, this.audioCtx.currentTime);
+          lfoGain.gain.setValueAtTime(120, this.audioCtx.currentTime);
+          lfo.connect(lfoGain);
+          lfoGain.connect(air.filter.frequency);
+          lfo.start();
+          this.nodes.push(lfo);
+        }
+
+        const birdInterval = setInterval(() => {
+          if (!this.audioCtx || !this.gainNode) return;
+          const t = this.audioCtx.currentTime;
+          const osc = this.audioCtx.createOscillator();
+          const g = this.audioCtx.createGain();
+          osc.type = 'sine';
+          
+          const baseFreq = 2200 + Math.random() * 1200;
+          osc.frequency.setValueAtTime(baseFreq, t);
+          osc.frequency.exponentialRampToValueAtTime(baseFreq + 400, t + 0.08);
+          osc.frequency.exponentialRampToValueAtTime(baseFreq - 200, t + 0.18);
+          
+          g.gain.setValueAtTime(0.004 * Math.random(), t);
+          g.gain.linearRampToValueAtTime(0.012, t + 0.04);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+          
+          osc.connect(g);
+          g.connect(this.gainNode);
+          osc.start();
+          osc.stop(t + 0.22);
+        }, 3400);
+        this.intervalId = birdInterval;
+      }
+      else if (type === 'fireplace') {
+        setupNoiseSource(80, 'lowpass', 1, 2);
+        
+        const woodCrackles = setInterval(() => {
+          if (!this.audioCtx || !this.gainNode) return;
+          const t = this.audioCtx.currentTime;
+          const osc = this.audioCtx.createOscillator();
+          const g = this.audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(7000 + Math.random() * 3500, t);
+          
+          g.gain.setValueAtTime(0.04 * Math.random(), t);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+          
+          osc.connect(g);
+          g.connect(this.gainNode);
+          osc.start();
+          osc.stop(t + 0.025);
+        }, 180);
+        this.intervalId = woodCrackles;
+      }
+      else if (type === 'library') {
+        setupNoiseSource(140, 'lowpass', 0.6, 5);
+        
+        const libraryTones = setInterval(() => {
+          if (!this.audioCtx || !this.gainNode) return;
+          if (Math.random() < 0.15) {
+            const t = this.audioCtx.currentTime;
+            const osc = this.audioCtx.createOscillator();
+            const g = this.audioCtx.createGain();
+            osc.frequency.setValueAtTime(180 + Math.random() * 60, t);
+            g.gain.setValueAtTime(0.005, t);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+            osc.connect(g);
+            g.connect(this.gainNode);
+            osc.start();
+            osc.stop(t + 1.3);
+          }
+        }, 4000);
+        this.intervalId = libraryTones;
+      }
+      else if (type === 'ocean') {
+        const wave = setupNoiseSource(450, 'lowpass', 1, 4);
+        if (wave) {
+          const lfo = this.audioCtx.createOscillator();
+          const lfoGain = this.audioCtx.createGain();
+          lfo.frequency.setValueAtTime(0.1, this.audioCtx.currentTime); // 10 seconds waveform cycle
+          lfoGain.gain.setValueAtTime(160, this.audioCtx.currentTime);
+          lfo.connect(lfoGain);
+          lfoGain.connect(wave.filter.frequency);
+          lfo.start();
+          this.nodes.push(lfo);
+        }
+      }
+      else if (type === 'breeze') {
+        const wind = setupNoiseSource(280, 'lowpass', 1.8, 4);
+        if (wind) {
+          const lfo = this.audioCtx.createOscillator();
+          const lfoGain = this.audioCtx.createGain();
+          lfo.frequency.setValueAtTime(0.06, this.audioCtx.currentTime);
+          lfoGain.gain.setValueAtTime(140, this.audioCtx.currentTime);
+          lfo.connect(lfoGain);
+          lfoGain.connect(wind.filter.frequency);
+          lfo.start();
+          this.nodes.push(lfo);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not start Web Audio Synth", e);
+    }
+  }
+
+  setVolume(volume: number) {
+    if (this.gainNode && this.audioCtx) {
+      this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
+    }
+  }
+
+  stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.nodes.forEach(node => {
+      try {
+        (node as any).stop();
+      } catch (e) {}
+    });
+    this.nodes = [];
+    if (this.audioCtx) {
+      try {
+        this.audioCtx.close();
+      } catch (e) {}
+      this.audioCtx = null;
+    }
+    this.gainNode = null;
+  }
+}
+
+export default function ReadingView({
+  story,
+  onBack,
+  currentUser,
+  onFollowAuthor,
+  comments,
+  onAddComment,
+  onLikeComment,
+  onAddReply,
+  onDeleteComment,
+  onToggleFavorite,
+  isFavorited,
+  onToggleStoryLike,
+  isLiked,
+  onMarkChapterRead,
+  readChapters,
+  onOpenDiscussion,
+  currentlyReading,
+  completedStories,
+  readLater,
+  onToggleCurrentlyReading,
+  onToggleCompletedStories,
+  onToggleReadLater,
+  onViewProfile
+}: ReadingViewProps) {
+  
+  // Custom States
+  const [activeChapterIndex, setActiveChapterIndex] = useState<number>(() => {
+    try {
+      const isAuthor = story.authorId === currentUser.id;
+      if (!isAuthor) {
+        const saved = localStorage.getItem('plume_last_read_progress');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.storyId === story.id) {
+            const foundIdx = story.chapters.findIndex(ch => ch.id === parsed.chapterId);
+            if (foundIdx !== -1) return foundIdx;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[ReadingView] Error restoring reading progress:', e);
+    }
+    return 0;
+  });
+  const [fontSize, setFontSize] = useState<number>(18); // Font Size Slider (14px - 32px)
+  const [fontStyle, setFontStyle] = useState<FontStyleType>('serif'); // Typography presets
+  const [lineSpacing, setLineSpacing] = useState<LineSpacingType>('normal');
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('sepia');
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
+  
+  // Interactive Custom controls
+  const [isImmersive, setIsImmersive] = useState<boolean>(false);
+  const [isCinemaMode, setIsCinemaMode] = useState<boolean>(false);
+  const [activeParagraphIndex, setActiveParagraphIndex] = useState<number>(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isChaptersOpen, setIsChaptersOpen] = useState(false);
+  const [isAugmentedOpen, setIsAugmentedOpen] = useState(false);
+  const [isUniverseOpen, setIsUniverseOpen] = useState(false);
+  
+  // Soundscape
+  const [activeSoundscape, setActiveSoundscape] = useState<SoundscapeType>('none');
+  const [soundVolume, setSoundVolume] = useState<number>(0.4);
+  const soundSynthRef = useRef<WebAudioSoundSynth | null>(null);
+
+  // Discrete interactions & reactions
+  const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
+  const [likedPassagesMe, setLikedPassagesMe] = useState<Record<string, boolean>>({});
+  const [savedQuotes, setSavedQuotes] = useState<string[]>(() => {
+    const saved = localStorage.getItem('plume_saved_quotes');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
+  const emojiIdCounter = useRef<number>(0);
+
+  // standard comment states
+  const [newCommentText, setNewCommentText] = useState('');
+  const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
+  const [activeReplyBox, setActiveReplyBox] = useState<string | null>(null);
+
+  // Lyricard states
+  const [isLyricardOpen, setIsLyricardOpen] = useState<boolean>(false);
+  const [lyricText, setLyricText] = useState<string>('');
+  const [lyricBg, setLyricBg] = useState<PlumeCardBgType>('sunset');
+  const [lyricFontSize, setLyricFontSize] = useState<number>(22);
+  const [lyricFontColor, setLyricFontColor] = useState<string>('#ffffff');
+  const [lyricTextStyle, setLyricTextStyle] = useState<PlumeCardFontType>('serif');
+  const [lyricCustomBg, setLyricCustomBg] = useState<string | null>(null);
+  const [lyricAlign, setLyricAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [exportingLyricard, setExportingLyricard] = useState<boolean>(false);
+  
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastSelectedTextRef = useRef<string>('');
+  const lyricCustomBgImageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (!isLyricardOpen) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      drawPlumeCard(previewCanvasRef.current);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [isLyricardOpen, lyricText, lyricBg, lyricTextStyle, lyricAlign, lyricCustomBg]);
+
+  // Surligner/sélectionner du texte en temps réel
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const text = selection.toString().trim();
+        if (text) {
+          lastSelectedTextRef.current = text;
+        }
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, []);
+
+  const activeChapter = story.chapters[activeChapterIndex] || story.chapters[0];
+  const isFollowing = currentUser.following.includes(story.authorId);
+
+  const isOwnStory = story.authorId === currentUser.id;
+
+  useEffect(() => {
+    if (!isOwnStory && !currentlyReading.includes(story.id) && !completedStories.includes(story.id)) {
+      onToggleCurrentlyReading(story.id);
+    }
+  }, [story.id]);
+
+  // Load sound engine
+  useEffect(() => {
+    soundSynthRef.current = new WebAudioSoundSynth();
+    return () => {
+      if (soundSynthRef.current) {
+        soundSynthRef.current.stop();
+      }
+    };
+  }, []);
+
+  // Update sound synthesis configuration on changes
+  useEffect(() => {
+    if (soundSynthRef.current) {
+      if (activeSoundscape === 'none') {
+        soundSynthRef.current.stop();
+      } else {
+        soundSynthRef.current.start(activeSoundscape, soundVolume);
+      }
+    }
+  }, [activeSoundscape]);
+
+  useEffect(() => {
+    if (soundSynthRef.current) {
+      soundSynthRef.current.setVolume(soundVolume);
+    }
+  }, [soundVolume]);
+
+  // Jump page top on chapter change and count the chapter as read once.
+  useEffect(() => {
+    if (activeChapter && !isOwnStory) {
+      onMarkChapterRead(story.id, activeChapter.id);
+
+      const isLastChapter = activeChapterIndex === story.chapters.length - 1;
+      if (isLastChapter && !completedStories.includes(story.id)) {
+        onToggleCompletedStories(story.id);
+        if (currentlyReading.includes(story.id)) {
+          onToggleCurrentlyReading(story.id);
+        }
+      }
+    }
+
+    setActiveParagraphIndex(0);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeChapterIndex, story.id]);
+
+  // Save quotes synchronize
+  useEffect(() => {
+    localStorage.setItem('plume_saved_quotes', JSON.stringify(savedQuotes));
+  }, [savedQuotes]);
+
+  // Références pour gérer le défilement fluide sans conflit avec l'écouteur de scroll
+  const isClickScrollingRef = useRef<boolean>(false);
+  const clickScrollTimeoutRef = useRef<any>(null);
+
+  // Gérer la sélection manuelle de paragraphe (click)
+  const handleParagraphSelect = (pIdx: number) => {
+    setActiveParagraphIndex(pIdx);
+    
+    if (clickScrollTimeoutRef.current) {
+      clearTimeout(clickScrollTimeoutRef.current);
+    }
+    isClickScrollingRef.current = true;
+    
+    const el = document.getElementById(`p-idx-${pIdx}`);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const targetY = window.innerHeight * 0.35; // Position cible à 35% de la hauteur de l'écran
+      const targetScrollTop = window.scrollY + rect.top - targetY;
+      
+      window.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
+    }
+
+    clickScrollTimeoutRef.current = setTimeout(() => {
+      isClickScrollingRef.current = false;
+    }, 1000); // Temps suffisant pour la fin de la transition de scroll
+  };
+
+  // Synchroniser le paragraphe actif avec le défilement de l'écran en mode cinéma
+  useEffect(() => {
+    if (!isCinemaMode) return;
+
+    const handleScroll = () => {
+      if (isClickScrollingRef.current) return;
+
+      const container = document.getElementById(`chapter-content-${activeChapter.id}`);
+      if (!container) return;
+
+      const paragraphEls = container.querySelectorAll('[data-paragraph-index]');
+      if (!paragraphEls.length) return;
+
+      const targetY = window.innerHeight * 0.35; // Concentre l'attention à 35% du haut
+
+      let closestIdx = 0;
+      let minDistance = Infinity;
+
+      for (let i = 0; i < paragraphEls.length; i++) {
+        const el = paragraphEls[i] as HTMLElement;
+        const index = parseInt(el.getAttribute('data-paragraph-index') || '0', 10);
+        const rect = el.getBoundingClientRect();
+
+        // Si le paragraphe chevauche la ligne de mire, c'est celui que l'utilisateur lit
+        if (rect.top <= targetY && rect.bottom >= targetY) {
+          closestIdx = index;
+          break;
+        }
+
+        // Sinon, on cherche le paragraphe dont le centre est le plus proche
+        const elementCenter = (rect.top + rect.bottom) / 2;
+        const distanceToTarget = Math.abs(elementCenter - targetY);
+        
+        if (distanceToTarget < minDistance) {
+          minDistance = distanceToTarget;
+          closestIdx = index;
+        }
+      }
+
+      setActiveParagraphIndex(prev => prev === closestIdx ? prev : closestIdx);
+    };
+
+    let scrollTimeoutId: any = null;
+    const throttledScroll = () => {
+      if (scrollTimeoutId) return;
+      scrollTimeoutId = setTimeout(() => {
+        handleScroll();
+        scrollTimeoutId = null;
+      }, 50); // Fluidité élevée et performances préservées
+    };
+
+    window.addEventListener('scroll', throttledScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      if (scrollTimeoutId) clearTimeout(scrollTimeoutId);
+      if (clickScrollTimeoutRef.current) clearTimeout(clickScrollTimeoutRef.current);
+    };
+  }, [isCinemaMode, activeChapter.id]);
+
+  // Quand on active le mode cinéma, focaliser le paragraphe actif actuel
+  useEffect(() => {
+    if (isCinemaMode && activeParagraphIndex !== undefined) {
+      const t = setTimeout(() => {
+        handleParagraphSelect(activeParagraphIndex);
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [isCinemaMode]);
+
+  // Split chapter text into readable paragraphs
+  const paragraphs = activeChapter ? activeChapter.content.split('\n\n').filter(p => p.trim()) : [];
+
+  if (!story.chapters || story.chapters.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto py-12 px-4 text-center">
+        <h2 className="text-xl font-bold mb-4 font-serif">Cette histoire n'a pas encore de chapitre publié.</h2>
+        <button 
+          onClick={onBack}
+          className="px-4 py-2 bg-purple-600 text-white rounded-full text-sm font-medium hover:bg-purple-700 transition-colors inline-flex items-center space-x-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Retour</span>
+        </button>
+      </div>
+    );
+  }
+
+  // Handle comment submit
+  const handleCommentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+    onAddComment(activeChapter.id, newCommentText);
+    setNewCommentText('');
+  };
+
+  // Handle reply submit
+  const handleReplySubmit = (commentId: string) => {
+    const text = replyText[commentId];
+    if (!text || !text.trim()) return;
+    onAddReply(commentId, text);
+    setReplyText({ ...replyText, [commentId]: '' });
+    setActiveReplyBox(null);
+  };
+
+  // Emoji floating launcher
+  const launchEmoji = (emoji: string) => {
+    const id = ++emojiIdCounter.current;
+    const newEmoji: FloatingEmoji = {
+      id,
+      emoji,
+      x: 30 + Math.random() * 40, // percent container width
+      y: 90
+    };
+    setFloatingEmojis(prev => [...prev, newEmoji]);
+    
+    // Animate up and clean
+    setTimeout(() => {
+      setFloatingEmojis(prev => prev.filter(e => e.id !== id));
+    }, 2000);
+  };
+
+  // Saved Passage toggle
+  const toggleSavePassage = (txt: string) => {
+    const stripped = txt.replace(/^[#\-\*\s]+/, '').trim();
+    if (savedQuotes.includes(stripped)) {
+      setSavedQuotes(prev => prev.filter(q => q !== stripped));
+    } else {
+      setSavedQuotes(prev => [...prev, stripped]);
+      alert("Citation sauvegardée dans votre carnet personnel !");
+    }
+  };
+
+  const handleLikePassage = (index: number) => {
+    const key = `${activeChapter.id}_p_${index}`;
+    const wasLiked = likedPassagesMe[key];
+    setLikedPassagesMe(prev => ({ ...prev, [key]: !wasLiked }));
+    setPassageLikes(prev => ({
+      ...prev,
+      [key]: (prev[key] || Math.floor(Math.random() * 14) + 2) + (wasLiked ? -1 : 1)
+    }));
+  };
+
+  const openLyricardCreator = (txt: string) => {
+    const activeSelection = window.getSelection()?.toString().trim();
+    const recordedSelection = lastSelectedTextRef.current;
+    
+    let textToUse = '';
+    
+    if (activeSelection && activeSelection.length > 0) {
+      textToUse = activeSelection;
+    } else if (recordedSelection && recordedSelection.length > 0 && txt.includes(recordedSelection)) {
+      textToUse = recordedSelection;
+    } else {
+      textToUse = txt;
+    }
+    
+    const stripped = textToUse.replace(/^[#\-\*\s]+/, '').trim();
+    setLyricText(stripped);
+    setIsLyricardOpen(true);
+  };
+
+  const handleLyricCustomBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Veuillez sélectionner une image.');
+      return;
+    }
+
+    if (file.size > 6 * 1024 * 1024) {
+      alert("L'image ne doit pas dépasser 6 Mo.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const imageDataUrl = String(reader.result || '');
+      const image = new Image();
+
+      image.onload = () => {
+        lyricCustomBgImageRef.current = image;
+        setLyricCustomBg(imageDataUrl);
+        setLyricBg('custom');
+      };
+
+      image.onerror = () => {
+        alert("Impossible de charger cette image comme fond de PlumeCard.");
+      };
+
+      image.src = imageDataUrl;
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  // Helper to draw the Plume app logo vector art on canvas
+  const drawPlumeLogo = (ctx: CanvasRenderingContext2D, x: number, y: number, scale: number) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    const plumePinkPurple = ctx.createLinearGradient(0, 100, 100, 0);
+    plumePinkPurple.addColorStop(0, '#7C3AED');
+    plumePinkPurple.addColorStop(0.35, '#A855F7');
+    plumePinkPurple.addColorStop(0.7, '#D946EF');
+    plumePinkPurple.addColorStop(1, '#EC4899');
+
+    const plumeDarkQuill = ctx.createLinearGradient(0, 100, 105, 0);
+    plumeDarkQuill.addColorStop(0, '#120626');
+    plumeDarkQuill.addColorStop(0.5, '#1E103E');
+    plumeDarkQuill.addColorStop(1, '#2D1160');
+
+    const silverSpine = ctx.createLinearGradient(0, 0, 100, 100);
+    silverSpine.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    silverSpine.addColorStop(1, 'rgba(236, 236, 241, 0.4)');
+
+    ctx.translate(5, 5); 
+    ctx.scale(0.9, 0.9);   
+
+    const p1 = new Path2D("M 12 85 C 13 84, 15 80, 16 75 C 18 64, 25 55, 33 48 C 39 42, 45 40, 50 38 C 45 44, 38 52, 33 65 C 28 75, 23 85, 12 85 Z");
+    ctx.fillStyle = plumeDarkQuill;
+    ctx.fill(p1);
+
+    const p2 = new Path2D("M 14 83 C 25 80, 35 68, 42 56 C 49 44, 55 30, 54 15 C 50 18, 46 22, 43 25 C 40 18, 35 24, 32 30 C 26 42, 20 62, 14 83 Z");
+    ctx.fillStyle = plumePinkPurple;
+    ctx.fill(p2);
+
+    const p3 = new Path2D("M 54 15 C 51 24, 46 32, 42 38 T 32 50 C 29 55, 28 64, 25 72");
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 0.75;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.3;
+    ctx.stroke(p3);
+    ctx.globalAlpha = 1.0; 
+
+    const p4 = new Path2D("M 10 90 Q 22 75, 36 52 Q 48 30, 54 12");
+    ctx.strokeStyle = silverSpine;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke(p4);
+
+    const p5 = new Path2D("M 10 90 L 7 93 L 5 95 L 9 92 Z");
+    ctx.fillStyle = '#1E1B4B';
+    ctx.fill(p5);
+    ctx.strokeStyle = '#7C3AED';
+    ctx.lineWidth = 0.5;
+    ctx.stroke(p5);
+
+    ctx.restore();
+  };
+
+  const drawPlumeCard = (canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 800, 800);
+
+    const gradient = ctx.createLinearGradient(0, 800, 800, 0);
+    let txtColor = '#ffffff';
+    let strokeColor = 'rgba(255, 255, 255, 0.15)';
+    let watermarkColor = 'rgba(255, 255, 255, 0.6)';
+    let titleColor = '#ffffff';
+
+    if (lyricBg === 'custom' && lyricCustomBgImageRef.current) {
+      const image = lyricCustomBgImageRef.current;
+      const canvasSize = 800;
+      const imageRatio = image.width / image.height;
+      const canvasRatio = 1;
+      let drawWidth = canvasSize;
+      let drawHeight = canvasSize;
+      let drawX = 0;
+      let drawY = 0;
+
+      if (imageRatio > canvasRatio) {
+        drawHeight = canvasSize;
+        drawWidth = canvasSize * imageRatio;
+        drawX = (canvasSize - drawWidth) / 2;
+      } else {
+        drawWidth = canvasSize;
+        drawHeight = canvasSize / imageRatio;
+        drawY = (canvasSize - drawHeight) / 2;
+      }
+
+      ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+      const customOverlay = ctx.createLinearGradient(0, 0, 800, 800);
+      customOverlay.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+      customOverlay.addColorStop(0.5, 'rgba(0, 0, 0, 0.22)');
+      customOverlay.addColorStop(1, 'rgba(10, 5, 25, 0.72)');
+      ctx.fillStyle = customOverlay;
+      ctx.fillRect(0, 0, 800, 800);
+    } else {
+      if (lyricBg === 'sunset') {
+        gradient.addColorStop(0, '#ec4899');
+        gradient.addColorStop(0.5, '#ef4444');
+        gradient.addColorStop(1, '#f59e0b');
+      } else if (lyricBg === 'cosmic') {
+        gradient.addColorStop(0, '#1e1b4b');
+        gradient.addColorStop(0.5, '#581c87');
+        gradient.addColorStop(1, '#db2777');
+      } else if (lyricBg === 'emerald') {
+        gradient.addColorStop(0, '#115e59');
+        gradient.addColorStop(0.5, '#059669');
+        gradient.addColorStop(1, '#34d399');
+      } else if (lyricBg === 'aurora') {
+        gradient.addColorStop(0, '#020617');
+        gradient.addColorStop(0.5, '#0f172a');
+        gradient.addColorStop(1, '#06b6d4');
+      } else if (lyricBg === 'gold') {
+        gradient.addColorStop(0, '#78350f');
+        gradient.addColorStop(0.5, '#d97706');
+        gradient.addColorStop(1, '#fbbf24');
+      } else if (lyricBg === 'neon') {
+        gradient.addColorStop(0, '#3b0764');
+        gradient.addColorStop(0.5, '#6d28d9');
+        gradient.addColorStop(1, '#c084fc');
+      } else if (lyricBg === 'dark') {
+        gradient.addColorStop(0, '#09090b');
+        gradient.addColorStop(0.5, '#18181b');
+        gradient.addColorStop(1, '#27272a');
+      } else if (lyricBg === 'minimal') {
+        gradient.addColorStop(0, '#f5f5f4');
+        gradient.addColorStop(0.5, '#e7e5e4');
+        gradient.addColorStop(1, '#d6d3d1');
+        txtColor = '#1c1917';
+        strokeColor = 'rgba(28, 25, 23, 0.12)';
+        watermarkColor = 'rgba(28, 25, 23, 0.55)';
+        titleColor = '#292524';
+      }
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 800, 800);
+    }
+
+    ctx.fillStyle = strokeColor;
+    ctx.font = '320px serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('“', 40, 270);
+
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(50, 70);
+    ctx.lineTo(750, 70);
+    ctx.stroke();
+
+    ctx.fillStyle = titleColor;
+    ctx.font = '900 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PLUME • CITATION D\'ARCHIPEL', 400, 48);
+
+    let selectedFontFamily = 'Georgia, serif';
+    let selectedFontWeight = 'bold';
+    let selectedFontItalic = false;
+
+    if (lyricTextStyle === 'sans') selectedFontFamily = '"Inter", Arial, sans-serif';
+    else if (lyricTextStyle === 'mono') selectedFontFamily = '"JetBrains Mono", Consolas, monospace';
+    else if (lyricTextStyle === 'handwritten') {
+      selectedFontFamily = '"Brush Script MT", "Segoe Script", cursive';
+      selectedFontItalic = true;
+    } else if (lyricTextStyle === 'playfair') {
+      selectedFontFamily = '"Playfair Display", Georgia, serif';
+      selectedFontWeight = '900';
+    } else if (lyricTextStyle === 'garamond') {
+      selectedFontFamily = 'Garamond, Baskerville, Georgia, serif';
+      selectedFontWeight = '600';
+    } else if (lyricTextStyle === 'cinzel') {
+      selectedFontFamily = '"Cinzel", "Trajan Pro", "Times New Roman", serif';
+      selectedFontWeight = '700';
+    } else if (lyricTextStyle === 'cursive') {
+      selectedFontFamily = '"Lucida Calligraphy", "Brush Script MT", cursive';
+      selectedFontItalic = true;
+      selectedFontWeight = '600';
+    } else if (lyricTextStyle === 'poetic') {
+      selectedFontFamily = '"Cormorant Garamond", Garamond, Georgia, serif';
+      selectedFontItalic = true;
+      selectedFontWeight = '700';
+    } else if (lyricTextStyle === 'bold') {
+      selectedFontFamily = 'Impact, "Arial Black", sans-serif';
+      selectedFontWeight = '900';
+    }
+
+    const quoteWrapped = ` ${lyricText.trim()} `;
+
+    const maxW = 620;
+    const maxHeight = 430;
+
+    const wrapText = (context: CanvasRenderingContext2D, text: string, maxWidth: number) => {
+      const words = text.split(/\s+/);
+      let line = '';
+      const lines = [];
+      for (let n = 0; n < words.length; n++) {
+        let testLine = line + words[n] + ' ';
+        let metrics = context.measureText(testLine);
+        let testWidth = metrics.width;
+        if (testWidth > maxWidth && n > 0) {
+          lines.push(line.trim());
+          line = words[n] + ' ';
+        } else {
+          line = testLine;
+        }
+      }
+      lines.push(line.trim());
+      return lines;
+    };
+
+    let optimalSize = 40;
+    let finalLines: string[] = [];
+    let lineH = Math.round(optimalSize * 1.5);
+    
+    while (optimalSize >= 14) {
+      ctx.font = `${selectedFontItalic ? 'italic ' : ''}${selectedFontWeight} ${optimalSize}px ${selectedFontFamily}`;
+      lineH = Math.round(optimalSize * 1.55);
+      finalLines = wrapText(ctx, quoteWrapped, maxW);
+      const totalBlockHeight = finalLines.length * lineH;
+      if (totalBlockHeight <= maxHeight) {
+        break;
+      }
+      optimalSize -= 1;
+    }
+
+    ctx.font = `${selectedFontItalic ? 'italic ' : ''}${selectedFontWeight} ${optimalSize}px ${selectedFontFamily}`;
+    ctx.fillStyle = txtColor;
+    ctx.textAlign = lyricAlign;
+
+    const totalBlockHeight = finalLines.length * lineH;
+    let startY = 385 - (totalBlockHeight / 2) + (lineH / 2);
+
+    finalLines.forEach((l) => {
+      let drawX = 400;
+      if (lyricAlign === 'left') drawX = 90;
+      if (lyricAlign === 'right') drawX = 710;
+      ctx.fillText(l, drawX, startY);
+      startY += lineH;
+    });
+
+    ctx.strokeStyle = strokeColor;
+    ctx.beginPath();
+    ctx.moveTo(50, 700);
+    ctx.lineTo(750, 700);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = titleColor;
+    ctx.font = 'bold 15px sans-serif';
+    let maxTitle = story.title.toUpperCase();
+    if (ctx.measureText(maxTitle).width > 420) {
+      while (maxTitle.length > 5 && ctx.measureText(maxTitle + '...').width > 420) {
+        maxTitle = maxTitle.slice(0, -1);
+      }
+      maxTitle += '...';
+    }
+    ctx.fillText(maxTitle, 90, 738);
+
+    ctx.fillStyle = watermarkColor;
+    let authorFontSize = 13;
+    ctx.font = `italic ${authorFontSize}px sans-serif`;
+    let authorText = `Récit par ${story.authorName}`;
+    
+    while (authorFontSize > 9 && ctx.measureText(authorText).width > 420) {
+      authorFontSize -= 0.5;
+      ctx.font = `italic ${authorFontSize}px sans-serif`;
+    }
+    
+    if (ctx.measureText(authorText).width > 420) {
+      while (authorText.length > 10 && ctx.measureText(authorText + '...').width > 420) {
+        authorText = authorText.slice(0, -1);
+      }
+      authorText += '...';
+    }
+    ctx.fillText(authorText, 90, 758);
+
+    drawPlumeLogo(ctx, 665, 715, 0.45);
+  };
+
+  const exportLyricardImage = () => {
+    setExportingLyricard(true);
+    setTimeout(() => {
+      try {
+        const previewCanvas = previewCanvasRef.current;
+        if (!previewCanvas) {
+          setExportingLyricard(false);
+          return;
+        }
+
+        drawPlumeCard(previewCanvas);
+
+        const dataUrl = previewCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `plume_citation_${story.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.error("Erreur d'exportation de la PlumeCard:", err);
+      } finally {
+        setExportingLyricard(false);
+      }
+    }, 400);
+  };
+
+  // Theme styling definitions (V1 & V2 Adapted)
+  const themeClasses: Record<ReadingTheme, string> = {
+    light: 'bg-[#FCFBF8] text-[#1F2937] border-[#ecebf6]',
+    sepia: 'bg-[#F4ECD8] text-[#433422] border-[#E6D4AF]',
+    dimmed: 'bg-[#181824] text-[#E4E4E7] border-[#2c2c3e]',
+    dark: 'bg-[#0A0A0F] text-[#E4E4E7] border-[#1C1C28]',
+  };
+
+  // Background gradient adaptations based on book atmosphere (story.ambiance)
+  const getAmbianceGradient = () => {
+    const spaceMap: Record<string, string> = {
+      'Sombre': 'from-[#0B0C10] via-[#151722] to-[#0A0A0F]',
+      'Lumineux': 'from-[#FCFAF5] via-[#FFFBF5] to-[#FAF6F2]',
+      'Mélancolique': 'from-[#F3F4F7] via-[#E9EBF1] to-[#DEE1E8]',
+      'Captivant': 'from-[#140E1B] via-[#24172C] to-[#12091A]',
+      'Onirique': 'from-[#FAF5FC] via-[#FFF6FC] to-[#FAF2FB]',
+      'Mystérieux': 'from-[#090710] via-[#161226] to-[#08050F]'
+    };
+    
+    // Force dark version if theme is dark/dimmed
+    if (readingTheme === 'dark' || readingTheme === 'dimmed') {
+      if (story.ambiance === 'Lumineux') return 'from-[#0A0A0F] to-[#161722]';
+      if (story.ambiance === 'Mélancolique') return 'from-[#141829] to-[#0E101E]';
+      return spaceMap[story.ambiance] || 'from-[#0F0F14] to-[#0A0A0F]';
+    }
+    
+    // Light versions
+    if (readingTheme === 'light' || readingTheme === 'sepia') {
+      if (story.ambiance === 'Sombre') return 'from-[#FAF8F5] to-[#EBE9E4]';
+      if (story.ambiance === 'Captivant') return 'from-[#FFF8FC] to-[#F5ECEF]';
+      return spaceMap[story.ambiance] || 'from-[#FAF6F0] to-[#FFF9F6]';
+    }
+    
+    return 'from-[#FCFBF8] to-[#FCFBF8]';
+  };
+
+  const fontStyleClasses: Record<FontStyleType, string> = {
+    sans: 'font-sans',
+    serif: 'font-serif tracking-wide',
+    classic: 'font-[Georgia] leading-relaxed tracking-normal',
+    mono: 'font-mono text-xs scale-[0.98] leading-relaxed'
+  };
+
+  const lineSpacingClasses: Record<LineSpacingType, string> = {
+    tight: 'leading-normal p-1',
+    normal: 'leading-relaxed md:leading-loose p-2.5',
+    loose: 'leading-extra-loose md:leading-[2.5rem] p-4'
+  };
+
+  // Get metadata block
+  const capMeta = CHAPTER_METADATA[activeChapter.id] || CHAPTER_METADATA['cosmos_c1'];
+  const chapterComments = comments.filter(c => c.chapterId === activeChapter.id);
+
+  return (
+    <div className={`min-h-screen pb-24 transition-all duration-700 bg-gradient-to-br ${getAmbianceGradient()} ${readingTheme === 'dark' || readingTheme === 'dimmed' ? 'dark text-[#E4E4E7]' : 'text-[#2C3E50]'}`}>
+      
+      {/* 1. TOP HEADER NAVIGATION - HIDDEN IN IMMERSIVE MODE */}
+      {!isImmersive && (
+        <div className="sticky top-0 z-30 border-b bg-white/90 dark:bg-black/90 backdrop-blur-md border-slate-200 dark:border-purple-900/10 py-3.5 shadow-xs transition-all animate-fade-in">
+          <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
+            
+            {/* Back button */}
+            <button
+              id="reader-back-btn"
+              onClick={onBack}
+              className="flex items-center space-x-1.5 text-xs font-black uppercase tracking-wider text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Quitter</span>
+            </button>
+
+            {/* Book metadata dynamic title */}
+            <div className="text-center max-w-[160px] sm:max-w-xs truncate">
+              <span className="text-[9px] uppercase font-bold tracking-widest text-purple-600 dark:text-purple-450 block font-mono">Lecture Augmentée</span>
+              <h1 className="text-sm font-black font-serif text-gray-900 dark:text-white truncate leading-tight">{story.title}</h1>
+            </div>
+
+            {/* Top Toolbar controls */}
+            <div className="flex items-center space-x-1.5">
+              
+              {/* Augmented Reading Trigger Button */}
+              <button
+                id="toggle-augmented-btn"
+                onClick={() => setIsAugmentedOpen(true)}
+                className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-500/15 dark:text-purple-400 dark:hover:bg-purple-400/10 transition flex items-center gap-1 font-bold text-xs"
+                title="Lecture Augmentée (Résumé, Protagonistes, Citations)"
+              >
+                <Sparkles className="w-4 h-4 fill-purple-600/10" />
+                <span className="hidden md:inline">Explorer</span>
+              </button>
+
+              {/* Soundscape Control Icon */}
+              <span className="relative">
+                <button
+                  id="active-sound-icon-btn"
+                  onClick={() => {
+                    if (activeSoundscape !== 'none') {
+                      setActiveSoundscape('none');
+                    } else {
+                      setActiveSoundscape('rain');
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border transition ${
+                    activeSoundscape !== 'none'
+                      ? 'bg-blue-500/10 border-blue-500/20 text-blue-500 font-extrabold rotate-3'
+                      : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-blue-500'
+                  }`}
+                  title="Ambiance Sonore Tactile"
+                >
+                  {activeSoundscape !== 'none' ? <Volume2 className="w-4 h-4 animate-bounce" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+              </span>
+              
+              {/* Immersion button toggler */}
+              <button
+                id="toggle-immersive-quick-btn"
+                onClick={() => setIsImmersive(true)}
+                className="p-2.5 rounded-xl bg-gray-100 dark:bg-zinc-800 text-gray-450 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200 dark:border-zinc-700 transition cursor-pointer"
+                title="Passer en mode immersion totale"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. FLOATING FLOATING IMMERSIVE CLOSE TOOL - SHOWN EXCLUSIVELY DURING FOCUS/IMMERSIVE MODE */}
+      {isImmersive && (
+        <div className="fixed top-4 right-4 z-50 animate-fade-in select-none">
+          <button
+            id="exit-immersive-floating-btn"
+            onClick={() => setIsImmersive(false)}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider transition hover:scale-105 shadow-xl border border-white/10"
+          >
+            <Minimize2 className="w-3.5 h-3.5" />
+            <span>Fermer Immersion</span>
+          </button>
+        </div>
+      )}
+
+      {/* 3. MULTI-LAYER READING BOARD CHASSIS */}
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 relative">
+        
+        {/* UPPER CONTROLS AND CUSTOMIZATION ZONE (HIDDEN DURING IMMERSION) */}
+        {!isImmersive && (
+          <div className="bg-white/80 dark:bg-zinc-900/40 backdrop-blur-md rounded-2xl border border-gray-150 dark:border-zinc-800/60 shadow-xs animate-fade-in text-left overflow-hidden">
+            {/* Collapsible Header */}
+            <button
+              onClick={() => setIsSettingsExpanded(!isSettingsExpanded)}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50/50 dark:hover:bg-zinc-850/30 transition-all focus:outline-hidden select-none cursor-pointer"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span className="font-sans font-black text-[10px] text-gray-850 dark:text-gray-200 uppercase tracking-widest">
+                  Ambiance & Options de lecture
+                </span>
+                
+                {activeSoundscape !== 'none' && (
+                  <span className="bg-purple-500/15 text-purple-600 dark:text-purple-300 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full animate-pulse font-mono">
+                    Ambiance: {activeSoundscape}
+                  </span>
+                )}
+                
+                <span className="bg-purple-500/10 text-purple-600 dark:text-purple-300 text-[8.5px] font-bold px-2 py-0.5 rounded font-mono">
+                  {fontSize}px
+                </span>
+
+                <span className="bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 text-[8.5px] font-bold px-2 py-0.5 rounded uppercase font-mono">
+                  {fontStyle}
+                </span>
+
+                {isCinemaMode && (
+                  <span className="bg-purple-600/15 text-purple-600 dark:text-purple-400 text-[8.5px] font-black px-2 py-0.5 rounded uppercase">
+                    Cinéma
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex items-center space-x-1.5 text-gray-400 dark:text-gray-500 shrink-0">
+                <span className="text-[9px] uppercase font-black tracking-wider hidden sm:inline font-sans">
+                  {isSettingsExpanded ? "Réduire" : "Déployer"}
+                </span>
+                {isSettingsExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-purple-650" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </div>
+            </button>
+
+            {/* Collapsible Content Body */}
+            {isSettingsExpanded && (
+              <div className="p-4 pt-2 border-t border-gray-100 dark:border-zinc-800/80 space-y-4 animate-slide-down">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Soundscape presets panel */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-purple-600 dark:text-purple-400 font-bold flex items-center space-x-1">
+                      <Volume2 className="w-3.5 h-3.5" />
+                      <span>Ambiance Sonore Harmonique</span>
+                    </span>
+                    <div className="grid grid-cols-3 gap-1 select-none">
+                      {[
+                        { id: 'none', label: 'Silence' },
+                        { id: 'rain', label: '🌧️ Pluie' },
+                        { id: 'forest', label: '🌲 Forêt' },
+                        { id: 'fireplace', label: '🔥 Foyer' },
+                        { id: 'library', label: '🏛️ Salon' },
+                        { id: 'ocean', label: '🌊 Océan' },
+                        { id: 'breeze', label: '🍃 Vent' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          id={`soundscape-select-${preset.id}`}
+                          onClick={() => setActiveSoundscape(preset.id as SoundscapeType)}
+                          className={`py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer ${
+                            activeSoundscape === preset.id
+                              ? 'bg-blue-600 text-white shadow-xs font-black'
+                              : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-purple-600'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {activeSoundscape !== 'none' && (
+                      <div className="flex items-center space-x-2 pt-1">
+                        <span className="text-[9.5px] font-bold text-gray-400">Volume :</span>
+                        <input
+                          id="sound-volume-slider"
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={soundVolume}
+                          onChange={(e) => setSoundVolume(parseFloat(e.target.value))}
+                          className="flex-1 accent-purple-600 bg-gray-200 h-1 rounded"
+                        />
+                        <span className="text-[9.5px] font-mono text-gray-400 font-bold font-mono">{~~(soundVolume * 100)}%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Advanced Customizations */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-bold flex items-center space-x-1">
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Personnalisation Avancée</span>
+                    </span>
+                    
+                    {/* Font families */}
+                    <div className="flex items-center justify-between gap-1.5 pb-1">
+                      <span className="text-[10px] font-bold text-gray-400">Police:</span>
+                      <div className="flex gap-1">
+                        {(['sans', 'serif', 'classic', 'mono'] as FontStyleType[]).map((f) => (
+                          <button
+                            key={f}
+                            id={`font-family-select-${f}`}
+                            onClick={() => setFontStyle(f)}
+                            className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition leading-none cursor-pointer ${
+                              fontStyle === f
+                                ? 'bg-purple-600 text-white shadow-xs'
+                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-500'
+                            }`}
+                          >
+                            {f === 'sans' ? 'Inter' : f === 'serif' ? 'Serif' : f === 'classic' ? 'Georgia' : 'Mono'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Font Sizing Slider */}
+                    <div className="flex items-center space-x-2 pb-1">
+                      <span className="text-[10px] font-bold text-gray-400">Taille:</span>
+                      <input
+                        id="font-size-slider"
+                        type="range"
+                        min="14"
+                        max="32"
+                        value={fontSize}
+                        onChange={(e) => setFontSize(parseInt(e.target.value))}
+                        className="flex-1 accent-purple-600 bg-gray-200 h-1 rounded"
+                      />
+                      <span className="text-[10px] font-mono text-gray-450 font-bold">{fontSize}px</span>
+                    </div>
+
+                    {/* Line spacing heights */}
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[10px] font-bold text-gray-400">Interligne:</span>
+                      <div className="flex gap-1">
+                        {(['tight', 'normal', 'loose'] as LineSpacingType[]).map((sp) => (
+                          <button
+                            key={sp}
+                            id={`line-spacing-select-${sp}`}
+                            onClick={() => setLineSpacing(sp)}
+                            className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition leading-none cursor-pointer ${
+                              lineSpacing === sp
+                                ? 'bg-purple-600 text-white shadow-xs'
+                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-500'
+                            }`}
+                          >
+                            {sp === 'tight' ? 'Étroit' : sp === 'normal' ? 'Normal' : 'Spacieux'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+
+                {/* Quick interactive Mode Activators */}
+                <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-wrap gap-2 justify-between items-center text-[11px]">
+                  {/* Cinema Mode switch box */}
+                  <button
+                    id="toggle-cinema-mode-btn"
+                    onClick={() => setIsCinemaMode(!isCinemaMode)}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border font-bold transition select-none cursor-pointer ${
+                      isCinemaMode
+                        ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-sm'
+                        : 'bg-gray-100 dark:bg-zinc-800/70 border-gray-200 dark:border-zinc-705 text-gray-550'
+                    }`}
+                    title="Le texte environnant s'estompe pour focaliser votre pensée."
+                  >
+                    <span>🎬 Mode Cinéma</span>
+                    <span className={`text-[9px] py-0.2 px-1 rounded uppercase ${isCinemaMode ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
+                      {isCinemaMode ? 'Actif' : 'Désactivé'}
+                    </span>
+                  </button>
+
+                  {/* Reading Theme Selectors list */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-gray-400 mr-1.5">Papier :</span>
+                    {(['light', 'sepia', 'dimmed', 'dark'] as const).map((t) => (
+                      <button
+                        key={t}
+                        id={`custom-read-theme-${t}`}
+                        onClick={() => setReadingTheme(t)}
+                        className={`px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider rounded-lg border transition cursor-pointer ${
+                          t === 'light' ? 'bg-[#FCFBF8] text-[#1F2937] border-gray-200' :
+                          t === 'sepia' ? 'bg-[#F4ECD8] text-[#433422] border-[#E6D4AF]' :
+                          t === 'dimmed' ? 'bg-[#181824] text-[#E4E4E7] border-gray-700' :
+                          'bg-[#0A0A0F] text-[#E4E4E7] border-gray-800'
+                        } ${readingTheme === t ? 'ring-2 ring-purple-600 scale-102 font-black' : 'opacity-75 hover:opacity-100'}`}
+                      >
+                        {t === 'light' ? 'Jour' : t === 'sepia' ? 'Sépia' : t === 'dimmed' ? 'Dim' : 'Nuit'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* 4. MAIN READING PAPER PAD WITH ADVANCED CONFIGURATIONS */}
+        <main className={`p-6 md:p-12 rounded-[2.5rem] border shadow-md transition-all duration-700 ${themeClasses[readingTheme]} ${isImmersive ? 'ring-0 border-none bg-transparent shadow-none py-16' : ''}`}>
+          
+          {/* Chapter headers */}
+          <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
+              Récit {story.category} • Chapitre {activeChapterIndex + 1} de {story.chapters.length}
+            </span>
+            <h2 className="text-2xl md:text-3xl font-serif font-black tracking-tight mb-4 leading-normal">
+              {activeChapter.title}
+            </h2>
+            
+            {!isImmersive && (
+              <div className="flex items-center justify-center space-x-2 text-[10px] text-gray-450 font-mono select-none">
+                <span>Publié le {new Date(activeChapter.publishDate).toLocaleDateString()}</span>
+                <span>•</span>
+                <span>{paragraphs.length} Paragraphes</span>
+                <span>•</span>
+                <span>{Math.round(activeChapter.content.length / 5)} mots</span>
+                <span>•</span>
+                <span>{story.reads || 0} lectures</span>
+                <span>•</span>
+                <span>{story.likes || 0} likes</span>
+              </div>
+            )}
+          </div>
+
+          {/* CINEMA AND TEXT DISPLAY LAYOUT */}
+          <article 
+            id={`chapter-content-${activeChapter.id}`}
+            className={`text-left select-text ${fontStyleClasses[fontStyle]} ${lineSpacingClasses[lineSpacing]}`}
+            style={{ fontSize: `${fontSize}px` }}
+          >
+            {paragraphs.map((pText, pIdx) => {
+              const capKey = `${activeChapter.id}_p_${pIdx}`;
+              const isPFocus = activeParagraphIndex === pIdx;
+              const plikes = passageLikes[capKey] || Math.floor(Math.random() * 12) + 1;
+              const hasLikedPass = likedPassagesMe[capKey];
+
+              return (
+                <div
+                  key={pIdx}
+                  id={`p-idx-${pIdx}`}
+                  data-paragraph-index={pIdx}
+                  onClick={() => handleParagraphSelect(pIdx)}
+                  className={`relative group rounded-xl transition-all duration-500 cursor-pointer mb-6 ${
+                    isCinemaMode 
+                      ? (isPFocus 
+                        ? 'opacity-100 scale-[1.01] bg-purple-500/5 dark:bg-purple-950/10 p-4 shadow-sm' 
+                        : 'opacity-15 blur-[0.4px] hover:opacity-40 select-none scale-[0.98]'
+                        )
+                      : (isPFocus 
+                        ? 'bg-purple-500/5 dark:bg-purple-950/5 border-l-4 border-purple-550/60 p-3.5'
+                        : 'hover:bg-gray-100/30 dark:hover:bg-zinc-800/10 p-2 rounded-lg'
+                        )
+                  }`}
+                >
+                  {/* Floating discrete react toolbar next to hovered/focused paragraph */}
+                  {!isImmersive && (
+                    <div className="absolute right-2 -bottom-2 z-10 hidden group-hover:flex items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in">
+                      {/* Like paragraph line (hidden in Cinema mode) */}
+                      {!isCinemaMode && (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLikePassage(pIdx);
+                            }}
+                            className={`flex items-center space-x-0.5 font-bold transition hover:text-pink-500 ${hasLikedPass ? 'text-pink-500' : 'text-gray-450'}`}
+                            title="Aimer ce passage précis"
+                          >
+                            <Heart className={`w-3 h-3 ${hasLikedPass ? 'fill-pink-500 text-pink-500' : ''}`} />
+                            <span>{plikes}</span>
+                          </button>
+
+                          <div className="w-px h-3 bg-gray-200 dark:bg-zinc-800" />
+                        </>
+                      )}
+                      
+                      {/* Copy / Save Quote */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSavePassage(pText);
+                        }}
+                        className={`font-black hover:text-[#7C3AED] ${savedQuotes.includes(pText.replace(/^[#\-\*\s]+/, '').trim()) ? 'text-purple-600' : 'text-gray-400'}`}
+                        title="Sauvegarder la citation dans mon carnet"
+                      >
+                        <Bookmark className="w-3 h-3" />
+                      </button>
+
+                      <div className="w-px h-3 bg-gray-200 dark:bg-zinc-800" />
+
+                      {/* Sparkles icon to trigger Lyricard builder creator */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openLyricardCreator(pText);
+                        }}
+                        className="text-gray-450 hover:text-purple-600 font-black cursor-pointer"
+                        title="Créer une PlumeCard (Lyricard)"
+                      >
+                        <Sparkles className="w-3 h-3 hover:scale-110 transition-transform" />
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="indent-4 leading-relaxed font-serif whitespace-pre-wrap">
+                    {pText}
+                  </p>
+                  
+                  {/* Discreet indicator if this is a highly liked passage */}
+                  {!isImmersive && !isCinemaMode && plikes >= 10 && (
+                    <span className="text-[8.5px] font-black uppercase tracking-wider text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full mt-2 inline-block select-none opacity-85 scale-95 font-sans">
+                      💬 Passage très apprécié par {plikes} lecteurs
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </article>
+
+          {/* STATIC FLOATING PARTICLE REACTION EMITTER */}
+          <div className="relative h-1 select-none pointer-events-none">
+            {floatingEmojis.map((fe) => (
+              <span
+                key={fe.id}
+                className="absolute text-2xl animate-float-up pointer-events-none"
+                style={{ 
+                  left: `${fe.x}%`, 
+                  bottom: `0px` 
+                }}
+              >
+                {fe.emoji}
+              </span>
+            ))}
+          </div>
+
+          {/* REACTION PRESETS BAR PANEL (HIDDEN IN IMMERSIVE) */}
+          {!isImmersive && (
+            <div className="mt-8 pt-5 border-t border-gray-150/60 dark:border-zinc-820 flex flex-col items-center gap-3">
+              <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest font-sans">S'exprimer sur la plume</span>
+              <div id="discrete-reactions-bar" className="flex items-center space-x-3 bg-gray-100/60 dark:bg-zinc-900/50 border border-gray-150 dark:border-zinc-800/80 p-2 rounded-2xl select-none">
+                {[
+                  { emoji: '💡', label: 'Inspirant' },
+                  { emoji: '🎨', label: 'Poétique' },
+                  { emoji: '🔥', label: 'Épique' },
+                  { emoji: '✍️', label: 'Génie' },
+                  { emoji: '😮', label: 'Surprenant' },
+                  { emoji: '❤️', label: 'Passion' }
+                ].map((item) => (
+                  <button
+                    key={item.emoji}
+                    id={`reaction-emoji-${item.emoji}`}
+                    onClick={() => {
+                        launchEmoji(item.emoji);
+                    }}
+                    className="p-1 px-2.5 rounded-xl hover:bg-white dark:hover:bg-zinc-800 text-lg transition scale-100 hover:scale-120 hover:-rotate-3 active:scale-95 cursor-pointer block text-center"
+                    title={item.label}
+                  >
+                    <span>{item.emoji}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Navigation between chapters */}
+          <div className="mt-12 pt-8 border-t border-gray-205/60 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
+            <button
+              id="prev-chapter-btn"
+              disabled={activeChapterIndex === 0}
+              onClick={() => setActiveChapterIndex(activeChapterIndex - 1)}
+              className={`flex items-center space-x-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-800 text-xs font-black uppercase tracking-wider select-none cursor-pointer ${
+                activeChapterIndex === 0 
+                  ? 'opacity-40 cursor-not-allowed text-gray-400' 
+                  : 'hover:bg-purple-50 dark:hover:bg-purple-950/10 hover:text-purple-600 dark:text-gray-300'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Précédent</span>
+            </button>
+
+            <span className="text-xs font-sans font-black uppercase tracking-widest px-4 py-1.5 bg-[#7C3AED]/10 text-[#7C3AED] dark:text-purple-400 rounded-full">
+              {Math.round(((activeChapterIndex + 1) / story.chapters.length) * 100)}% de l'œuvre
+            </span>
+
+            <button
+              id="next-chapter-btn"
+              disabled={activeChapterIndex === story.chapters.length - 1}
+              onClick={() => setActiveChapterIndex(activeChapterIndex + 1)}
+              className={`flex items-center space-x-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-800 text-xs font-black uppercase tracking-wider select-none cursor-pointer ${
+                activeChapterIndex === story.chapters.length - 1 
+                  ? 'opacity-40 cursor-not-allowed text-gray-400' 
+                  : 'hover:bg-purple-50 dark:hover:bg-purple-950/10 hover:text-purple-600 dark:text-gray-300'
+              }`}
+            >
+              <span>Suivant</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Author follow Card & Engagement buttons (HIDDEN IN IMMERSIVE) */}
+          {!isImmersive && (
+            <div className="mt-10 p-5 rounded-2xl bg-gray-50/70 dark:bg-zinc-900/40 border border-gray-150 dark:border-[#2a2a3a] flex flex-col sm:flex-row items-center justify-between gap-4">
+              
+              <div className="flex items-center space-x-3 text-left">
+                <img
+                  src={story.authorAvatar}
+                  alt={story.authorName}
+                  onClick={() => onViewProfile ? onViewProfile(story.authorId) : onOpenDiscussion(story.authorId)}
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-600 cursor-pointer hover:scale-105 transition-transform"
+                  referrerPolicy="no-referrer"
+                  title="Consulter le profil"
+                />
+                <div>
+                  <div className="flex items-center space-x-1">
+                    <span 
+                      onClick={() => onViewProfile ? onViewProfile(story.authorId) : onOpenDiscussion(story.authorId)}
+                      className="font-sans font-black text-xs text-gray-800 dark:text-gray-100 hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer transition-colors"
+                      title="Consulter le profil"
+                    >
+                      {story.authorName}
+                    </span>
+                    {story.authorVerified && (
+                      <span className="bg-blue-500 text-white rounded-full p-0.5 text-[8px] font-bold">✓</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-450 font-sans font-medium uppercase tracking-wider mt-0.5">Auteur du genre {story.genre}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                <button
+                  id="reader-follow-author-btn"
+                  onClick={() => onFollowAuthor(story.authorId)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center space-x-1 ${
+                    isFollowing
+                      ? 'bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-300'
+                      : 'bg-gradient-to-r from-purple-600 to-violet-850 text-white hover:opacity-90 shadow-sm'
+                  }`}
+                >
+                  {isFollowing ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Suivi</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Suivre</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  id="reader-like-story-btn"
+                  onClick={() => onToggleStoryLike(story.id)}
+                  className={`px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-black ${
+                    isLiked
+                      ? 'bg-pink-500/10 text-pink-500 border-pink-500/30'
+                      : 'bg-white dark:bg-gray-850 text-gray-400 border-gray-200 dark:border-gray-700 hover:text-pink-500'
+                  }`}
+                  title={isLiked ? 'Retirer mon like' : 'Aimer cette histoire'}
+                >
+                  <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-pink-500 text-pink-500' : ''}`} />
+                  <span>{story.likes || 0}</span>
+                </button>
+
+                <button
+                  id="reader-fav-story-btn"
+                  onClick={() => onToggleFavorite(story.id)}
+                  className={`px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-black ${
+                    isFavorited
+                      ? 'bg-purple-600/10 text-purple-600 border-purple-500/30'
+                      : 'bg-white dark:bg-gray-850 text-gray-400 border-gray-200 dark:border-gray-700 hover:text-purple-600'
+                  }`}
+                  title={isFavorited ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                >
+                  <Star className={`w-3.5 h-3.5 ${isFavorited ? 'fill-purple-600 text-purple-650' : ''}`} />
+                  <span>{story.favoritesCount || 0}</span>
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* PERSONAL LIBRARY STATUS CONTROLLER (HIDDEN IN IMMERSIVE) */}
+          {!isImmersive && (
+            <div className="mt-5 bg-[#7C3AED]/5 border border-[#7C3AED]/10 p-3.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+              <div className="max-w-xs">
+                <span className="text-[9px] uppercase font-black text-[#7C3AED] font-sans tracking-widest block">Classement Bibliothèque</span>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">Ranger cette histoire dans l'un de vos tiroirs d'abonné.</p>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-end select-none">
+                <button
+                  id="toggle-lib-reading-btn"
+                  onClick={() => onToggleCurrentlyReading(story.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition flex items-center space-x-1 ${
+                    currentlyReading.includes(story.id)
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'bg-white dark:bg-gray-805 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-zinc-800 hover:text-purple-500'
+                  }`}
+                >
+                  <span>📖 En cours</span>
+                </button>
+
+                <button
+                  id="toggle-lib-completed-btn"
+                  onClick={() => onToggleCompletedStories(story.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition flex items-center space-x-1 ${
+                    completedStories.includes(story.id)
+                      ? 'bg-green-600 text-white shadow-xs font-black'
+                      : 'bg-white dark:bg-gray-805 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-zinc-800 hover:text-green-500'
+                  }`}
+                >
+                  <span>✅ Terminé</span>
+                </button>
+
+                <button
+                  id="toggle-lib-read-later-btn"
+                  onClick={() => onToggleReadLater(story.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition flex items-center space-x-1 ${
+                    readLater.includes(story.id)
+                      ? 'bg-blue-600 text-white shadow-xs font-black'
+                      : 'bg-white dark:bg-gray-855 text-gray-600 dark:text-gray-305 border border-gray-200 dark:border-zinc-800 hover:text-blue-500'
+                  }`}
+                >
+                  <span>⏳ À lire</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* LOWER INTERACTIVE DRAWERS TRIGGER PANEL (HIDDEN IN IMMERSIVE) */}
+          {!isImmersive && (
+            <div className="mt-5 grid grid-cols-2 gap-3 pt-4 border-t border-gray-150 dark:border-zinc-815">
+              <button
+                id="drawer-chapters-btn"
+                onClick={() => setIsChaptersOpen(true)}
+                className="flex items-center justify-center space-x-2 py-3 px-4 bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-purple-950/15 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-[#2a2a3a] rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-purple-600" />
+                <span>Index ({story.chapters.length})</span>
+              </button>
+              
+              <button
+                id="drawer-comments-btn"
+                onClick={() => setIsCommentsOpen(true)}
+                className="flex items-center justify-center space-x-2 py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4 fill-white/10" />
+                <span>Commentaires ({chapterComments.length})</span>
+              </button>
+            </div>
+          )}
+
+        </main>
+
+      </div>
+
+      {/* ==================== SCREEN 1: DRAWRES PORTAL - CHAPTERS SUMMARY (LORE EXPLORATION) ==================== */}
+      {isAugmentedOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in text-left">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsAugmentedOpen(false)}
+          />
+          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2.5rem] shadow-2xl border-t border-gray-150 dark:border-purple-900/20 flex flex-col h-[85vh] transition-transform animate-slide-up overflow-hidden">
+            
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
+
+            <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/10 flex items-center justify-between">
+              <div>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Enrichissement de Lecture</span>
+                </span>
+                <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white mt-0.5">
+                  Lecture Augmentée
+                </h3>
+              </div>
+              
+              <button
+                id="close-augmented-drawer"
+                onClick={() => setIsAugmentedOpen(false)}
+                className="p-1 px-3.5 bg-gray-50 hover:bg-gray-100 dark:bg-zinc-900 rounded-full text-xs font-black uppercase text-gray-500 cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 pb-20 scrollbar-none">
+              
+              {/* Core Chapter summary */}
+              <div className="bg-purple-500/5 dark:bg-purple-950/10 border border-purple-500/10 p-4 rounded-2xl space-y-2">
+                <span className="text-[9.5px] uppercase font-black text-purple-600 dark:text-purple-350 block tracking-wider">📖 Résumé du chapitre en cours</span>
+                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed italic">
+                  "{capMeta.summary}"
+                </p>
+              </div>
+
+              {/* Characters breakdown */}
+              <div className="space-y-3">
+                <span className="text-[10px] uppercase font-black text-gray-400 block tracking-widest font-sans">👥 Protagonistes Présents</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {capMeta.characters.map((char) => (
+                    <div key={char.name} className="flex gap-3 bg-gray-50 dark:bg-zinc-900/40 p-2.5 rounded-xl border border-gray-100 dark:border-zinc-800/80 items-center">
+                      <img src={char.avatar} className="w-10 h-10 rounded-full object-cover border border-purple-500/20" referrerPolicy="no-referrer" />
+                      <div>
+                        <h4 className="text-xs font-black text-gray-900 dark:text-gray-100">{char.name}</h4>
+                        <p className="text-[9.5px] text-gray-450 dark:text-gray-400 leading-tight mt-0.5">{char.role}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quotes compilation panel */}
+              <div className="space-y-3">
+                <span className="text-[10px] uppercase font-black text-gray-400 block tracking-widest font-sans">Citations fondamentales</span>
+                <div className="space-y-2">
+                  {capMeta.quotes.map((quote, idx) => (
+                    <blockquote key={idx} className="p-3 bg-purple-600/5 border-l-4 border-purple-500/40 rounded-r-xl text-xs text-zinc-650 dark:text-zinc-305 italic leading-relaxed">
+                      {quote}
+                    </blockquote>
+                  ))}
+                </div>
+              </div>
+
+              {/* Glossary glossary */}
+              <div className="space-y-3">
+                <span className="text-[10px] uppercase font-black text-gray-400 block tracking-widest font-sans">👁️ Index sémantique (Mots complexes)</span>
+                <div className="space-y-2">
+                  {capMeta.words.map((w) => (
+                    <div key={w.word} className="p-2.5 bg-gray-55 dark:bg-zinc-900/10 rounded-xl border border-gray-150/40 dark:border-zinc-800 hover:border-purple-600/30 transition">
+                      <strong className="text-xs text-purple-600 dark:text-purple-400 font-sans block">{w.word}</strong>
+                      <p className="text-[10.5px] text-gray-500 mt-0.5 leading-snug">{w.definition}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Button: Explore universe */}
+              <div className="pt-4 border-t border-gray-100 dark:border-zinc-900">
+                <button
+                  id="explore-full-universe-btn"
+                  onClick={() => {
+                    setIsUniverseOpen(true);
+                    setIsAugmentedOpen(false);
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-[#7C3AED] hover:opacity-95 text-white text-xs font-black uppercase tracking-widest rounded-xl transition shadow-md shadow-purple-500/10 flex items-center justify-center gap-2"
+                >
+                  <Compass className="w-4 h-4 animate-spin-slow" />
+                  <span>Explorer l'univers de ce livre</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SCREEN 2: METEORIC OVERLAY LORE DIALOG ("EXPLORER L'UNIVERS DU LIVRE") ==================== */}
+      {isUniverseOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in p-4 text-left">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsUniverseOpen(false)} />
+          
+          <div className="relative w-full max-w-lg bg-[#0F0F16] border border-zinc-800 text-white rounded-[2rem] p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            
+            {/* Background artwork */}
+            <div className="h-44 rounded-xl overflow-hidden mb-4 relative">
+              <img src={capMeta.universe.mapUrl} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F16] via-[#0F0F16]/30 to-transparent" />
+            </div>
+
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] font-black">Lore & Légende</span>
+                <h3 className="text-lg font-serif font-black">{capMeta.universe.title}</h3>
+              </div>
+              <button
+                id="close-universe-modal"
+                onClick={() => setIsUniverseOpen(false)}
+                className="p-1 px-3 bg-zinc-800 hover:bg-zinc-700 rounded-full text-[10px] font-black uppercase text-gray-300"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pb-4 scrollbar-none pr-1">
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {capMeta.universe.description}
+              </p>
+
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-black text-purple-400 block tracking-widest font-sans">Fragments Récupérés</span>
+                {capMeta.universe.fragments.map((frag, index) => (
+                  <div key={index} className="p-3 bg-purple-950/15 border border-purple-900/35 rounded-xl flex gap-2">
+                    <span className="text-purple-400 font-mono text-xs font-bold leading-none shrink-0">[0{index+1}]</span>
+                    <p className="text-[11px] text-gray-350 leading-relaxed">{frag}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom dynamic interactive notes simulator */}
+              <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 text-center space-y-2">
+                <h4 className="text-[10px] font-black uppercase text-purple-400 flex items-center justify-center gap-1">
+                  <Bookmark className="w-3.5 h-3.5" />
+                  <span>Mon carnet d'annotations ({savedQuotes.length})</span>
+                </h4>
+                {savedQuotes.length === 0 ? (
+                  <p className="text-[10px] text-gray-500">Aucun passage n'a été sauvegardé. En cours de lecture, passez le curseur/cliquez sur les lignes du livre et cliquez sur l'icône de marque-page pour agréger des citations marquantes.</p>
+                ) : (
+                  <div className="space-y-1.5 text-left max-h-32 overflow-y-auto">
+                    {savedQuotes.map((q, idx) => (
+                      <div key={idx} className="p-2 bg-black/40 border-l-2 border-purple-500/80 rounded text-[9.5px] italic text-gray-300 relative group flex items-start justify-between gap-1.5 min-h-[36px]">
+                        <span className="line-clamp-2 pr-6">"{q}"</span>
+                        <button
+                          onClick={() => openLyricardCreator(q)}
+                          className="absolute right-1 top-1 bg-purple-600 hover:bg-purple-700 text-[8px] text-white p-1 rounded font-sans uppercase font-black cursor-pointer flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Créer une Lyricard"
+                        >
+                          <Sparkles className="w-2 h-2" />
+                          <span>Créer</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SCREEN 3: STANDARD COMMENT SHEET DRAWERS ==================== */}
+      {isCommentsOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in text-left">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsCommentsOpen(false)}
+          />
+          
+          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] shadow-2xl border-t border-gray-150 dark:border-purple-900/20 flex flex-col h-[82vh] transition-transform animate-slide-up overflow-hidden">
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
+
+            <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between font-sans">
+              <div className="text-left">
+                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] font-bold">Retour sur ce chapitre</span>
+                <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white mt-0.5">
+                  Commentaires ({chapterComments.length})
+                </h3>
+              </div>
+              
+              <button
+                id="close-comments-drawer"
+                onClick={() => setIsCommentsOpen(false)}
+                className="p-1 text-xs font-black text-gray-550"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 pb-20 scrollbar-none">
+              {chapterComments.length === 0 ? (
+                <div className="text-center py-16 px-4">
+                  <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-3">
+                    <MessageCircle className="w-6 h-6 text-[#7C3AED]" />
+                  </div>
+                  <h4 className="font-bold text-xs text-gray-800 dark:text-gray-200">Aucun retour pour l'instant</h4>
+                  <p className="text-[11px] text-gray-400 mt-1 max-w-xs mx-auto">
+                    Soyez le premier lecteur à partager vos impressions constructives sur la plume de l'auteur.
+                  </p>
+                </div>
+              ) : (
+                chapterComments.map((com) => (
+                  <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <img
+                          src={com.avatar}
+                          alt={com.username}
+                          onClick={() => {
+                            if (onViewProfile) {
+                              onViewProfile(com.userId);
+                            } else {
+                              onOpenDiscussion(com.userId);
+                            }
+                            setIsCommentsOpen(false);
+                          }}
+                          className="w-6 h-6 rounded-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                          referrerPolicy="no-referrer"
+                          title="Consulter le profil"
+                        />
+                        <span 
+                          onClick={() => {
+                            if (onViewProfile) {
+                              onViewProfile(com.userId);
+                            } else {
+                              onOpenDiscussion(com.userId);
+                            }
+                            setIsCommentsOpen(false);
+                          }}
+                          className="text-xs font-bold text-gray-900 dark:text-white hover:text-purple-600 hover:underline cursor-pointer transition-colors"
+                          title="Consulter le profil"
+                        >
+                          {com.username}
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-gray-400 font-mono">
+                        {new Date(com.date).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-gray-650 dark:text-gray-350 whitespace-pre-line leading-relaxed">
+                      {com.content}
+                    </p>
+
+                    <div className="flex items-center justify-between text-[10px] font-bold text-[#7C3AED] pt-1.5 border-t border-gray-100 dark:border-zinc-800">
+                      <button
+                        onClick={() => onLikeComment(com.id)}
+                        className={`flex items-center space-x-1 hover:text-purple-600 transition-colors ${com.likedByMe ? 'font-black text-pink-500' : ''}`}
+                      >
+                        <Heart className="w-3.5 h-3.5" />
+                        <span>{com.likes} J'aime</span>
+                      </button>
+
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={() => setActiveReplyBox(activeReplyBox === com.id ? null : com.id)}
+                          className="hover:underline"
+                        >
+                          Répondre
+                        </button>
+
+                        {(currentUser.id === com.userId || currentUser.id === story.authorId || currentUser.role === 'Administrateur') && (
+                          <button
+                            onClick={() => onDeleteComment(com.id)}
+                            className="text-purple-600 dark:text-purple-400 hover:underline font-bold"
+                          >
+                            Supprimer
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {com.replies.length > 0 && (
+                      <div className="ml-4 pl-3 border-l-2 border-purple-200 dark:border-purple-900/50 space-y-2 mt-2 pt-1">
+                        {com.replies.map((rep) => (
+                          <div key={rep.id} className="text-left text-[11px] space-y-0.5">
+                            <span className="font-bold text-gray-800 dark:text-gray-300">{rep.username}</span>
+                            <p className="text-gray-600 dark:text-gray-400">{rep.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {activeReplyBox === com.id && (
+                      <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-gray-100 dark:border-zinc-805">
+                        <input
+                          type="text"
+                          placeholder="Écrire une réponse..."
+                          value={replyText[com.id] || ''}
+                          onChange={(e) => setReplyText({ ...replyText, [com.id]: e.target.value })}
+                          className="text-xs bg-white dark:bg-zinc-900 border border-gray-205 rounded-xl px-2.5 py-1.5 focus:outline-none w-full dark:text-white"
+                        />
+                        <button
+                          onClick={() => handleReplySubmit(com.id)}
+                          className="bg-purple-600 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold"
+                        >
+                          Poster
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={handleCommentSubmit} className="absolute bottom-0 inset-x-0 p-4 bg-gray-50 dark:bg-zinc-950 border-t border-gray-100 dark:border-[#1E1E26]">
+              <div className="flex items-end space-x-2 max-w-xl mx-auto">
+                <textarea
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Écrivez votre commentaire..."
+                  rows={2}
+                  className="flex-1 bg-white dark:bg-[#1B1B26] border border-gray-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs focus:outline-none dark:text-white resize-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!newCommentText.trim()}
+                  className={`bg-purple-600 text-white text-xs font-black uppercase tracking-wider px-3.5 py-2.5 rounded-xl hover:bg-purple-700 transition flex items-center space-x-1 ${
+                    !newCommentText.trim() ? 'opacity-40 cursor-not-allowed' : ''
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Publier</span>
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SCREEN 4: CHAPTERS SUMMARY INDEX ==================== */}
+      {isChaptersOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in text-left">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsChaptersOpen(false)}
+          />
+          
+          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] shadow-2xl border-t border-gray-150 dark:border-purple-900/20 flex flex-col h-[70vh] transition-transform animate-slide-up overflow-hidden">
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
+
+            <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between">
+              <div className="text-left">
+                <span className="text-[9px] uppercase font-mono tracking-widest text-purple-600">Sommaire de l'œuvre</span>
+                <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white mt-0.5">
+                  Chapitres ({story.chapters.length})
+                </h3>
+              </div>
+              
+              <button
+                onClick={() => setIsChaptersOpen(false)}
+                className="p-1 px-3.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 rounded-full text-xs font-black uppercase text-gray-500 cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1.5 pb-12 scrollbar-none">
+              {story.chapters.map((ch, idx) => {
+                const isSelected = activeChapterIndex === idx;
+                const isRead = readChapters.includes(ch.id);
+                return (
+                  <button
+                    key={ch.id}
+                    onClick={() => {
+                      setActiveChapterIndex(idx);
+                      setIsChaptersOpen(false);
+                    }}
+                    className={`w-full text-left p-3.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                      isSelected 
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-350 border border-purple-500/35' 
+                        : 'text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-900'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3 min-w-0 pr-2">
+                      <span className="font-mono text-[9px] opacity-50 flex-shrink-0">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      <span className="truncate">{ch.title}</span>
+                    </div>
+                    {isRead ? (
+                      <span className="text-[8px] bg-green-500/10 text-green-505 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center space-x-0.5">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>Lu</span>
+                      </span>
+                    ) : (
+                      <span className="text-[9.5px] text-gray-400 font-bold uppercase tracking-wider">Non lu</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SCREEN 6: EXTRA BEAUTIFUL GENIUS-STYLE LYRICARD MODAL ==================== */}
+      {isLyricardOpen && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center animate-fade-in p-4 text-left">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsLyricardOpen(false)} />
+          
+          <div className="relative w-full max-w-4xl bg-white dark:bg-zinc-950 border border-gray-150 dark:border-zinc-900 text-gray-900 dark:text-white rounded-[2rem] p-6 md:p-8 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+            
+            {/* Header title */}
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-black">Genius Lyricard Studio</span>
+                <h3 className="text-sm font-serif font-black flex items-center gap-1.5 text-gray-900 dark:text-white">
+                  <Sparkles className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  <span>Générateur de Citations Plume</span>
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsLyricardOpen(false)}
+                className="p-1 px-3.5 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-900 hover:text-red-500 rounded-full text-[10px] font-black uppercase text-gray-500 cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+
+            {/* Split layout: left preview, right customizer panel */}
+            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-8 pb-4 scrollbar-none pr-1">
+              
+              {/* Left Column: Live render card using responsive canvas */}
+              <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-900/10 p-4 rounded-[1.5rem] border border-gray-105 dark:border-zinc-905 overflow-hidden space-y-3">
+                <div className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                  <span>Aperçu avant téléchargement</span>
+                  <button
+                    type="button"
+                    onClick={() => drawPlumeCard(previewCanvasRef.current)}
+                    className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:bg-purple-500/15 transition"
+                  >
+                    Actualiser
+                  </button>
+                </div>
+
+                <canvas 
+                  ref={previewCanvasRef}
+                  width={800}
+                  height={800}
+                  className="w-full max-w-[360px] aspect-square rounded-2xl shadow-xl border border-gray-105 dark:border-zinc-900 bg-zinc-900 animate-fade-in"
+                />
+              </div>
+
+              {/* Right Column: Interactive options panel */}
+              <div className="space-y-4 text-left flex flex-col justify-between">
+                <div className="space-y-4">
+                  {/* Text customization box */}
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase text-gray-450 dark:text-zinc-500 mb-1.5">
+                      Contenu de la citation
+                    </label>
+                    <textarea
+                      value={lyricText}
+                      onChange={(e) => setLyricText(e.target.value)}
+                      maxLength={350}
+                      rows={3}
+                      className="w-full text-xs p-3 rounded-xl border border-gray-205 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/60 text-gray-800 dark:text-gray-100 font-serif leading-relaxed focus:ring-2 focus:ring-purple-605 outline-none resize-none"
+                    />
+                  </div>
+
+                  {/* Background Selection option presets */}
+                  <div>
+                    <label className="text-xs font-mono font-black uppercase text-gray-455 dark:text-zinc-500 mb-2 flex items-center justify-between">
+                      <span>Thème visuel</span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-black uppercase tracking-wider">{lyricBg}</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2.5 items-center">
+                      {[
+                        { id: 'sunset', class: 'from-pink-500 via-red-500 to-yellow-500', label: 'Sunset' },
+                        { id: 'cosmic', class: 'from-indigo-950 via-purple-900 to-pink-700', label: 'Cosmix' },
+                        { id: 'emerald', class: 'from-teal-850 via-emerald-600 to-green-400', label: 'Émeraude' },
+                        { id: 'aurora', class: 'from-slate-950 via-teal-950 to-cyan-550', classReal: 'bg-gradient-to-tr from-slate-950 via-[#0B2533] to-[#0A8AA4]', label: 'Aurore' },
+                        { id: 'gold', class: 'from-amber-800 via-orange-650 to-yellow-400', label: 'Doré' },
+                        { id: 'neon', class: 'from-purple-900 via-violet-800 to-fuchsia-500', label: 'Néon' },
+                        { id: 'dark', class: 'from-stone-950 via-zinc-900 to-stone-800', label: 'Obsidian' },
+                        { id: 'minimal', class: 'from-stone-50 via-[#EAE6DF] to-stone-200 border border-stone-300', label: 'Minimalist' }
+                      ].map((bg) => (
+                        <button
+                          key={bg.id}
+                          onClick={() => setLyricBg(bg.id as PlumeCardBgType)}
+                          className={`w-7 h-7 rounded-full bg-gradient-to-tr ${bg.classReal || bg.class} ${lyricBg === bg.id ? 'ring-2 ring-purple-600 dark:ring-purple-400 scale-110 shadow-md' : 'hover:scale-105 hover:opacity-90'} transition-all cursor-pointer`}
+                          title={bg.label}
+                        />
+                      ))}
+
+                      <label
+                        htmlFor="plumecard-custom-bg"
+                        className={`w-8 h-8 rounded-full border border-dashed flex items-center justify-center cursor-pointer transition-all overflow-hidden ${lyricBg === 'custom' ? 'ring-2 ring-purple-600 scale-110 border-purple-500' : 'border-purple-400/50 hover:scale-105'}`}
+                        title="Ajouter votre propre image"
+                      >
+                        {lyricCustomBg ? (
+                          <img src={lyricCustomBg} alt="Fond personnalisé" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        )}
+                      </label>
+
+                      <input
+                        id="plumecard-custom-bg"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLyricCustomBackgroundUpload}
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Font Style and alignment */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-xs font-mono font-black uppercase text-gray-450 dark:text-zinc-500 mb-1.5">
+                        Typographie
+                      </label>
+                      <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-zinc-900 p-1 rounded-lg border border-gray-200/60 dark:border-zinc-800 text-[10px] font-bold">
+                        {([
+                          { id: 'serif', label: 'Serif' },
+                          { id: 'playfair', label: 'Playfair' },
+                          { id: 'garamond', label: 'Garamond' },
+                          { id: 'cinzel', label: 'Cinzel' },
+                          { id: 'poetic', label: 'Poétique' },
+                          { id: 'handwritten', label: 'Manuscrit' },
+                          { id: 'cursive', label: 'Calligraphie' },
+                          { id: 'sans', label: 'Moderne' },
+                          { id: 'bold', label: 'Impact' },
+                          { id: 'mono', label: 'Mono' }
+                        ] as { id: PlumeCardFontType; label: string }[]).map((style) => (
+                          <button
+                            key={style.id}
+                            onClick={() => setLyricTextStyle(style.id)}
+                            className={`py-1 px-2 rounded-md cursor-pointer text-center text-[9px] ${
+                              lyricTextStyle === style.id
+                                ? 'bg-white dark:bg-zinc-805 text-purple-600 dark:text-purple-400 shadow-xs font-black'
+                                : 'text-gray-500 dark:text-zinc-400 hover:text-purple-600'
+                            }`}
+                          >
+                            {style.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono font-black uppercase text-gray-450 dark:text-zinc-500 mb-1.5 font-bold">
+                        Alignement
+                      </label>
+                      <div className="flex bg-gray-100 dark:bg-zinc-900 p-0.5 rounded-lg border border-gray-205/60 dark:border-zinc-805 text-[10px] font-bold">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            onClick={() => setLyricAlign(align)}
+                            className={`flex-1 py-1 rounded-md capitalize cursor-pointer ${
+                              lyricAlign === align
+                                ? 'bg-white dark:bg-zinc-805 text-purple-600 dark:text-purple-400 shadow-xs font-black'
+                                : 'text-gray-500 dark:text-zinc-400 font-normal'
+                            }`}
+                          >
+                            {align === 'left' ? 'Gauche' : align === 'right' ? 'Droite' : 'Centré'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Smart auto adjustment info badge replacing manual slider (Goal 2) */}
+                  <div className="bg-purple-500/5 dark:bg-purple-950/20 p-3.5 rounded-2xl border border-purple-100/30 dark:border-purple-900/40 flex items-start space-x-2.5">
+                    <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5 fill-purple-500/20" />
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase tracking-wider font-mono font-black text-purple-600 dark:text-purple-400 block">
+                        MISE EN PAGE INTELLIGENTE
+                      </span>
+                      <p className="text-[10.5px] text-zinc-550 dark:text-zinc-400 font-medium leading-relaxed">
+                        Le système adapte automatiquement la taille de police (de 40px à 14px) et le retour à la ligne pour centrer et emboîter parfaitement votre citation sans débordement.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main action buttons footer */}
+                <div className="pt-4 border-t border-gray-100 dark:border-zinc-900 flex items-center gap-3">
+                  <button
+                    onClick={exportLyricardImage}
+                    disabled={exportingLyricard}
+                    className="flex-1 py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white rounded-xl text-xs font-sans font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-md shadow-purple-500/10"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>{exportingLyricard ? 'Génération...' : 'Télécharger la PlumeCard'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`« ${lyricText} »\n— ${story.title.toUpperCase()} (De ${story.authorName})`);
+                      alert('Citation copiée au presse-papiers !');
+                    }}
+                    className="p-3 bg-zinc-150/60 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-transparent dark:border-zinc-800 text-gray-700 dark:text-zinc-200 rounded-xl transition cursor-pointer"
+                    title="Copier le texte formaté"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
