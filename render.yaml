@@ -21,7 +21,7 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: SMTP_FROM
-        value: "PLUME <onboarding@plume.ovh>"
+        value: "PLUME <udje266@gmail.com>"
       - key: VITE_CLOUDINARY_CLOUD_NAME
         sync: false
       - key: VITE_CLOUDINARY_UPLOAD_PRESET
