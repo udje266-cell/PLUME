@@ -31,17 +31,19 @@ import {
   Headphones,
   BookOpen
 } from 'lucide-react';
-import { Message, User, ReadingGroup, GroupMessage, Story } from '../types';
+import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MessagesViewProps {
   currentUser: User;
   allUsers: User[];
-  messages: Message[];
-  onSendMessage: (receiverId: string, content: string) => void;
-  onSimulateReceiveMessage: (senderId: string, content: string) => void;
-  activeInterlocutorId: string;
-  setActiveInterlocutorId: (id: string) => void;
+  conversations: Conversation[];
+  setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
+  onSendMessage: (conversationId: string, content: string) => void;
+  onSimulateReceiveMessage: (conversationId: string, senderId: string, content: string) => void;
+  onStartConversation: (participantIds: string[]) => Promise<Conversation>;
+  activeConversationId: string;
+  setActiveConversationId: (id: string) => void;
   groups: ReadingGroup[];
   setGroups: React.Dispatch<React.SetStateAction<ReadingGroup[]>>;
   groupMessages: GroupMessage[];
@@ -127,11 +129,13 @@ function VoicePlayerMockup({ durationStr, isSentByMe }: { durationStr: string; i
 export default function MessagesView({
   currentUser,
   allUsers,
-  messages,
+  conversations,
+  setConversations,
   onSendMessage,
   onSimulateReceiveMessage,
-  activeInterlocutorId,
-  setActiveInterlocutorId,
+  onStartConversation,
+  activeConversationId,
+  setActiveConversationId,
   groups,
   setGroups,
   groupMessages,
@@ -174,20 +178,48 @@ export default function MessagesView({
   const [callDuration, setCallDuration] = useState(0);
   const callTimerRef = useRef<any>(null);
 
-  const interlocutor = allUsers.find(u => u.id === activeInterlocutorId) || allUsers[1] || allUsers[0];
+  const activeConv = conversations.find(c => c.id === activeConversationId);
+  const interlocutor = activeConv 
+    ? (activeConv.participants.find(p => p.id !== currentUser.id) || activeConv.participants[0])
+    : (allUsers.find(u => u.id !== currentUser.id) || allUsers[1] || allUsers[0]);
   const activeGroup = groups.find(g => g.id === activeGroupId);
 
   // Auto-scroll to bottom of discussion
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, groupMessages, activeInterlocutorId, activeGroupId]);
+  }, [conversations, groupMessages, activeConversationId, activeGroupId]);
 
-  // If interlocutor changes, open thread on mobile
+  // If conversation changes, open thread on mobile
   useEffect(() => {
-    if (activeInterlocutorId) {
+    if (activeConversationId) {
       setMobileShowThread(true);
     }
-  }, [activeInterlocutorId]);
+  }, [activeConversationId]);
+
+  // Real-time messages read endpoint trigger on conversation activation
+  useEffect(() => {
+    if (activeConversationId) {
+      fetch('/api/messages/read', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('plume_auth_token')}`
+        },
+        body: JSON.stringify({ conversationId: activeConversationId })
+      }).catch(e => console.error(e));
+
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            unreadCount: 0,
+            messages: c.messages.map(m => m.senderId !== currentUser.id ? { ...m, isRead: true } : m)
+          };
+        }
+        return c;
+      }));
+    }
+  }, [activeConversationId, currentUser.id, setConversations]);
 
   // Voice Note recording dynamic timer
   useEffect(() => {
@@ -240,40 +272,8 @@ export default function MessagesView({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Retrieve user list excluding myself, sorted to prioritize the active interlocutor at the very top, 
-  // followed by users with the most recent messages.
-  const chatPartners = [...allUsers]
-    .filter(u => u.id !== currentUser.id)
-    .sort((a, b) => {
-      // 1. Selected active conversation goes straight to the top (priority)
-      if (a.id === activeInterlocutorId) return -1;
-      if (b.id === activeInterlocutorId) return 1;
-
-      // 2. Otherwise sort by last message date (most recent first)
-      const lastMsgA = messages
-        .filter(m => (m.senderId === currentUser.id && m.receiverId === a.id) ||
-                     (m.senderId === a.id && m.receiverId === currentUser.id))
-        .pop();
-        
-      const lastMsgB = messages
-        .filter(m => (m.senderId === currentUser.id && m.receiverId === b.id) ||
-                     (m.senderId === b.id && m.receiverId === currentUser.id))
-        .pop();
-
-      if (lastMsgA && lastMsgB) {
-        return new Date(lastMsgB.date).getTime() - new Date(lastMsgA.date).getTime();
-      }
-      if (lastMsgA) return -1;
-      if (lastMsgB) return 1;
-
-      return 0;
-    });
-
   // Group messages for active thread (direct chat)
-  const threadMessages = messages.filter(
-    m => (m.senderId === currentUser.id && m.receiverId === activeInterlocutorId) ||
-         (m.senderId === activeInterlocutorId && m.receiverId === currentUser.id)
-  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const threadMessages = activeConv ? activeConv.messages : [];
 
   // Group messages filter (group chat)
   const activeGroupMessages = groupMessages.filter(
@@ -305,9 +305,9 @@ export default function MessagesView({
         lastMessageDate: new Date().toISOString()
       } : g));
 
-    } else {
+    } else if (activeConversationId) {
       // Send personal
-      onSendMessage(activeInterlocutorId, messageText.trim());
+      onSendMessage(activeConversationId, messageText.trim());
     }
     setMessageText('');
   };
@@ -347,8 +347,8 @@ export default function MessagesView({
         lastMessage: '🎙️ Note vocale',
         lastMessageDate: new Date().toISOString()
       } : g));
-    } else {
-      onSendMessage(activeInterlocutorId, voiceTag);
+    } else if (activeConversationId) {
+      onSendMessage(activeConversationId, voiceTag);
     }
 
     setIsRecording(false);
@@ -383,8 +383,8 @@ export default function MessagesView({
         lastMessageDate: new Date().toISOString()
       } : g));
 
-    } else {
-      onSimulateReceiveMessage(activeInterlocutorId, simulationText.trim());
+    } else if (activeConversationId && interlocutor) {
+      onSimulateReceiveMessage(activeConversationId, interlocutor.id, simulationText.trim());
     }
     setSimulationText('');
   };
@@ -502,12 +502,18 @@ export default function MessagesView({
   };
 
   // Start direct message selection
-  const selectDirectAuthor = (authorId: string) => {
-    setActiveGroupId(null);
-    setActiveInterlocutorId(authorId);
-    setIsNewChatOpen(false);
-    setActiveTab('chats');
-    setMobileShowThread(true);
+  const selectDirectAuthor = async (authorId: string) => {
+    try {
+      const conv = await onStartConversation([authorId]);
+      setActiveGroupId(null);
+      setActiveConversationId(conv.id);
+      setIsNewChatOpen(false);
+      setActiveTab('chats');
+      setMobileShowThread(true);
+    } catch (e) {
+      console.error(e);
+      alert('Impossible de démarrer la conversation');
+    }
   };
 
   // Toggle member selection in Group Creator
@@ -600,22 +606,19 @@ export default function MessagesView({
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-800/40 bg-white dark:bg-zinc-900">
             
             {/* Solo Discussions Deck View */}
-            {activeTab === 'chats' && chatPartners.map((partner) => {
-              const isActive = partner.id === activeInterlocutorId && !activeGroupId;
-              const partnerMessages = messages.filter(
-                m => (m.senderId === currentUser.id && m.receiverId === partner.id) ||
-                     (m.senderId === partner.id && m.receiverId === currentUser.id)
-              );
-              const lastMsg = partnerMessages[partnerMessages.length - 1];
-              const unreadCount = partnerMessages.filter(m => m.senderId === partner.id && !m.isRead).length;
+            {activeTab === 'chats' && conversations.map((conv) => {
+              const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
+              const isActive = conv.id === activeConversationId && !activeGroupId;
+              const lastMsg = conv.messages[conv.messages.length - 1];
+              const unreadCount = conv.unreadCount || 0;
 
               return (
                 <button
-                  key={partner.id}
+                  key={conv.id}
                   id={`chat-partner-select-${partner.id}`}
                   onClick={() => {
                     setActiveGroupId(null);
-                    setActiveInterlocutorId(partner.id);
+                    setActiveConversationId(conv.id);
                     setMobileShowThread(true);
                   }}
                   className={`w-full text-left p-3.5 flex items-center space-x-3 transition-all relative border-l-4 ${
@@ -641,7 +644,7 @@ export default function MessagesView({
                         {partner.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                       </span>
                       <span className="text-[9px] text-gray-400 font-mono">
-                        {lastMsg ? new Date(lastMsg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {lastMsg ? new Date(lastMsg.date || lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
                     </div>
 
@@ -771,6 +774,7 @@ export default function MessagesView({
                 onClick={() => {
                   setMobileShowThread(false);
                   setActiveGroupId(null);
+                  setActiveConversationId('');
                 }}
                 className="p-1.5 -ml-1.5 md:hidden hover:bg-zinc-800 rounded-full text-zinc-300 mr-1"
                 title="Retour à la liste"
@@ -998,7 +1002,11 @@ export default function MessagesView({
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           {isSentByMe && (
-                            <CheckCheck className="w-3.5 h-3.5 text-purple-205 shrink-0 inline" />
+                            msg.isRead ? (
+                              <CheckCheck className="w-3.5 h-3.5 text-purple-200 shrink-0 inline" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5 text-purple-300/60 shrink-0 inline" />
+                            )
                           )}
                         </div>
 

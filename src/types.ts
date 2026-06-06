@@ -113,14 +113,22 @@ export interface Story {
 export interface Message {
   id: string;
   senderId: string;
-  senderName: string;
-  senderAvatar: string;
-  receiverId: string;
-  receiverName: string;
-  receiverAvatar: string;
+  senderName?: string;
+  senderAvatar?: string;
+  conversationId: string;
   content: string;
   date: string;
   isRead: boolean;
+  sender?: User;
+}
+
+export interface Conversation {
+  id: string;
+  participants: User[];
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+  unreadCount?: number;
 }
 
 export interface ReadingProgress {

@@ -1099,46 +1099,244 @@ export async function createServerInstance() {
     res.json({ success: true });
   });
 
-  // Messages
-  app.get('/api/messages', requireAuth, async (req: any, res) => {
-    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.user.id }, { receiverId: req.user.id }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
-    res.json(messages);
+  // In-memory anti-spam rate limiter
+  const lastMessageTimes = new Map<string, number>();
+
+  // Conversations & Messages
+  app.post('/api/conversations', requireAuth, async (req: any, res) => {
+    try {
+      const { participantIds } = req.body;
+      if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+        return res.status(400).json({ error: 'participantIds (tableau non vide) est requis' });
+      }
+
+      // Ensure current user is in participants
+      const targetIds = Array.from(new Set([req.user.id, ...participantIds]));
+
+      // Verify that all users exist
+      const users = await prisma.user.findMany({
+        where: { id: { in: targetIds } }
+      });
+      if (users.length !== targetIds.length) {
+        return res.status(400).json({ error: 'Un ou plusieurs participants n’existent pas' });
+      }
+
+      // If it's a 1-to-1 conversation, try to find an existing one
+      let existingConversation: any = null;
+      if (targetIds.length === 2) {
+        const userConversations = await prisma.conversation.findMany({
+          where: {
+            participants: {
+              some: { id: req.user.id }
+            }
+          },
+          include: {
+            participants: true
+          }
+        });
+
+        existingConversation = userConversations.find(conv => {
+          const ids = conv.participants.map(p => p.id);
+          return ids.length === 2 && targetIds.every(id => ids.includes(id));
+        });
+      }
+
+      if (existingConversation) {
+        return res.json(existingConversation);
+      }
+
+      // Create new conversation
+      const conversation = await prisma.conversation.create({
+        data: {
+          participants: {
+            connect: targetIds.map(id => ({ id }))
+          }
+        },
+        include: {
+          participants: true
+        }
+      });
+
+      // Broadcast creation to all participants
+      targetIds.forEach(id => {
+        io.to(`user:${id}`).emit('conversation_created', conversation);
+      });
+
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la création de la conversation' });
+    }
   });
 
-  app.get('/api/messages/:userId', requireAuth, async (req: any, res) => {
-    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.params.userId }, { receiverId: req.params.userId }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
-    res.json(messages);
+  app.get('/api/conversations', requireAuth, async (req: any, res) => {
+    try {
+      const conversations = await prisma.conversation.findMany({
+        where: {
+          participants: {
+            some: { id: req.user.id }
+          }
+        },
+        include: {
+          participants: true,
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: {
+              sender: true
+            }
+          }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // Compute unread count for each conversation
+      const conversationsWithUnread = await Promise.all(
+        conversations.map(async (conv) => {
+          const unreadCount = await prisma.message.count({
+            where: {
+              conversationId: conv.id,
+              senderId: { not: req.user.id },
+              isRead: false
+            }
+          });
+          return {
+            ...conv,
+            unreadCount
+          };
+        })
+      );
+
+      res.json(conversationsWithUnread);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la récupération des conversations' });
+    }
   });
 
-  app.get('/api/messages/:userId/:otherUserId', requireAuth, async (req: any, res) => {
-    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    const messages = await prisma.message.findMany({ where: { OR: [{ senderId: req.params.userId, receiverId: req.params.otherUserId }, { senderId: req.params.otherUserId, receiverId: req.params.userId }] }, include: { sender: true, receiver: true }, orderBy: { createdAt: 'asc' } });
-    res.json(messages);
+  app.get('/api/conversations/:id/messages', requireAuth, async (req: any, res) => {
+    try {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: req.params.id },
+        include: { participants: true }
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation non trouvée' });
+      }
+
+      const isParticipant = conversation.participants.some(p => p.id === req.user.id);
+      if (!isParticipant && req.user.role !== 'ADMINISTRATEUR') {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+
+      const messages = await prisma.message.findMany({
+        where: { conversationId: req.params.id },
+        include: {
+          sender: true
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      res.json(messages);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la récupération des messages' });
+    }
   });
 
   app.post('/api/messages', requireAuth, async (req: any, res) => {
     try {
-      const receiverId = req.body.receiverId;
-      const content = req.body.content;
-      if (!receiverId || !content) return res.status(400).json({ error: 'receiverId et content sont requis' });
-      const message = await prisma.message.create({ data: { senderId: req.user.id, receiverId, content }, include: { sender: true, receiver: true } });
-      const notification = await prisma.notification.create({
+      const { conversationId, content } = req.body;
+      if (!conversationId || !content) {
+        return res.status(400).json({ error: 'conversationId et content sont requis' });
+      }
+
+      // Content length limit (anti-spam / validation)
+      const trimmed = content.trim();
+      if (!trimmed) {
+        return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide' });
+      }
+      if (trimmed.length > 2000) {
+        return res.status(400).json({ error: 'Le contenu du message ne doit pas dépasser 2000 caractères' });
+      }
+
+      // In-memory anti-spam check (300ms limit)
+      const now = Date.now();
+      const lastTime = lastMessageTimes.get(req.user.id) || 0;
+      if (now - lastTime < 300) {
+        return res.status(429).json({ error: 'Veuillez patienter avant d’envoyer un autre message (anti-spam)' });
+      }
+      lastMessageTimes.set(req.user.id, now);
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: { participants: true }
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation non trouvée' });
+      }
+
+      const isParticipant = conversation.participants.some(p => p.id === req.user.id);
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+
+      // Create message
+      const senderId = req.body.senderId || req.user.id;
+      const isSenderParticipant = conversation.participants.some(p => p.id === senderId);
+      if (!isSenderParticipant) {
+        return res.status(400).json({ error: 'L’expéditeur doit être un participant de la conversation' });
+      }
+
+      const message = await prisma.message.create({
         data: {
-          userId: receiverId,
-          type: 'MESSAGE' as any,
-          title: 'Nouveau message',
-          message: 'Tu as reçu un nouveau message.',
-          data: {
-            actorId: req.user.id,
-            actorName: req.user.username,
-            actorAvatar: req.user.avatar || '',
-            excerpt: content.length > 60 ? content.slice(0, 57) + '...' : content,
-          } as any
+          conversationId,
+          senderId,
+          content: trimmed,
+          isRead: false
+        },
+        include: {
+          sender: true
         }
       });
-      io.to(`user:${receiverId}`).emit('new_message', message);
-      io.to(`user:${receiverId}`).emit('new_notification', notification);
+
+      // Update conversation updatedAt timestamp
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() }
+      });
+
+      // Create system notification for all other participants and emit via socket
+      await Promise.all(
+        conversation.participants
+          .filter(p => p.id !== req.user.id)
+          .map(async (p) => {
+            const notification = await prisma.notification.create({
+              data: {
+                userId: p.id,
+                type: 'MESSAGE' as any,
+                title: 'Nouveau message',
+                message: `Tu as reçu un nouveau message de ${req.user.username}.`,
+                data: {
+                  actorId: req.user.id,
+                  actorName: req.user.username,
+                  actorAvatar: req.user.avatar || '',
+                  conversationId,
+                  excerpt: trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed,
+                } as any
+              }
+            });
+            io.to(`user:${p.id}`).emit('new_notification', notification);
+          })
+      );
+
+      // Broadcast message to all conversation participants
+      conversation.participants.forEach(p => {
+        io.to(`user:${p.id}`).emit('new_message', message);
+      });
+
       res.status(201).json(message);
     } catch (error) {
       console.error(error);
@@ -1146,12 +1344,49 @@ export async function createServerInstance() {
     }
   });
 
-  app.put('/api/messages/:id/read', requireAuth, async (req: any, res) => {
-    const existing = await prisma.message.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ error: 'Message non trouvé' });
-    if (existing.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    const message = await prisma.message.update({ where: { id: req.params.id }, data: { isRead: true } });
-    res.json(message);
+  app.put('/api/messages/read', requireAuth, async (req: any, res) => {
+    try {
+      const { conversationId } = req.body;
+      if (!conversationId) {
+        return res.status(400).json({ error: 'conversationId est requis' });
+      }
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: { participants: true }
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation non trouvée' });
+      }
+
+      const isParticipant = conversation.participants.some(p => p.id === req.user.id);
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+
+      // Mark all messages as read
+      await prisma.message.updateMany({
+        where: {
+          conversationId,
+          senderId: { not: req.user.id },
+          isRead: false
+        },
+        data: {
+          isRead: true
+        }
+      });
+
+      // Broadcast update to all participants
+      conversation.participants.forEach(p => {
+        io.to(`user:${p.id}`).emit('messages_read', { conversationId, readerId: req.user.id });
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du marquage comme lu' });
+    }
   });
 
   // Follow

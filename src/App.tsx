@@ -124,7 +124,8 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string>('');
   const [serverFriendIds, setServerFriendIds] = useState<string[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -238,6 +239,25 @@ export default function App() {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   };
+
+  const fetchConversationsList = React.useCallback(() => {
+    fetch('/api/conversations', { headers: authHeaders() })
+      .then(res => {
+        if (res.ok) return res.json();
+      })
+      .then(fetched => {
+        if (fetched) {
+          setConversations(fetched.map((c: any) => ({
+            ...c,
+            messages: (c.messages || []).map((m: any) => ({
+              ...m,
+              date: m.createdAt
+            }))
+          })));
+        }
+      })
+      .catch(err => console.error(err));
+  }, [isAuthenticated, currentUser?.id]);
 
 
   const getLocalUserEdits = (): Record<string, Partial<User>> => {
@@ -454,11 +474,47 @@ export default function App() {
       }, 6000);
     });
 
-    socket.on('new_message', (message: Message) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === message.id)) return prev;
-        return [...prev, message];
+    socket.on('conversation_created', (conversation: any) => {
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === conversation.id)) return prev;
+        return [{ ...conversation, messages: [] }, ...prev];
       });
+    });
+
+    socket.on('new_message', (message: Message) => {
+      setConversations((prev) => {
+        const convIndex = prev.findIndex((c) => c.id === message.conversationId);
+        if (convIndex === -1) {
+          fetchConversationsList();
+          return prev;
+        }
+        const conv = prev[convIndex];
+        if (conv.messages.some((m) => m.id === message.id)) return prev;
+
+        const updatedConv = {
+          ...conv,
+          updatedAt: message.createdAt || new Date().toISOString(),
+          messages: [...conv.messages, { ...message, date: message.createdAt }],
+          unreadCount: (conv.unreadCount || 0) + (message.senderId !== (currentUser?.id || '') ? 1 : 0)
+        };
+
+        const next = [...prev];
+        next[convIndex] = updatedConv;
+        return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      });
+    });
+
+    socket.on('messages_read', (payload: { conversationId: string; readerId: string }) => {
+      setConversations((prev) => prev.map((c) => {
+        if (c.id === payload.conversationId) {
+          return {
+            ...c,
+            unreadCount: payload.readerId === (currentUser?.id || '') ? 0 : c.unreadCount,
+            messages: c.messages.map((m) => m.senderId === payload.readerId ? { ...m, isRead: true } : m)
+          };
+        }
+        return c;
+      }));
     });
 
     socket.on('user_followed', () => {
@@ -471,7 +527,9 @@ export default function App() {
 
     return () => {
       socket.off('new_notification');
+      socket.off('conversation_created');
       socket.off('new_message');
+      socket.off('messages_read');
       socket.off('user_followed');
       socket.off('user_unfollowed');
       socket.disconnect();
@@ -689,12 +747,8 @@ export default function App() {
           setComments(fetchedComments.map((comment: Comment) => normalizeCommentLikesFromStorage(comment)));
         }
 
-        // 4. Fetch Messages
-        const messagesRes = await fetch('/api/messages', { headers: authHeaders() });
-        if (messagesRes.ok) {
-          const fetchedMessages = await messagesRes.json();
-          setMessages(fetchedMessages);
-        }
+        // 4. Fetch Conversations
+        fetchConversationsList();
       } catch (err) {
         console.error('[PLUME] Erreur de chargement des données depuis l\'API backend, secours local activé.', err);
       }
@@ -1564,56 +1618,123 @@ export default function App() {
   };
 
   // Messages operations
-  const handleSendMessage = (receiverId: string, content: string) => {
-    const receiver = allUsers.find(u => u.id === receiverId) || allUsers[0];
+  const handleSendMessage = (conversationId: string, content: string) => {
+    if (!currentUser) return;
     
+    const tempMsgId = `msg_temp_${Date.now()}`;
     const newMsg: Message = {
-      id: `msg_${Date.now()}`,
+      id: tempMsgId,
       senderId: currentUser.id,
-      senderName: currentUser.username,
-      senderAvatar: currentUser.avatar,
-      receiverId: receiver.id,
-      receiverName: receiver.username,
-      receiverAvatar: receiver.avatar,
+      conversationId,
       content,
       date: new Date().toISOString(),
-      isRead: true
+      isRead: false,
+      sender: currentUser
     };
 
-    setMessages([...messages, newMsg]);
+    // Optimistically add message to the correct conversation
+    setConversations(prev => prev.map(c => {
+      if (c.id === conversationId) {
+        return {
+          ...c,
+          updatedAt: new Date().toISOString(),
+          messages: [...c.messages, newMsg]
+        };
+      }
+      return c;
+    }));
 
     // Send new chat message to Express service
     fetch('/api/messages', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(newMsg)
-    }).catch(e => console.error('[PLUME] Erreur envoi message backend :', e));
+      body: JSON.stringify({ conversationId, content })
+    })
+    .then(async (res) => {
+      if (res.ok) {
+        const savedMsg = await res.json();
+        // Replace temporary message with final saved message
+        setConversations(prev => prev.map(c => {
+          if (c.id === conversationId) {
+            return {
+              ...c,
+              messages: c.messages.map(m => m.id === tempMsgId ? { ...savedMsg, date: savedMsg.createdAt } : m)
+            };
+          }
+          return c;
+        }));
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erreur lors de l’envoi du message');
+        // Revert optimistic update
+        setConversations(prev => prev.map(c => {
+          if (c.id === conversationId) {
+            return {
+              ...c,
+              messages: c.messages.filter(m => m.id !== tempMsgId)
+            };
+          }
+          return c;
+        }));
+      }
+    })
+    .catch(e => {
+      console.error('[PLUME] Erreur envoi message backend :', e);
+      // Revert optimistic update
+      setConversations(prev => prev.map(c => {
+        if (c.id === conversationId) {
+          return {
+            ...c,
+            messages: c.messages.filter(m => m.id !== tempMsgId)
+          };
+        }
+        return c;
+      }));
+    });
   };
 
-  const handleSimulateReceiveMessage = (senderId: string, content: string) => {
+  const handleSimulateReceiveMessage = (conversationId: string, senderId: string, content: string) => {
+    if (!currentUser) return;
     const sender = allUsers.find(u => u.id === senderId) || allUsers[0];
     
-    const newMsg: Message = {
-      id: `msg_${Date.now()}`,
-      senderId: sender.id,
-      senderName: sender.username,
-      senderAvatar: sender.avatar,
-      receiverId: currentUser.id,
-      receiverName: currentUser.username,
-      receiverAvatar: currentUser.avatar,
-      content,
-      date: new Date().toISOString(),
-      isRead: false
-    };
-
-    setMessages([...messages, newMsg]);
-
     // Simulate incoming message creation on backend
     fetch('/api/messages', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(newMsg)
+      body: JSON.stringify({ conversationId, senderId: sender.id, content })
     }).catch(e => console.error('[PLUME] Erreur réception message simulé backend :', e));
+  };
+
+  const handleStartConversation = async (participantIds: string[]): Promise<Conversation> => {
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ participantIds })
+      });
+      if (res.ok) {
+        const conversation = await res.json();
+        const mappedConv = {
+          ...conversation,
+          messages: (conversation.messages || []).map((m: any) => ({
+            ...m,
+            date: m.createdAt
+          }))
+        };
+        // Prepend it if not already present
+        setConversations(prev => {
+          if (prev.some(c => c.id === mappedConv.id)) return prev;
+          return [mappedConv, ...prev];
+        });
+        return mappedConv;
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Erreur de création de conversation');
+      }
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   };
 
   // Admin Operations
@@ -1858,6 +1979,7 @@ export default function App() {
               onQuickRoleChange={handleQuickRoleChange}
               notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
+              unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
             />
 
             {/* Side-Drawer filter checklist menu */}
@@ -1947,11 +2069,13 @@ export default function App() {
                     <MessagesView
                       currentUser={currentUser!}
                       allUsers={allUsers}
-                      messages={messages}
+                      conversations={conversations}
+                      setConversations={setConversations}
                       onSendMessage={handleSendMessage}
                       onSimulateReceiveMessage={handleSimulateReceiveMessage}
-                      activeInterlocutorId={activeInterlocutorId}
-                      setActiveInterlocutorId={setActiveInterlocutorId}
+                      onStartConversation={handleStartConversation}
+                      activeConversationId={activeConversationId}
+                      setActiveConversationId={setActiveConversationId}
                       groups={groups}
                       setGroups={setGroups}
                       groupMessages={groupMessages}

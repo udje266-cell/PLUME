@@ -36,6 +36,7 @@ interface MainNavigationProps {
   onQuickRoleChange: (role: UserRole) => void;
   notifications?: AppNotification[];
   onMarkNotificationsRead?: (type?: AppNotification['type'] | 'all') => void;
+  unreadMessagesCount?: number;
 }
 
 export default function MainNavigation({
@@ -48,6 +49,7 @@ export default function MainNavigation({
   onQuickRoleChange,
   notifications = [],
   onMarkNotificationsRead,
+  unreadMessagesCount = 0,
 }: MainNavigationProps) {
 
   const canWrite = currentUser.role === 'Auteur' || currentUser.role === 'Utilisateur Mixte';
@@ -308,9 +310,11 @@ export default function MainNavigation({
               >
                 <div className="relative">
                   {tab.icon}
-                  {/* Visual trigger indicator for new simulated messages */}
-                  {tab.id === 'messages' && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-purple-600 rounded-full border border-white dark:border-black" />
+                  {/* Visual trigger indicator for new messages */}
+                  {tab.id === 'messages' && unreadMessagesCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-3.5 px-0.75 rounded-full bg-purple-600 text-white text-[8px] font-black flex items-center justify-center border border-white dark:border-black">
+                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                    </span>
                   )}
                 </div>
                 <span className="text-[9px] mt-1 font-bold font-sans tracking-wide">{tab.label}</span>
