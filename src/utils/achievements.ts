@@ -58,7 +58,7 @@ export const INITIAL_STATS: UserStats = {
 /**
  * Gets user stats from local storage or returns customized initial stats based on preset users
  */
-export function getUserStats(userId: string): UserStats {
+export function getUserStats(userId: string, role?: string, username?: string): UserStats {
   const stored = localStorage.getItem(`plume_stats_v1_${userId}`);
   if (stored) {
     try {
@@ -74,7 +74,13 @@ export function getUserStats(userId: string): UserStats {
 
   // Fallback with preset variations based on user logins to make the demo realistic
   const stats = { ...INITIAL_STATS };
-  if (userId === 'user_reader') {
+  const lowerUser = (userId || '').toLowerCase();
+  const lowerUsername = (username || '').toLowerCase();
+  const isReader = lowerUser === 'user_reader' || lowerUsername === 'charlotte_b' || role === 'Lecteur';
+  const isAuthor = lowerUser === 'user_author' || lowerUsername === 'alexandre_dumas_modern' || role === 'Auteur';
+  const isMixed = lowerUser === 'user_mixed' || lowerUsername === 'sophie_l' || role === 'Utilisateur Mixte';
+
+  if (isReader) {
     stats.chaptersRead = 105;
     stats.commentsPosted = 15;
     stats.likesGiven = 22;
@@ -86,7 +92,7 @@ export function getUserStats(userId: string): UserStats {
     stats.chaptersPublished = 0;
     stats.genresReadCount = 4;
     stats.authorsFollowedCount = 5;
-  } else if (userId === 'user_author') {
+  } else if (isAuthor) {
     stats.chaptersRead = 5;
     stats.commentsPosted = 4;
     stats.likesGiven = 3;
@@ -99,7 +105,7 @@ export function getUserStats(userId: string): UserStats {
     stats.likesReceived = 180;
     stats.genresReadCount = 1;
     stats.authorsFollowedCount = 2;
-  } else if (userId === 'user_mixed') {
+  } else if (isMixed) {
     stats.chaptersRead = 31;
     stats.commentsPosted = 10;
     stats.likesGiven = 14;

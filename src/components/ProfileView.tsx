@@ -1407,7 +1407,7 @@ const user = freshViewedUser || freshCurrentUser;
 
         {/* LIVRES LUS ET LIVRES ÉCRITS DISPLAY */}
         {(() => {
-          const userStatsObj = getUserStats(user.id);
+          const userStatsObj = getUserStats(user.id, user.role, user.username);
           const booksReadCount = userStatsObj.completedReadCycles;
           const booksWrittenCount = writtenStories.length;
 
@@ -1562,7 +1562,7 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* COMPACT & ELEGANT ACCOMPLISHMENTS CARD DISPLAY */}
       {(() => {
-        const uStats = getUserStats(currentUser.id);
+        const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
         const rAchievements = generateReaderAchievements(uStats);
         const aAchievements = generateAuthorAchievements(uStats);
         
@@ -2840,8 +2840,8 @@ const user = freshViewedUser || freshCurrentUser;
               {achievementsTab !== 'simulator' && (() => {
                 const isReaderMode = achievementsTab === 'reader';
                 const list = isReaderMode 
-                  ? generateReaderAchievements(getUserStats(currentUser.id), currentUser.id)
-                  : generateAuthorAchievements(getUserStats(currentUser.id), currentUser.id);
+                  ? generateReaderAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id)
+                  : generateAuthorAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id);
                 
                 const unlockedList = list.filter(a => a.isUnlocked);
                 const pct = list.length ? Math.round((unlockedList.length / list.length) * 100) : 0;

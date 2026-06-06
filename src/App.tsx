@@ -741,7 +741,7 @@ export default function App() {
             localStorage.setItem('plume_current_user', JSON.stringify(me));
             setIsAuthenticated(true);
             return me;
-          } else {
+          } else if (meRes.status === 401) {
             localStorage.removeItem('plume_auth_token');
             setIsAuthenticated(false);
           }
@@ -970,7 +970,7 @@ export default function App() {
     // Evaluate stats for isVerified when changing role/type of account
     let certifiedUser: User | null = null;
     if (updatedFields.role) {
-      const stats = getUserStats(currentUser.id);
+      const stats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
       const evalResult = countAndEvaluateCertification(updatedFields.role, stats);
       if (evalResult.shouldCertify && !nextUser.isVerified) {
         certifiedUser = { ...nextUser, isVerified: true };
@@ -1040,14 +1040,14 @@ export default function App() {
   const handleUpdateAndVerifyUserStats = (updateFn: (stats: UserStats) => void) => {
     if (!currentUser || !currentUser.id) return;
 
-    const oldStats = { ...getUserStats(currentUser.id) };
+    const oldStats = { ...getUserStats(currentUser.id, currentUser.role, currentUser.username) };
     
     // Get list of already unlocked IDs BEFORE update
     const prevAuthorUnlockedIds = generateAuthorAchievements(oldStats, currentUser.id).filter(a => a.isUnlocked).map(a => a.id);
     const prevReaderUnlockedIds = generateReaderAchievements(oldStats, currentUser.id).filter(a => a.isUnlocked).map(a => a.id);
 
     // Perform state updates
-    const nextStats = getUserStats(currentUser.id);
+    const nextStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
     updateFn(nextStats);
     saveUserStats(currentUser.id, nextStats);
 
@@ -1117,6 +1117,16 @@ export default function App() {
       console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
     }
     if (!currentUser?.id || !authorId || authorId === currentUser.id) return;
+
+    if (isAuthenticated) {
+      const token = localStorage.getItem('plume_auth_token');
+      if (!token) {
+        alert("Erreur : session expirée ou non connecté. Veuillez vous reconnecter pour vous abonner.");
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        return;
+      }
+    }
 
     const author = allUsers.find((u) => u.id === authorId);
     if (!author) return;

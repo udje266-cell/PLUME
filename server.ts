@@ -482,6 +482,44 @@ export async function createServerInstance() {
     }
   });
 
+  app.post('/api/auth/demo-login', async (req, res) => {
+    try {
+      const { email, username, role, avatar, bio, birthDate, gender, favoriteGenres } = req.body;
+      if (!email || !username) {
+        return res.status(400).json({ error: 'Email et nom d’utilisateur requis' });
+      }
+
+      const normalizedEmail = email.toLowerCase();
+      let user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            username,
+            email: normalizedEmail,
+            passwordHash: await bcrypt.hash('Plume12345', 12),
+            role: roleToPrisma(role),
+            gender: genderToPrisma(gender),
+            birthDate: birthDate ? new Date(birthDate) : null,
+            avatar: avatar || null,
+            bio: bio || '',
+            favoriteGenres: JSON.stringify(favoriteGenres || []),
+          },
+          include: { followers: true, following: true, blockedUsers: true },
+        });
+      }
+
+      console.log(`[AUTH DEMO] utilisateur connecté - userId: ${user.id}, username: ${user.username}`);
+      res.json({ token: createToken(user.id), user: serializeUser(user) });
+    } catch (error) {
+      console.error('[AUTH DEMO] Erreur lors du demo-login:', error);
+      res.status(500).json({ error: 'Erreur serveur lors de la connexion démo.' });
+    }
+  });
+
   app.post('/api/auth/reset-password', async (req, res) => {
     try {
       const { email, password, code } = req.body;

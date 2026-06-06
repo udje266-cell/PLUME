@@ -340,13 +340,43 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
   };
 
   // Fast demo-bypass
-  const handleQuickDemoAccess = (userEmail: string) => {
+  const handleQuickDemoAccess = async (userEmail: string) => {
     setIsLoading(true);
-    setTimeout(() => {
-      const target = allUsers.find(u => u.email === userEmail) || allUsers[0];
-      onLoginSuccess(target);
+    setErrorMsg('');
+    setSuccessMsg('');
+    const target = allUsers.find(u => u.email === userEmail) || allUsers[0];
+    try {
+      const response = await fetch('/api/auth/demo-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: target.email,
+          username: target.username,
+          role: target.role,
+          avatar: target.avatar,
+          bio: target.bio,
+          birthDate: target.birthDate,
+          gender: target.gender,
+          favoriteGenres: target.favoriteGenres,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setErrorMsg(data.error || 'Connexion démo impossible.');
+        setIsLoading(false);
+        return;
+      }
+
+      localStorage.setItem('plume_auth_token', data.token);
+      setSuccessMsg('Connexion démo réussie !');
+      onLoginSuccess(data.user);
+    } catch (error) {
+      console.error(error);
+      setErrorMsg('Erreur lors de la connexion au serveur.');
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (
