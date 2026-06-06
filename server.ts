@@ -78,6 +78,11 @@ function ageRatingFromPrisma(ageRating: string | undefined) {
   return 'all';
 }
 
+function validatePassword(password: string): boolean {
+  if (typeof password !== 'string') return false;
+  return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
+}
+
 function serializeUser(user: any) {
   if (!user) return user;
   const followers = Array.isArray(user.followers) ? user.followers.map((f: any) => f.followerId || f.id || f) : [];
@@ -364,6 +369,10 @@ export async function createServerInstance() {
       const { username, email, password, role, gender, birthDate, avatar, bio, favoriteGenres, code } = req.body;
       if (!username || !email || !password || !code) return res.status(400).json({ error: 'username, email, password et code OTP sont requis' });
       
+      if (!validatePassword(password)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
+      }
+
       const normalizedEmail = email.toLowerCase();
       const otpRecord = await prisma.otp.findUnique({
         where: { email: normalizedEmail },
@@ -383,7 +392,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
       }
 
-      if (otpRecord.code !== code && code !== '123456') {
+      if (otpRecord.code !== code) {
         console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
         return res.status(400).json({ error: 'Code OTP incorrect.' });
       }
@@ -452,8 +461,8 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Email et nouveau mot de passe requis.' });
       }
 
-      if (typeof password !== 'string' || password.length < 6) {
-        return res.status(400).json({ error: 'Le mot de passe doit comporter au moins 6 caractères.' });
+      if (!validatePassword(password)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
       }
 
       const normalizedEmail = email.toLowerCase();
@@ -488,7 +497,7 @@ export async function createServerInstance() {
           console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
           return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
         }
-        if (otpRecord.code !== code && code !== '123456') {
+        if (otpRecord.code !== code) {
           console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
           return res.status(400).json({ error: 'Code OTP incorrect.' });
         }
@@ -536,7 +545,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
       }
 
-      if (otpRecord.code !== code && code !== '123456') {
+      if (otpRecord.code !== code) {
         console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
         return res.status(400).json({ error: 'Code OTP incorrect.' });
       }

@@ -115,8 +115,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('Le mot de passe doit comporter au moins 6 caractères.');
+    if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      setErrorMsg('Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.');
       return;
     }
 
@@ -211,8 +211,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!password || password.length < 6) {
-      setErrorMsg('Le nouveau mot de passe doit comporter au moins 6 caractères.');
+    if (!password || password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      setErrorMsg('Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.');
       return;
     }
 
@@ -525,7 +525,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 caractères"
+                  placeholder="Min. 8 caractères (lettre + chiffre)"
                   className="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
                 />
               </div>
@@ -715,7 +715,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Minimum 6 caractères"
+                    placeholder="Minimum 8 caractères (lettre + chiffre)"
                     className="w-full pl-9 pr-10 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
                   />
                   <button
@@ -784,7 +784,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
             <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-900/50 rounded-xl text-center">
               <p className="text-[9px] font-mono leading-relaxed text-[#7C3AED] dark:text-indigo-300">
                 📬 [E-mail envoyé]<br />
-                Saisissez le code reçu par e-mail ou utilisez le code de contournement de démonstration : <span className="text-xs font-black select-all tracking-wider font-sans">123456</span>
+                Saisissez le code de validation à 6 chiffres reçu par e-mail.
               </p>
             </div>
 
