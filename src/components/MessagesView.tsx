@@ -32,6 +32,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
+import { authHeaders } from '../utils/auth';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MessagesViewProps {
@@ -211,10 +212,8 @@ export default function MessagesView({
     if (activeConversationId) {
       fetch('/api/messages/read', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('plume_auth_token')}`
-        },
+        // Auth via token mémoire (en-tête) et/ou cookie httpOnly.
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ conversationId: activeConversationId })
       }).catch(e => console.error(e));
 

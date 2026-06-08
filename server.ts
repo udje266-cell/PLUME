@@ -345,13 +345,50 @@ export async function createServerInstance() {
     return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
   }
 
+  const AUTH_COOKIE = 'plume_token';
+  const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 jours
+
+  // Pose le JWT dans un cookie httpOnly : inaccessible au JavaScript (donc non
+  // volable via XSS), contrairement à un stockage localStorage.
+  function setAuthCookie(res: any, token: string) {
+    res.cookie(AUTH_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: AUTH_COOKIE_MAX_AGE,
+      path: '/',
+    });
+  }
+
+  function clearAuthCookie(res: any) {
+    res.clearCookie(AUTH_COOKIE, { path: '/' });
+  }
+
+  // Lit le token depuis l'en-tête Authorization (clients cross-origin / mobile)
+  // ou, à défaut, depuis le cookie httpOnly (application web same-origin).
+  function getTokenFromRequest(req: any): string | null {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const headerToken = authHeader.slice('Bearer '.length).trim();
+      if (headerToken) return headerToken;
+    }
+    const cookieHeader = req.headers.cookie;
+    if (cookieHeader) {
+      const found = cookieHeader
+        .split(';')
+        .map((c: string) => c.trim())
+        .find((c: string) => c.startsWith(`${AUTH_COOKIE}=`));
+      if (found) return decodeURIComponent(found.slice(AUTH_COOKIE.length + 1));
+    }
+    return null;
+  }
+
   async function requireAuth(req: any, res: any, next: any) {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = getTokenFromRequest(req);
+      if (!token) {
         return res.status(401).json({ error: 'Non connecté' });
       }
-      const token = authHeader.replace('Bearer ', '');
       const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
       if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
@@ -365,11 +402,9 @@ export async function createServerInstance() {
 
 
   async function getUserFromAuthorizationHeader(req: any) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
+    const token = getTokenFromRequest(req);
+    if (!token) return null;
     try {
-      const token = authHeader.replace('Bearer ', '');
       const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
       return await prisma.user.findUnique({ where: { id: decoded.userId } });
     } catch {
@@ -380,9 +415,12 @@ export async function createServerInstance() {
   // Authentification de la connexion WebSocket via le JWT (handshake).
   // Empêche un client anonyme d'écouter les notifications/messages d'autrui.
   io.use((socket, next) => {
+    // Token via handshake.auth (clients mobiles) ou via le cookie httpOnly
+    // envoyé automatiquement par le navigateur en same-origin.
     const token =
       (socket.handshake.auth && (socket.handshake.auth as any).token) ||
-      (socket.handshake.query && (socket.handshake.query as any).token);
+      (socket.handshake.query && (socket.handshake.query as any).token) ||
+      getTokenFromRequest(socket.request as any);
     if (!token) return next(new Error('Authentification requise'));
     try {
       const decoded = jwt.verify(String(token), JWT_SECRET) as { userId: string };
@@ -563,7 +601,9 @@ export async function createServerInstance() {
         include: { followers: true, following: true, blockedUsers: true },
       });
       console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (inscription)`);
-      res.status(201).json({ token: createToken(user.id), user: serializeUser(user, true) });
+      const token = createToken(user.id);
+      setAuthCookie(res, token);
+      res.status(201).json({ token, user: serializeUser(user, true) });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Erreur lors de l'inscription" });
@@ -584,7 +624,9 @@ export async function createServerInstance() {
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
-      res.json({ token: createToken(user.id), user: serializeUser(user, true) });
+      const token = createToken(user.id);
+      setAuthCookie(res, token);
+      res.json({ token, user: serializeUser(user, true) });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la connexion' });
@@ -627,7 +669,9 @@ export async function createServerInstance() {
       }
 
       console.log(`[AUTH DEMO] utilisateur connecté - userId: ${user.id}, username: ${user.username}`);
-      res.json({ token: createToken(user.id), user: serializeUser(user, true) });
+      const token = createToken(user.id);
+      setAuthCookie(res, token);
+      res.json({ token, user: serializeUser(user, true) });
     } catch (error) {
       console.error('[AUTH DEMO] Erreur lors du demo-login:', error);
       res.status(500).json({ error: 'Erreur serveur lors de la connexion démo.' });
@@ -773,6 +817,11 @@ export async function createServerInstance() {
       include: { followers: true, following: true, blockedUsers: true },
     });
     res.json(serializeUser(user, true));
+  });
+
+  app.post('/api/auth/logout', (_req, res) => {
+    clearAuthCookie(res);
+    res.json({ success: true });
   });
 
   // Users
