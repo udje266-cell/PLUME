@@ -754,7 +754,7 @@ export default function ReadingView({
     setLikedPassagesMe(prev => ({ ...prev, [key]: !wasLiked }));
     setPassageLikes(prev => ({
       ...prev,
-      [key]: (prev[key] || Math.floor(Math.random() * 14) + 2) + (wasLiked ? -1 : 1)
+      [key]: Math.max(0, (prev[key] || 0) + (wasLiked ? -1 : 1))
     }));
   };
 
@@ -1517,7 +1517,7 @@ export default function ReadingView({
             {paragraphs.map((pText, pIdx) => {
               const capKey = `${activeChapter.id}_p_${pIdx}`;
               const isPFocus = activeParagraphIndex === pIdx;
-              const plikes = passageLikes[capKey] || Math.floor(Math.random() * 12) + 1;
+              const plikes = passageLikes[capKey] || 0;
               const hasLikedPass = likedPassagesMe[capKey];
 
               return (

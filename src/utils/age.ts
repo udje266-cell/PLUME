@@ -9,9 +9,11 @@
  * @returns calculated age in years
  */
 export function calculateAge(birthDateString?: string): number {
-  if (!birthDateString) return 99; // Default to adult if unspecified
+  // Âge inconnu => on renvoie 0 (fail-safe) : l'accès au contenu restreint est
+  // bloqué tant que la date de naissance n'est pas connue/valide.
+  if (!birthDateString) return 0;
   const birthDate = new Date(birthDateString);
-  if (isNaN(birthDate.getTime())) return 99;
+  if (isNaN(birthDate.getTime())) return 0;
   
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();

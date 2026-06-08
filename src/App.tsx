@@ -729,7 +729,8 @@ export default function App() {
 
   const refreshUsersData = async () => {
     try {
-      const usersRes = await fetch('/api/users');
+      // Envoi du token : le backend n'inclut les emails que pour un administrateur.
+      const usersRes = await fetch('/api/users', { headers: authHeaders() });
       if (usersRes.ok) {
         const fetchedUsers = await usersRes.json();
         const mergedUsers = ensureSimulatorAccounts(fetchedUsers as User[]);
@@ -861,7 +862,13 @@ export default function App() {
 
   // Synchronizers to local storage for navigation preferences and session state
   useEffect(() => {
-    localStorage.setItem('plume_current_user', JSON.stringify(currentUser));
+    // À la déconnexion (currentUser === null) on supprime la clé au lieu d'y
+    // écrire la chaîne "null", qui réintroduisait un état incohérent au montage.
+    if (currentUser) {
+      localStorage.setItem('plume_current_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('plume_current_user');
+    }
   }, [currentUser]);
 
   useEffect(() => {

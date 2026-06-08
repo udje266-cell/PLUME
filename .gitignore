@@ -22,9 +22,11 @@ Thumbs.db
 .env.*.local
 !.env.example
 
-# Prisma
-/prisma/dev.db
-/prisma/dev.db-journal
+# Prisma / SQLite local dev databases (any nesting)
+*.db
+*.db-journal
+prisma/**/dev.db
+prisma/**/dev.db-journal
 
 # Android (Capacitor)
 .gradle/
