@@ -32,6 +32,7 @@ import AdminDashboard from './components/AdminDashboard';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
+import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken } from './utils/auth';
 import { 
   getUserStats, 
   saveUserStats, 
@@ -244,12 +245,10 @@ export default function App() {
     return localStorage.getItem('plume_is_logged_in') === 'true';
   });
 
-  // L'authentification repose désormais sur un cookie httpOnly envoyé
-  // automatiquement par le navigateur (same-origin) : on ne lit/stocke plus le
-  // token en JS (protection contre le vol via XSS).
-  const authHeaders = (extra: Record<string, string> = {}) => {
-    return { ...extra };
-  };
+  // L'authentification repose sur un cookie httpOnly (rechargement) + un token
+  // gardé en mémoire et envoyé en en-tête pour la session active. Le token
+  // n'est jamais écrit dans localStorage (atténuation XSS).
+  const authHeaders = (extra: Record<string, string> = {}) => sharedAuthHeaders(extra);
 
   const fetchConversationsList = React.useCallback(() => {
     fetch('/api/conversations', { headers: authHeaders() })
@@ -475,8 +474,10 @@ export default function App() {
 
     const socket = io(window.location.origin, {
       transports: ['websocket', 'polling'],
-      // Le serveur authentifie la connexion via le cookie httpOnly (envoyé
-      // automatiquement) et ne laisse rejoindre que la room correspondante.
+      // Authentification via le token mémoire (handshake) et/ou le cookie
+      // httpOnly envoyé automatiquement. Le serveur n'autorise que la room
+      // correspondant à l'utilisateur authentifié.
+      auth: { token: getAuthToken() || '' },
       withCredentials: true,
     });
 
@@ -2036,6 +2037,7 @@ export default function App() {
   const handleLogout = () => {
     // Demande au serveur d'effacer le cookie httpOnly d'authentification.
     fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
+    setAuthToken(null);
     setIsAuthenticated(false);
     setCurrentUser(null);
     localStorage.removeItem('plume_is_logged_in');

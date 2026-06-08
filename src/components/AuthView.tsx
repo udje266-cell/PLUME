@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft } from 'lucide-react';
 import { User, UserRole } from '../types';
+import { setAuthToken } from '../utils/auth';
 import Logo from './Logo';
 
 interface AuthViewProps {
@@ -85,7 +86,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         return;
       }
 
-      // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
+      // Token gardé en mémoire (pas dans localStorage) ; le serveur a aussi posé
+      // un cookie httpOnly pour la persistance après rechargement.
+      setAuthToken(data.token);
       setSuccessMsg('Connexion réussie !');
       onLoginSuccess(data.user);
     } catch (error) {
@@ -274,7 +277,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
           return;
         }
 
-        // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
+        // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
+        // par le serveur pour la persistance après rechargement.
+        setAuthToken(data.token);
         setSuccessMsg('Votre compte Plume a été créé et activé avec succès !');
         onRegisterSuccess(data.user);
       } else {
@@ -368,7 +373,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         return;
       }
 
-      // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
+      // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
+      // par le serveur pour la persistance après rechargement.
+      setAuthToken(data.token);
       setSuccessMsg('Connexion démo réussie !');
       onLoginSuccess(data.user);
     } catch (error) {

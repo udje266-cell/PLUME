@@ -44,6 +44,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { User, UserRole, Story, Chapter } from '../types';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
+import { authHeaders } from '../utils/auth';
 import { 
   getUserStats, 
   generateReaderAchievements, 
@@ -358,8 +359,8 @@ const user = freshViewedUser || freshCurrentUser;
     try {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
-        // Authentification via le cookie httpOnly (envoyé automatiquement).
-        headers: { 'Content-Type': 'application/json' },
+        // Auth via token mémoire (en-tête) et/ou cookie httpOnly.
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -400,8 +401,8 @@ const user = freshViewedUser || freshCurrentUser;
     if (reportTarget === 'account') {
       fetch(`/api/users/${user.id}/report`, {
         method: 'POST',
-        // Authentification via le cookie httpOnly (envoyé automatiquement).
-        headers: { 'Content-Type': 'application/json' },
+        // Auth via token mémoire (en-tête) et/ou cookie httpOnly.
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ reason: finalReason })
       })
       .then(async (res) => {
