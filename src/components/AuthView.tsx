@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft } from 'lucide-react';
 import { User, UserRole } from '../types';
+import { USERS } from '../data';
 import { setAuthToken } from '../utils/auth';
 import Logo from './Logo';
 
@@ -349,7 +350,14 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
     setErrorMsg('');
     setSuccessMsg('');
-    const target = allUsers.find(u => u.email === userEmail) || allUsers[0];
+    // On cherche le compte de démo dans les données seed (qui contiennent les
+    // emails) : la liste allUsers ne renvoie plus les emails des autres comptes.
+    const target = USERS.find(u => u.email === userEmail) || allUsers.find(u => u.email === userEmail);
+    if (!target) {
+      setErrorMsg('Compte de démonstration introuvable.');
+      setIsLoading(false);
+      return;
+    }
     try {
       const response = await fetch('/api/auth/demo-login', {
         method: 'POST',
