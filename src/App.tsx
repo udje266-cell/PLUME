@@ -862,7 +862,13 @@ export default function App() {
 
   // Synchronizers to local storage for navigation preferences and session state
   useEffect(() => {
-    localStorage.setItem('plume_current_user', JSON.stringify(currentUser));
+    // À la déconnexion (currentUser === null) on supprime la clé au lieu d'y
+    // écrire la chaîne "null", qui réintroduisait un état incohérent au montage.
+    if (currentUser) {
+      localStorage.setItem('plume_current_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('plume_current_user');
+    }
   }, [currentUser]);
 
   useEffect(() => {

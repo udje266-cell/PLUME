@@ -178,6 +178,16 @@ export default function MessagesView({
   const [callDuration, setCallDuration] = useState(0);
   const callTimerRef = useRef<any>(null);
 
+  // Timers de la démo "auto-débat" : suivis pour pouvoir les annuler au
+  // démontage (sinon setState sur composant démonté).
+  const autoDebateTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    return () => {
+      autoDebateTimersRef.current.forEach((id) => clearTimeout(id));
+      autoDebateTimersRef.current = [];
+    };
+  }, []);
+
   const activeConv = conversations.find(c => c.id === activeConversationId);
   const interlocutor = activeConv 
     ? (activeConv.participants.find(p => p.id !== currentUser.id) || activeConv.participants[0])
@@ -472,10 +482,13 @@ export default function MessagesView({
           }
         ];
 
+    // Annule d'éventuels timers d'un débat précédent encore en attente.
+    autoDebateTimersRef.current.forEach((id) => clearTimeout(id));
+    autoDebateTimersRef.current = [];
+
     // Trigger sequential messages
     sequence.forEach((msgInfo, idx) => {
-      setTimeout(() => {
-        // Double check we are still in the same group when message fires
+      const timerId = setTimeout(() => {
         setGroupMessages(prev => {
           const newGMsg: GroupMessage = {
             id: `gmsg_auto_${Date.now()}_${idx}`,
@@ -497,6 +510,7 @@ export default function MessagesView({
           return [...prev, newGMsg];
         });
       }, msgInfo.delay);
+      autoDebateTimersRef.current.push(timerId);
     });
   };
 
