@@ -72,13 +72,15 @@ export function getUserStats(userId: string, role?: string, username?: string): 
     }
   }
 
-  // Fallback with preset variations based on user logins to make the demo realistic
+  // Fallback de démonstration : limité aux COMPTES de démo explicites (par id ou
+  // pseudo). On ne se base plus sur le rôle, sinon tout vrai utilisateur (ex.
+  // chaque "Lecteur") hériterait de statistiques fictives.
   const stats = { ...INITIAL_STATS };
   const lowerUser = (userId || '').toLowerCase();
   const lowerUsername = (username || '').toLowerCase();
-  const isReader = lowerUser === 'user_reader' || lowerUsername === 'charlotte_b' || role === 'Lecteur';
-  const isAuthor = lowerUser === 'user_author' || lowerUsername === 'alexandre_dumas_modern' || role === 'Auteur';
-  const isMixed = lowerUser === 'user_mixed' || lowerUsername === 'sophie_l' || role === 'Utilisateur Mixte';
+  const isReader = lowerUser === 'user_reader' || lowerUsername === 'charlotte_b';
+  const isAuthor = lowerUser === 'user_author' || lowerUsername === 'alexandre_dumas_modern';
+  const isMixed = lowerUser === 'user_mixed' || lowerUsername === 'sophie_l';
 
   if (isReader) {
     stats.chaptersRead = 105;

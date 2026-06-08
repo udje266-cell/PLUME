@@ -48,6 +48,14 @@ describe('achievements and certifications utility', () => {
       expect(stats.wordsWritten).toBe(0);
     });
 
+    it('should NOT fabricate preset stats from role alone (real users)', () => {
+      // Un vrai utilisateur (id non démo) avec un rôle ne doit pas hériter des
+      // statistiques fictives : on retombe sur les stats initiales neutres.
+      const stats = getUserStats('real_user_42', 'Lecteur', 'jean_dupont');
+      expect(stats).toEqual(INITIAL_STATS);
+      expect(stats.chaptersRead).not.toBe(105);
+    });
+
     it('should return custom preset stats for user_author', () => {
       const stats = getUserStats('user_author');
       expect(stats.wordsWritten).toBe(85000);
