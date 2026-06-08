@@ -58,7 +58,6 @@ interface ProfileViewProps {
   viewedUser?: User | null;
   onBackToMyProfile?: () => void;
   onUpdateProfile: (updatedFields: Partial<User>) => void;
-  onQuickRoleChange: (role: UserRole) => void;
   onUpdateAndVerifyUserStats?: (updateFn: (stats: UserStats) => void) => void;
   stories: Story[];
   favorites: string[]; // List of story IDs
@@ -249,7 +248,6 @@ export default function ProfileView({
   viewedUser,
   onBackToMyProfile,
   onUpdateProfile,
-  onQuickRoleChange,
   onUpdateAndVerifyUserStats,
   stories,
   favorites,
@@ -292,7 +290,7 @@ const user = freshViewedUser || freshCurrentUser;
     }
   };
 
-  const [activeSubTab, setActiveSubTab] = useState<'writings' | 'favorites' | 'roles'>('writings');
+  const [activeSubTab, setActiveSubTab] = useState<'writings' | 'favorites'>('writings');
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioText, setBioText] = useState(user.bio);
   const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
@@ -338,8 +336,53 @@ const user = freshViewedUser || freshCurrentUser;
   const [localBio, setLocalBio] = useState(currentUser.bio || '');
   const [localPassword, setLocalPassword] = useState('********');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      alert('Veuillez renseigner votre mot de passe actuel et le nouveau.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      alert('Les mots de passe ne correspondent pas !');
+      return;
+    }
+    if (newPassword.length < 8 || !/[a-zA-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      alert('Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.');
+      return;
+    }
+    setIsSavingPassword(true);
+    try {
+      const token = localStorage.getItem('plume_auth_token');
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(payload.error || 'Échec de la mise à jour du mot de passe.');
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setIsChangingPassword(false);
+      setShowStatusToast('Mot de passe sécurisé !');
+      setTimeout(() => setShowStatusToast(null), 3000);
+    } catch (e) {
+      console.error('[PLUME] Erreur changement de mot de passe :', e);
+      alert("Une erreur réseau s'est produite. Veuillez réessayer.");
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
   const [showStatusToast, setShowStatusToast] = useState<string | null>(null);
 
   // Notification toggles
@@ -358,25 +401,18 @@ const user = freshViewedUser || freshCurrentUser;
     const finalReason = selectedReportReason + (customReportDetails.trim() ? ` - Précisions: ${customReportDetails.trim()}` : '');
     
     if (reportTarget === 'account') {
-      const updatedUser = {
-        ...user,
-        isFlagged: true,
-        flagReason: finalReason
-      };
-      
       const token = localStorage.getItem('plume_auth_token');
-      fetch(`/api/users/${user.id}`, {
-        method: 'PUT',
-        headers: { 
+      fetch(`/api/users/${user.id}/report`, {
+        method: 'POST',
+        headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify(updatedUser)
+        body: JSON.stringify({ reason: finalReason })
       })
-      .then(() => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Échec du signalement');
         alert(`Le compte de @${user.username} a été signalé avec succès pour : "${selectedReportReason}". Les curateurs administratifs vont examiner les faits.`);
-        user.isFlagged = true;
-        user.flagReason = finalReason;
         setIsReportModalOpen(false);
         setCustomReportDetails('');
       })
@@ -1681,7 +1717,7 @@ const user = freshViewedUser || freshCurrentUser;
       })()}
 
       {/* 5. TABS NAVIGATION WITH HIGHLY LITERARY MOOD */}
-      <div className="grid grid-cols-3 border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl">
+      <div className="grid grid-cols-2 border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl">
         <button
           id="profile-tab-writings"
           onClick={() => setActiveSubTab('writings')}
@@ -1706,19 +1742,6 @@ const user = freshViewedUser || freshCurrentUser;
         >
           <BookOpen className="w-4 h-4" />
           <span className="text-[9px] uppercase font-bold mt-1">Étagère de Lectures</span>
-        </button>
-
-        <button
-          id="profile-tab-roles"
-          onClick={() => setActiveSubTab('roles')}
-          className={`py-3 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
-            activeSubTab === 'roles'
-              ? 'bg-purple-600 text-white font-black shadow-md'
-              : 'text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400'
-          }`}
-        >
-          <Sliders className="w-4 h-4" />
-          <span className="text-[9px] uppercase font-bold mt-1">Diorama</span>
         </button>
       </div>
 
@@ -1953,47 +1976,6 @@ const user = freshViewedUser || freshCurrentUser;
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* TAB 3: Roles Pane formatted as a Cabinet of settings */}
-        {activeSubTab === 'roles' && (
-          <div className="animate-fade-in bg-zinc-50 dark:bg-zinc-900/15 border border-purple-500/10 dark:border-zinc-800 p-5 rounded-2xl space-y-4 text-left">
-            <div className="flex items-center space-x-2 text-xs text-purple-650 dark:text-purple-400 font-bold uppercase tracking-wider">
-              <Sliders className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span>Cabinet de Configuration de Rôle</span>
-            </div>
-            
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-              Basculez instantanément le point de vue d'utilisation de Plume pour tester l’intégralité de l’expérience de l’archipel d'écriture.
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 pt-1 font-sans">
-              {([
-                { id: 'Lecteur', label: 'Lecteur' },
-                { id: 'Auteur', label: 'Auteur d\'Ouvrages' },
-                { id: 'Utilisateur Mixte', label: 'Utilisateur Mixte' },
-                { id: 'Administrateur', label: 'Administrateur' }
-              ] as const).map((r) => (
-                <button
-                  key={r.id}
-                  id={`profile-role-toggle-${r.id.replace(/\s+/g, '-')}`}
-                  onClick={() => onQuickRoleChange(r.id)}
-                  className={`px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
-                    currentUser.role === r.id
-                      ? 'bg-purple-600 border-purple-650 text-white shadow font-bold'
-                      : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50'
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="pt-3.5 border-t border-zinc-200/50 dark:border-zinc-800/80 text-[9.5px] text-zinc-400 flex items-center space-x-1.5 font-sans">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Chronique commencée le {new Date(currentUser.signUpDate).toLocaleDateString()}</span>
-            </div>
           </div>
         )}
 
@@ -4188,40 +4170,41 @@ const user = freshViewedUser || freshCurrentUser;
                         <label className="text-[11.5px] font-bold text-gray-900 dark:text-white block font-sans">Changer le mot de passe</label>
                         {isChangingPassword ? (
                           <div className="space-y-2">
-                            <input 
+                            <input
                               type="password"
+                              autoComplete="current-password"
+                              placeholder="Mot de passe actuel"
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              className="w-full bg-white dark:bg-zinc-950 border border-gray-250 dark:border-zinc-850 text-xs px-3 py-1.5 rounded-xl text-zinc-800 dark:text-zinc-200"
+                            />
+                            <input
+                              type="password"
+                              autoComplete="new-password"
                               placeholder="Nouveau mot de passe"
                               value={newPassword}
                               onChange={(e) => setNewPassword(e.target.value)}
                               className="w-full bg-white dark:bg-zinc-950 border border-gray-250 dark:border-zinc-850 text-xs px-3 py-1.5 rounded-xl text-zinc-800 dark:text-zinc-200"
                             />
-                            <input 
+                            <input
                               type="password"
+                              autoComplete="new-password"
                               placeholder="Confirmer le nouveau mot de passe"
                               value={confirmNewPassword}
                               onChange={(e) => setConfirmNewPassword(e.target.value)}
-                              className="w-full bg-white dark:bg-zinc-950 border border-gray-250 dark:border-zinc-850 text-xs px-3 py-1.5 rounded-xl text-zinc-805 dark:text-zinc-200"
+                              className="w-full bg-white dark:bg-zinc-950 border border-gray-250 dark:border-zinc-850 text-xs px-3 py-1.5 rounded-xl text-zinc-800 dark:text-zinc-200"
                             />
                             <div className="flex space-x-2 pt-1 font-sans">
                               <button
-                                onClick={() => {
-                                  if (newPassword && newPassword === confirmNewPassword) {
-                                    alert("Mot de passe mis à jour avec succès.");
-                                    setNewPassword('');
-                                    setConfirmNewPassword('');
-                                    setIsChangingPassword(false);
-                                    setShowStatusToast("Mot de passe sécurisé !");
-                                    setTimeout(() => setShowStatusToast(null), 3000);
-                                  } else {
-                                    alert("Les mots de passe ne correspondent pas !");
-                                  }
-                                }}
-                                className="py-1 px-3 bg-purple-600 hover:bg-purple-750 text-white rounded-lg text-[9px] font-black uppercase transition cursor-pointer"
+                                disabled={isSavingPassword}
+                                onClick={handleChangePassword}
+                                className="py-1 px-3 bg-purple-600 hover:bg-purple-750 text-white rounded-lg text-[9px] font-black uppercase transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Enregistrer
+                                {isSavingPassword ? 'Enregistrement…' : 'Enregistrer'}
                               </button>
                               <button
                                 onClick={() => {
+                                  setCurrentPassword('');
                                   setNewPassword('');
                                   setConfirmNewPassword('');
                                   setIsChangingPassword(false);

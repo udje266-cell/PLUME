@@ -476,6 +476,9 @@ export default function App() {
 
     const socket = io(window.location.origin, {
       transports: ['websocket', 'polling'],
+      // Le serveur authentifie la connexion via ce token (handshake) et ne
+      // laisse rejoindre que la room de l'utilisateur correspondant.
+      auth: { token: localStorage.getItem('plume_auth_token') || '' },
     });
 
     socketRef.current = socket;
@@ -931,32 +934,6 @@ export default function App() {
   // Toggle dark/light theme
   const handleToggleDarkMode = () => {
     setDarkMode(!darkMode);
-  };
-
-  // Switch simulation profile without modifying the role of the previous account.
-  const handleQuickRoleChange = (role: UserRole) => {
-    const availableUsers = ensureSimulatorAccounts(allUsers);
-    const targetUser = availableUsers.find(u => u.role === role);
-
-    if (!targetUser) {
-      console.error(`[PLUME] Impossible de trouver ou créer un compte ${role} pour le simulateur.`);
-      return;
-    }
-
-    const safeTargetUser = mergeLocalUserEdit(targetUser);
-    setAllUsers(availableUsers.map((u) => u.id === safeTargetUser.id ? safeTargetUser : u));
-    setCurrentUser(safeTargetUser);
-    localStorage.setItem('plume_current_user', JSON.stringify(safeTargetUser));
-    setViewedUser(null);
-    setSelectedStoryForReading(null);
-
-    if (role === 'Administrateur') {
-      setActiveTab('admin');
-    } else if (role === 'Auteur') {
-      setActiveTab('write');
-    } else {
-      setActiveTab('home');
-    }
   };
 
   // Update profile attributes (bio, preferences)
@@ -2214,7 +2191,6 @@ export default function App() {
               onOpenSidebar={() => setIsSidebarOpen(true)}
               darkMode={darkMode}
               onToggleDarkMode={handleToggleDarkMode}
-              onQuickRoleChange={handleQuickRoleChange}
               notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
               unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
@@ -2329,7 +2305,6 @@ export default function App() {
                       viewedUser={viewedUser}
                       onBackToMyProfile={() => setViewedUser(null)}
                       onUpdateProfile={handleUpdateProfile}
-                      onQuickRoleChange={handleQuickRoleChange}
                       onUpdateAndVerifyUserStats={handleUpdateAndVerifyUserStats}
                       stories={allowedStories}
                       favorites={favorites}
