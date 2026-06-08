@@ -79,15 +79,15 @@ export default function HomeView({
     if (storyChs.length === 0) return { percent: 0, lastRead: 'Non commencé' };
     
     const readCount = storyChs.filter(ch => readChapters.includes(ch.id)).length;
-    let percent = Math.round((readCount / storyChs.length) * 100);
-    
-    // If fallback was used and percent is 0, let's mock it to 35% for display richness, otherwise use calculated
-    if (ongoingStories.length === 0 && percent === 0) {
-      percent = 35;
-    }
+    const percent = Math.round((readCount / storyChs.length) * 100);
 
+    // On ne dispose pas d'horodatage de lecture par histoire : on affiche donc
+    // un libellé d'état réel plutôt qu'une fausse date.
     const isLastRead = lastReadProgress?.storyId === story.id;
-    const lastRead = isLastRead ? "À l'instant" : "Hier";
+    let lastRead: string;
+    if (isLastRead) lastRead = "À l'instant";
+    else if (readCount > 0) lastRead = 'En cours';
+    else lastRead = 'À découvrir';
 
     return { percent, lastRead };
   };
@@ -362,7 +362,6 @@ export default function HomeView({
                     <Heart className="w-3 h-3 text-purple-500 fill-purple-500/10" />
                     <span>{story.likes}</span>
                   </span>
-                  <span className="text-purple-500 font-bold">+18% rec.</span>
                 </div>
               </div>
 

@@ -341,7 +341,7 @@ Le vent souffla, emportant les premiers pétales roses des cerisiers sauvages ve
   {
     id: 'story_admin_sf_4',
     title: "La Cité des Nuages",
-    description: "Dans une haute atmosphère saturée de gaz toxiques, l'humanité a trouvé refuge dans des cités flottantes géantes. Mais la panne subite du générateur d'antigravité d'Altis menace d'英语- précipiter un million d'âmes vers le sol toxique.",
+    description: "Dans une haute atmosphère saturée de gaz toxiques, l'humanité a trouvé refuge dans des cités flottantes géantes. Mais la panne subite du générateur d'antigravité d'Altis menace de précipiter un million d'âmes vers le sol toxique.",
     authorId: 'user_admin',
     authorName: 'Gabriel_Plume_Mod',
     authorAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',

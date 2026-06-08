@@ -9,9 +9,11 @@ describe('calculateAge', () => {
     expect(calculateAge(dateString)).toBe(20);
   });
 
-  it('should return 99 if birthDateString is undefined or invalid', () => {
-    expect(calculateAge(undefined)).toBe(99);
-    expect(calculateAge('invalid-date')).toBe(99);
+  it('should return 0 (fail-safe) if birthDateString is undefined or invalid', () => {
+    // Âge inconnu => 0 : l'accès au contenu restreint reste bloqué tant que la
+    // date de naissance n'est pas connue.
+    expect(calculateAge(undefined)).toBe(0);
+    expect(calculateAge('invalid-date')).toBe(0);
   });
 });
 
