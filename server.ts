@@ -163,12 +163,39 @@ function serializeComment(comment: any) {
 
 export async function createServerInstance() {
   const app = express();
+  // Nécessaire pour obtenir la vraie IP client derrière un proxy (Render, etc.)
+  app.set('trust proxy', 1);
   const httpServer = createServer(app);
+
+  // Liste blanche d'origines CORS (séparées par des virgules). En production, on
+  // refuse les origines inconnues ; en développement on autorise tout.
+  const allowedOrigins = (process.env.CORS_ORIGINS || process.env.APP_URL || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const corsOrigin: any =
+    allowedOrigins.length > 0
+      ? allowedOrigins
+      : process.env.NODE_ENV === 'production'
+        ? false
+        : '*';
+
   const io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'] },
+    cors: { origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE'] },
   });
   const PORT = Number(process.env.PORT || 3000);
   const JWT_SECRET = process.env.JWT_SECRET || 'plume_secret_dev_change_later';
+
+  // En production, le secret JWT est obligatoire : sans cela n'importe qui
+  // pourrait forger des tokens valides avec la valeur par défaut publique.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16)
+  ) {
+    throw new Error(
+      'JWT_SECRET manquant ou trop court en production (16 caractères minimum requis).'
+    );
+  }
 
   // Email configuration (used for sender extraction)
   const smtpFrom = process.env.SMTP_FROM || '"PLUME" <udje266@gmail.com>';
@@ -252,6 +279,52 @@ export async function createServerInstance() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // ── Rate limiting simple en mémoire (par IP) ───────────────────────────────
+  // Protège les routes sensibles (login, OTP, reset) contre le brute-force et le
+  // spam. Note : en mémoire uniquement — pour du multi-instance, utiliser Redis.
+  function createRateLimiter(opts: { windowMs: number; max: number; message?: string }) {
+    const hits = new Map<string, { count: number; resetAt: number }>();
+    const cleanup = setInterval(() => {
+      const now = Date.now();
+      for (const [key, value] of hits) {
+        if (value.resetAt <= now) hits.delete(key);
+      }
+    }, opts.windowMs);
+    if (typeof cleanup.unref === 'function') cleanup.unref();
+
+    return (req: any, res: any, next: any) => {
+      // Désactivé en test pour ne pas rendre les tests flaky.
+      if (process.env.NODE_ENV === 'test') return next();
+      const key = req.ip || req.connection?.remoteAddress || 'unknown';
+      const now = Date.now();
+      const entry = hits.get(key);
+      if (!entry || entry.resetAt <= now) {
+        hits.set(key, { count: 1, resetAt: now + opts.windowMs });
+        return next();
+      }
+      entry.count += 1;
+      if (entry.count > opts.max) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.setHeader('Retry-After', String(retryAfter));
+        return res.status(429).json({
+          error: opts.message || 'Trop de requêtes, veuillez réessayer plus tard.',
+        });
+      }
+      return next();
+    };
+  }
+
+  const authLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: 'Trop de tentatives. Réessayez dans quelques minutes.',
+  });
+  const otpLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: "Trop de demandes de code. Réessayez dans quelques minutes.",
+  });
+
   function createToken(userId: string) {
     return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
   }
@@ -267,7 +340,6 @@ export async function createServerInstance() {
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
       if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
       req.user = user;
-      console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username}`);
       next();
     } catch (err: any) {
       console.warn(`[AUTH] Echec authentification :`, err.message || err);
@@ -289,14 +361,33 @@ export async function createServerInstance() {
     }
   }
 
+  // Authentification de la connexion WebSocket via le JWT (handshake).
+  // Empêche un client anonyme d'écouter les notifications/messages d'autrui.
+  io.use((socket, next) => {
+    const token =
+      (socket.handshake.auth && (socket.handshake.auth as any).token) ||
+      (socket.handshake.query && (socket.handshake.query as any).token);
+    if (!token) return next(new Error('Authentification requise'));
+    try {
+      const decoded = jwt.verify(String(token), JWT_SECRET) as { userId: string };
+      (socket.data as any).userId = decoded.userId;
+      return next();
+    } catch {
+      return next(new Error('Session invalide'));
+    }
+  });
+
   io.on('connection', (socket) => {
+    const authUserId = (socket.data as any).userId as string | undefined;
     console.log(`[SOCKET] utilisateur connecté - socketId: ${socket.id}`);
 
-    socket.on('join', (userId: string) => {
-      if (!userId) return;
-      socket.join(`user:${userId}`);
-      console.log(`[SOCKET] room join - userId: ${userId}, room: user:${userId}, socketId: ${socket.id}`);
-      socket.emit('joined', { userId });
+    // On ignore l'identifiant fourni par le client : un utilisateur ne peut
+    // rejoindre que SA propre room, déduite du token vérifié.
+    socket.on('join', () => {
+      if (!authUserId) return;
+      socket.join(`user:${authUserId}`);
+      console.log(`[SOCKET] room join - userId: ${authUserId}, socketId: ${socket.id}`);
+      socket.emit('joined', { userId: authUserId });
     });
 
     socket.on('typing', (payload: { senderId: string; receiverId: string }) => {
@@ -322,7 +413,7 @@ export async function createServerInstance() {
   });
 
   // Auth
-  app.post('/api/auth/otp/request', async (req, res) => {
+  app.post('/api/auth/otp/request', otpLimiter, async (req, res) => {
     try {
       const { email, reason } = req.body;
       if (!email || !reason) {
@@ -381,7 +472,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
       const { username, email, password, role, gender, birthDate, avatar, bio, favoriteGenres, code } = req.body;
       if (!username || !email || !password || !code) return res.status(400).json({ error: 'username, email, password et code OTP sont requis' });
@@ -463,18 +554,20 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ error: 'email et password sont requis' });
+      if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ error: 'email et password sont requis' });
+      }
+      // L'email est normalisé en minuscules à l'inscription : on aligne ici.
       const user = await prisma.user.findUnique({
-        where: { email },
+        where: { email: email.toLowerCase() },
         include: { followers: true, following: true, blockedUsers: true },
       });
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
-      console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (connexion)`);
       res.json({ token: createToken(user.id), user: serializeUser(user) });
     } catch (error) {
       console.error(error);
@@ -482,8 +575,13 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/auth/demo-login', async (req, res) => {
+  app.post('/api/auth/demo-login', authLimiter, async (req, res) => {
     try {
+      // Cette route délivre un token sans mot de passe : réservée au
+      // développement/démo, jamais exposée en production (account takeover).
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ error: 'Route introuvable.' });
+      }
       const { email, username, role, avatar, bio, birthDate, gender, favoriteGenres } = req.body;
       if (!email || !username) {
         return res.status(400).json({ error: 'Email et nom d’utilisateur requis' });
@@ -520,7 +618,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/auth/reset-password', async (req, res) => {
+  app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
     try {
       const { email, password, code } = req.body;
 
@@ -586,7 +684,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/auth/verify-otp', async (req, res) => {
+  app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     try {
       const { email, code } = req.body;
       if (!email || !code) {
@@ -655,16 +753,28 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/users', async (req, res) => {
+  // Création directe d'utilisateur : réservée aux administrateurs. L'inscription
+  // publique passe par /api/auth/otp/request + /api/auth/register (avec OTP).
+  app.post('/api/users', requireAuth, async (req: any, res) => {
     try {
+      if (req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
       const user = req.body;
-      const existingUser = await prisma.user.findFirst({ where: { OR: [{ email: user.email }, { username: user.username }] } });
+      if (!user.username || !user.email) {
+        return res.status(400).json({ error: 'username et email sont requis' });
+      }
+      if (user.password && !validatePassword(user.password)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
+      }
+      const normalizedEmail = String(user.email).toLowerCase();
+      const existingUser = await prisma.user.findFirst({ where: { OR: [{ email: normalizedEmail }, { username: user.username }] } });
       if (existingUser) return res.status(400).json({ error: 'Cet utilisateur existe déjà.' });
       const newUser = await prisma.user.create({
         data: {
-          id: user.id || undefined,
+          // L'id est généré par la base : on n'accepte pas d'id arbitraire.
           username: user.username,
-          email: user.email,
+          email: normalizedEmail,
           passwordHash: user.password ? await bcrypt.hash(user.password, 12) : null,
           role: roleToPrisma(user.role),
           gender: genderToPrisma(user.gender),
@@ -682,54 +792,95 @@ export async function createServerInstance() {
     }
   });
 
-  app.put('/api/users/:id', async (req: any, res) => {
+  app.put('/api/users/:id', requireAuth, async (req: any, res) => {
     try {
-      const authUser = await getUserFromAuthorizationHeader(req);
-      const allowDevLocalSave = process.env.NODE_ENV !== 'production' && !authUser;
+      const authUser = req.user;
+      const isSelf = authUser.id === req.params.id;
+      const isAdmin = authUser.role === 'Administrateur';
 
-      if (!allowDevLocalSave && (!authUser || (authUser.id !== req.params.id && authUser.role !== 'ADMINISTRATEUR'))) {
+      // Un utilisateur ne peut modifier que son propre profil (sauf admin).
+      if (!isSelf && !isAdmin) {
         return res.status(403).json({ error: 'Action interdite' });
       }
 
       const user = req.body;
+
+      // Champs librement modifiables par le propriétaire du compte.
+      const data: any = {
+        username: user.username,
+        email: typeof user.email === 'string' ? user.email.toLowerCase() : undefined,
+        bio: user.bio ?? undefined,
+        avatar: user.avatar ?? undefined,
+        gender: user.gender ? genderToPrisma(user.gender) : undefined,
+        birthDate: user.birthDate ? new Date(user.birthDate) : undefined,
+        favoriteGenres: Array.isArray(user.favoriteGenres) ? JSON.stringify(user.favoriteGenres) : undefined,
+        showFollowers: user.showFollowers,
+        showFollowing: user.showFollowing,
+        showFriends: user.showFriends,
+        showMentions: user.showMentions,
+        privateProfile: user.privateProfile,
+        showBooksRead: user.showBooksRead,
+        showBooksWritten: user.showBooksWritten,
+        allowMessages: user.allowMessages,
+        whoCanFollow: user.whoCanFollow,
+        whoCanComment: user.whoCanComment,
+        readingTheme: user.readingTheme,
+        readingFontSize: user.readingFontSize,
+        readingFontFamily: user.readingFontFamily,
+        readingFullscreen: user.readingFullscreen,
+        autoSaveEnabled: user.autoSaveEnabled,
+        confirmDeleteStory: user.confirmDeleteStory,
+        isVerified: user.isVerified,
+        hasChangedRole: user.hasChangedRole,
+      };
+
+      // Changement de rôle : on interdit toute auto-promotion en
+      // Administrateur. Seul un admin peut accorder ce rôle.
+      if (user.role !== undefined) {
+        const requestedRole = roleToPrisma(user.role);
+        if (requestedRole === 'Administrateur' && !isAdmin) {
+          return res.status(403).json({ error: 'Élévation de privilèges interdite.' });
+        }
+        data.role = requestedRole;
+      }
+
+      // Champs de modération : réservés aux administrateurs.
+      if (isAdmin) {
+        data.isFlagged = user.isFlagged;
+        data.flagReason = user.flagReason;
+      }
+
       const updatedUser = await prisma.user.update({
         where: { id: req.params.id },
-        data: {
-          username: user.username,
-          email: user.email,
-          bio: user.bio ?? undefined,
-          avatar: user.avatar ?? undefined,
-          role: user.role ? roleToPrisma(user.role) : undefined,
-          gender: user.gender ? genderToPrisma(user.gender) : undefined,
-          birthDate: user.birthDate ? new Date(user.birthDate) : undefined,
-          favoriteGenres: Array.isArray(user.favoriteGenres) ? JSON.stringify(user.favoriteGenres) : undefined,
-          showFollowers: user.showFollowers,
-          showFollowing: user.showFollowing,
-          showFriends: user.showFriends,
-          showMentions: user.showMentions,
-          privateProfile: user.privateProfile,
-          showBooksRead: user.showBooksRead,
-          showBooksWritten: user.showBooksWritten,
-          allowMessages: user.allowMessages,
-          whoCanFollow: user.whoCanFollow,
-          whoCanComment: user.whoCanComment,
-          readingTheme: user.readingTheme,
-          readingFontSize: user.readingFontSize,
-          readingFontFamily: user.readingFontFamily,
-          readingFullscreen: user.readingFullscreen,
-          autoSaveEnabled: user.autoSaveEnabled,
-          confirmDeleteStory: user.confirmDeleteStory,
-          isVerified: user.isVerified,
-          isFlagged: user.isFlagged,
-          flagReason: user.flagReason,
-          hasChangedRole: user.hasChangedRole,
-        },
+        data,
         include: { followers: true, following: true, blockedUsers: true },
       });
       res.json(serializeUser(updatedUser));
     } catch (error) {
       console.error(error);
       res.status(404).json({ error: 'Utilisateur non trouvé ou erreur de modification' });
+    }
+  });
+
+  // Signalement d'un compte : tout utilisateur connecté peut signaler, mais
+  // seul ce flux (et non un PUT arbitraire) peut positionner isFlagged.
+  app.post('/api/users/:id/report', requireAuth, async (req: any, res) => {
+    try {
+      const { reason } = req.body || {};
+      const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+      if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+      const updated = await prisma.user.update({
+        where: { id: req.params.id },
+        data: {
+          isFlagged: true,
+          flagReason: typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 500) : 'Signalé par un utilisateur',
+        },
+      });
+      console.log(`[REPORT] compte ${req.params.id} signalé par ${req.user.id}`);
+      res.json({ success: true, isFlagged: updated.isFlagged });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du signalement.' });
     }
   });
 
@@ -820,7 +971,7 @@ export async function createServerInstance() {
     try {
       const existing = await prisma.story.findUnique({ where: { id: req.params.id } });
       if (!existing) return res.status(404).json({ error: 'Récit non trouvé' });
-      if (existing.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existing.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const story = req.body;
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },
@@ -856,7 +1007,7 @@ export async function createServerInstance() {
     try {
       const story = await prisma.story.findUnique({ where: { id: req.params.id } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
-      if (story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.story.delete({ where: { id: req.params.id } });
       res.status(204).end();
     } catch (error) {
@@ -875,7 +1026,7 @@ export async function createServerInstance() {
     try {
       const story = await prisma.story.findUnique({ where: { id: req.params.storyId } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
-      if (story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
       const newChapter = await prisma.chapter.create({
         data: {
@@ -901,7 +1052,7 @@ export async function createServerInstance() {
     try {
       const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: true } });
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
-      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.id },
@@ -926,7 +1077,7 @@ export async function createServerInstance() {
     try {
       const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: true } });
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
-      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.id } });
       res.status(204).end();
     } catch (error) {
@@ -941,7 +1092,7 @@ export async function createServerInstance() {
     try {
       const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.chapterId }, include: { story: true } });
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
-      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.chapterId },
@@ -966,7 +1117,7 @@ export async function createServerInstance() {
     try {
       const existingChapter = await prisma.chapter.findUnique({ where: { id: req.params.chapterId }, include: { story: true } });
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
-      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.chapterId } });
       res.status(204).end();
     } catch (error) {
@@ -1061,7 +1212,7 @@ export async function createServerInstance() {
     try {
       const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
       if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
-      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content: req.body.content }, include: { user: true, replies: { include: { user: true } } } });
       res.json(serializeComment(comment));
     } catch (error) {
@@ -1089,7 +1240,7 @@ export async function createServerInstance() {
     try {
       const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
       if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
-      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.comment.delete({ where: { id: req.params.id } });
       res.status(204).end();
     } catch (error) {
@@ -1131,19 +1282,30 @@ export async function createServerInstance() {
 
   // Notifications
   app.get('/api/notifications/:userId', requireAuth, async (req: any, res) => {
-    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    if (req.user.id !== req.params.userId && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
     const notifications = await prisma.notification.findMany({ where: { userId: req.params.userId }, orderBy: { createdAt: 'desc' } });
     res.json(notifications);
   });
 
   app.put('/api/notifications/:id/read', requireAuth, async (req: any, res) => {
-    const notification = await prisma.notification.update({ where: { id: req.params.id }, data: { isRead: true } });
-    if (notification.userId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    res.json(notification);
+    try {
+      // On vérifie l'appartenance AVANT toute écriture (sinon IDOR : on
+      // marquerait comme lue la notification d'autrui).
+      const existing = await prisma.notification.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: 'Notification introuvable' });
+      if (existing.userId !== req.user.id && req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+      const notification = await prisma.notification.update({ where: { id: req.params.id }, data: { isRead: true } });
+      res.json(notification);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour de la notification' });
+    }
   });
 
   app.put('/api/notifications/:userId/read-all', requireAuth, async (req: any, res) => {
-    if (req.user.id !== req.params.userId && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    if (req.user.id !== req.params.userId && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
     await prisma.notification.updateMany({ where: { userId: req.params.userId, isRead: false }, data: { isRead: true } });
     res.json({ success: true });
   });
@@ -1288,7 +1450,7 @@ export async function createServerInstance() {
       }
 
       const isParticipant = conversation.participants.some(p => p.id === req.user.id);
-      if (!isParticipant && req.user.role !== 'ADMINISTRATEUR') {
+      if (!isParticipant && req.user.role !== 'Administrateur') {
         console.warn(`[CONVERSATION] erreur accès - conversationId: ${req.params.id}, action interdite pour userId: ${req.user.id}`);
         return res.status(403).json({ error: 'Action interdite' });
       }
@@ -1311,9 +1473,9 @@ export async function createServerInstance() {
   app.post('/api/messages', requireAuth, async (req: any, res) => {
     try {
       const { conversationId, content } = req.body;
-      const senderId = req.body.senderId || req.user.id;
-      
-      console.log(`[MESSAGE] tentative - conversationId: ${conversationId}, senderId: ${senderId}, content: "${content ? content.slice(0, 30) : ''}"`);
+      // L'expéditeur est TOUJOURS l'utilisateur authentifié : on ignore tout
+      // senderId fourni par le client (sinon usurpation d'identité possible).
+      const senderId = req.user.id;
 
       if (!conversationId || !content) {
         console.warn(`[MESSAGE] Paramètres manquants : conversationId=${conversationId}, content=${content}`);
@@ -1348,24 +1510,10 @@ export async function createServerInstance() {
         return res.status(404).json({ error: 'Conversation non trouvée' });
       }
 
-      const otherParticipant = conversation.participants.find(p => p.id !== senderId);
-      const targetUserId = otherParticipant?.id;
-      console.log("currentUser.id =", senderId);
-      console.log("targetUser.id =", targetUserId);
-      if (senderId.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
-        console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
-      }
-
-      const isParticipant = conversation.participants.some(p => p.id === req.user.id);
+      const isParticipant = conversation.participants.some(p => p.id === senderId);
       if (!isParticipant) {
-        console.warn(`[MESSAGE] Utilisateur ${req.user.id} non participant à la conversation ${conversationId}`);
+        console.warn(`[MESSAGE] Utilisateur ${senderId} non participant à la conversation ${conversationId}`);
         return res.status(403).json({ error: 'Action interdite' });
-      }
-
-      const isSenderParticipant = conversation.participants.some(p => p.id === senderId);
-      if (!isSenderParticipant) {
-        console.warn(`[MESSAGE] L’expéditeur ${senderId} n’est pas participant à la conversation ${conversationId}`);
-        return res.status(400).json({ error: 'L’expéditeur doit être un participant de la conversation' });
       }
 
       // Create message
@@ -1619,29 +1767,49 @@ export async function createServerInstance() {
   });
 
   app.post('/api/friends/accept/:id', requireAuth, async (req: any, res) => {
-    const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'ACCEPTED' as any } });
-    if (friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    const notification = await prisma.notification.create({
-      data: {
-        userId: friendship.requesterId,
-        type: 'FRIEND_ACCEPTED' as any,
-        title: 'Demande acceptée',
-        message: 'Ta demande d’ami a été acceptée.',
-        data: {
-          actorId: req.user.id,
-          actorName: req.user.username,
-          actorAvatar: req.user.avatar || '',
-        } as any
+    try {
+      // Autorisation vérifiée AVANT modification (sinon IDOR : on pourrait
+      // accepter une demande d'ami dont on n'est pas le destinataire).
+      const existing = await prisma.friendship.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: 'Demande introuvable' });
+      if (existing.receiverId !== req.user.id && req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action interdite' });
       }
-    });
-    io.to(`user:${friendship.requesterId}`).emit('new_notification', notification);
-    res.json(friendship);
+      const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'ACCEPTED' as any } });
+      const notification = await prisma.notification.create({
+        data: {
+          userId: friendship.requesterId,
+          type: 'FRIEND_ACCEPTED' as any,
+          title: 'Demande acceptée',
+          message: 'Ta demande d’ami a été acceptée.',
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+          } as any
+        }
+      });
+      io.to(`user:${friendship.requesterId}`).emit('new_notification', notification);
+      res.json(friendship);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de l'acceptation de la demande" });
+    }
   });
 
   app.post('/api/friends/reject/:id', requireAuth, async (req: any, res) => {
-    const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'REJECTED' as any } });
-    if (friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
-    res.json(friendship);
+    try {
+      const existing = await prisma.friendship.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: 'Demande introuvable' });
+      if (existing.receiverId !== req.user.id && req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action interdite' });
+      }
+      const friendship = await prisma.friendship.update({ where: { id: req.params.id }, data: { status: 'REJECTED' as any } });
+      res.json(friendship);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du rejet de la demande' });
+    }
   });
 
   app.get('/api/friends', requireAuth, async (req: any, res) => {
@@ -1656,7 +1824,7 @@ export async function createServerInstance() {
   app.delete('/api/friends/:id', requireAuth, async (req: any, res) => {
     const friendship = await prisma.friendship.findUnique({ where: { id: req.params.id } });
     if (!friendship) return res.status(404).json({ error: 'Relation non trouvée' });
-    if (friendship.requesterId !== req.user.id && friendship.receiverId !== req.user.id && req.user.role !== 'ADMINISTRATEUR') return res.status(403).json({ error: 'Action interdite' });
+    if (friendship.requesterId !== req.user.id && friendship.receiverId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
     await prisma.friendship.delete({ where: { id: req.params.id } });
     res.status(204).end();
   });

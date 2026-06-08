@@ -476,6 +476,9 @@ export default function App() {
 
     const socket = io(window.location.origin, {
       transports: ['websocket', 'polling'],
+      // Le serveur authentifie la connexion via ce token (handshake) et ne
+      // laisse rejoindre que la room de l'utilisateur correspondant.
+      auth: { token: localStorage.getItem('plume_auth_token') || '' },
     });
 
     socketRef.current = socket;

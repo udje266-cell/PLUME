@@ -358,25 +358,18 @@ const user = freshViewedUser || freshCurrentUser;
     const finalReason = selectedReportReason + (customReportDetails.trim() ? ` - Précisions: ${customReportDetails.trim()}` : '');
     
     if (reportTarget === 'account') {
-      const updatedUser = {
-        ...user,
-        isFlagged: true,
-        flagReason: finalReason
-      };
-      
       const token = localStorage.getItem('plume_auth_token');
-      fetch(`/api/users/${user.id}`, {
-        method: 'PUT',
-        headers: { 
+      fetch(`/api/users/${user.id}/report`, {
+        method: 'POST',
+        headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify(updatedUser)
+        body: JSON.stringify({ reason: finalReason })
       })
-      .then(() => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Échec du signalement');
         alert(`Le compte de @${user.username} a été signalé avec succès pour : "${selectedReportReason}". Les curateurs administratifs vont examiner les faits.`);
-        user.isFlagged = true;
-        user.flagReason = finalReason;
         setIsReportModalOpen(false);
         setCustomReportDetails('');
       })
