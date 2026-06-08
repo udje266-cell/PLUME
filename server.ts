@@ -14,7 +14,16 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
 
-const _filename = typeof import.meta !== 'undefined' && import.meta.url 
+// Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
+// sans try/catch) ne doit jamais faire planter le process en production.
+process.on('unhandledRejection', (reason) => {
+  console.error('[PLUME] Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[PLUME] Uncaught exception:', error);
+});
+
+const _filename = typeof import.meta !== 'undefined' && import.meta.url
   ? fileURLToPath(import.meta.url) 
   : (typeof __filename !== 'undefined' ? __filename : '');
 
@@ -91,13 +100,16 @@ function validatePassword(password: string): boolean {
   return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
 }
 
-function serializeUser(user: any) {
+// includePrivate : n'inclure email/birthDate (données personnelles) que pour
+// l'utilisateur lui-même ou un administrateur. Par défaut elles sont masquées
+// afin de ne pas fuiter sur les routes publiques (listes, profils d'autrui…).
+function serializeUser(user: any, includePrivate = false) {
   if (!user) return user;
   const followers = Array.isArray(user.followers) ? user.followers.map((f: any) => f.followerId || f.id || f) : [];
   const following = Array.isArray(user.following) ? user.following.map((f: any) => f.followingId || f.id || f) : [];
   const blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers.map((b: any) => b.blockedId || b.id || b) : [];
-  const { passwordHash, ...safeUser } = user;
-  return {
+  const { passwordHash, email, birthDate, ...safeUser } = user;
+  const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
     gender: genderFromPrisma(user.gender),
@@ -108,8 +120,12 @@ function serializeUser(user: any) {
     following,
     blockedUsers,
     signUpDate: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : undefined,
-    birthDate: user.birthDate ? new Date(user.birthDate).toISOString().split('T')[0] : undefined,
   };
+  if (includePrivate) {
+    result.email = email;
+    result.birthDate = birthDate ? new Date(birthDate).toISOString().split('T')[0] : undefined;
+  }
+  return result;
 }
 
 function serializeChapter(chapter: any) {
@@ -547,7 +563,7 @@ export async function createServerInstance() {
         include: { followers: true, following: true, blockedUsers: true },
       });
       console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (inscription)`);
-      res.status(201).json({ token: createToken(user.id), user: serializeUser(user) });
+      res.status(201).json({ token: createToken(user.id), user: serializeUser(user, true) });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Erreur lors de l'inscription" });
@@ -568,7 +584,7 @@ export async function createServerInstance() {
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
-      res.json({ token: createToken(user.id), user: serializeUser(user) });
+      res.json({ token: createToken(user.id), user: serializeUser(user, true) });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la connexion' });
@@ -611,7 +627,7 @@ export async function createServerInstance() {
       }
 
       console.log(`[AUTH DEMO] utilisateur connecté - userId: ${user.id}, username: ${user.username}`);
-      res.json({ token: createToken(user.id), user: serializeUser(user) });
+      res.json({ token: createToken(user.id), user: serializeUser(user, true) });
     } catch (error) {
       console.error('[AUTH DEMO] Erreur lors du demo-login:', error);
       res.status(500).json({ error: 'Erreur serveur lors de la connexion démo.' });
@@ -756,25 +772,31 @@ export async function createServerInstance() {
       where: { id: req.user.id },
       include: { followers: true, following: true, blockedUsers: true },
     });
-    res.json(serializeUser(user));
+    res.json(serializeUser(user, true));
   });
 
   // Users
-  app.get('/api/users', async (_req, res) => {
+  app.get('/api/users', async (req: any, res) => {
     try {
+      // Les emails ne sont exposés qu'aux administrateurs.
+      const requester = await getUserFromAuthorizationHeader(req);
+      const includePrivate = requester?.role === 'Administrateur';
       const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' } });
-      res.json(users.map(serializeUser));
+      res.json(users.map((u) => serializeUser(u, includePrivate)));
     } catch (error) {
       console.error('[PLUME] Erreur lors du chargement des utilisateurs, retour d\'un tableau vide par sécurité:', error);
       res.json([]);
     }
   });
 
-  app.get('/api/users/:id', async (req, res) => {
+  app.get('/api/users/:id', async (req: any, res) => {
     try {
       const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { followers: true, following: true, blockedUsers: true } });
       if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
-      res.json(serializeUser(user));
+      // L'email n'est renvoyé que pour soi-même ou un administrateur.
+      const requester = await getUserFromAuthorizationHeader(req);
+      const includePrivate = requester?.id === user.id || requester?.role === 'Administrateur';
+      res.json(serializeUser(user, includePrivate));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement de l’utilisateur' });
@@ -813,7 +835,7 @@ export async function createServerInstance() {
         },
         include: { followers: true, following: true, blockedUsers: true },
       });
-      res.status(201).json(serializeUser(newUser));
+      res.status(201).json(serializeUser(newUser, true));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Erreur lors de la création de l'utilisateur" });
@@ -883,7 +905,7 @@ export async function createServerInstance() {
         data,
         include: { followers: true, following: true, blockedUsers: true },
       });
-      res.json(serializeUser(updatedUser));
+      res.json(serializeUser(updatedUser, true));
     } catch (error) {
       console.error(error);
       res.status(404).json({ error: 'Utilisateur non trouvé ou erreur de modification' });
@@ -921,7 +943,7 @@ export async function createServerInstance() {
       include: { followers: true, following: true, blockedUsers: true },
       take: 20,
     });
-    res.json(users.map(serializeUser));
+    res.json(users.map((u) => serializeUser(u)));
   });
 
   app.get('/api/search/stories', async (req, res) => {
@@ -1707,7 +1729,7 @@ export async function createServerInstance() {
       res.status(201).json({ 
         follow, 
         notification,
-        currentUser: serializeUser(updatedCurrentUser),
+        currentUser: serializeUser(updatedCurrentUser, true),
         targetUser: serializeUser(updatedTargetUser)
       });
     } catch (error) {
@@ -1747,7 +1769,7 @@ export async function createServerInstance() {
 
       console.log(`[FOLLOW] succès de désabonnement - followerId: ${req.user.id}, followingId: ${followingId}`);
       res.status(200).json({
-        currentUser: serializeUser(updatedCurrentUser),
+        currentUser: serializeUser(updatedCurrentUser, true),
         targetUser: serializeUser(updatedTargetUser)
       });
     } catch (error) {
@@ -1774,24 +1796,31 @@ export async function createServerInstance() {
 
   // Friends
   app.post('/api/friends/request/:id', requireAuth, async (req: any, res) => {
-    const receiverId = req.params.id;
-    if (receiverId === req.user.id) return res.status(400).json({ error: 'Demande impossible' });
-    const friendship = await prisma.friendship.upsert({ where: { requesterId_receiverId: { requesterId: req.user.id, receiverId } }, update: { status: 'PENDING' as any }, create: { requesterId: req.user.id, receiverId } });
-    const notification = await prisma.notification.create({
-      data: {
-        userId: receiverId,
-        type: 'FRIEND_REQUEST' as any,
-        title: 'Demande d’ami',
-        message: 'Tu as reçu une demande d’ami.',
+    try {
+      const receiverId = req.params.id;
+      if (receiverId === req.user.id) return res.status(400).json({ error: 'Demande impossible' });
+      const target = await prisma.user.findUnique({ where: { id: receiverId } });
+      if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+      const friendship = await prisma.friendship.upsert({ where: { requesterId_receiverId: { requesterId: req.user.id, receiverId } }, update: { status: 'PENDING' as any }, create: { requesterId: req.user.id, receiverId } });
+      const notification = await prisma.notification.create({
         data: {
-          actorId: req.user.id,
-          actorName: req.user.username,
-          actorAvatar: req.user.avatar || '',
-        } as any
-      }
-    });
-    io.to(`user:${receiverId}`).emit('new_notification', notification);
-    res.status(201).json(friendship);
+          userId: receiverId,
+          type: 'FRIEND_REQUEST' as any,
+          title: 'Demande d’ami',
+          message: 'Tu as reçu une demande d’ami.',
+          data: {
+            actorId: req.user.id,
+            actorName: req.user.username,
+            actorAvatar: req.user.avatar || '',
+          } as any
+        }
+      });
+      io.to(`user:${receiverId}`).emit('new_notification', notification);
+      res.status(201).json(friendship);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de l'envoi de la demande d'ami" });
+    }
   });
 
   app.post('/api/friends/accept/:id', requireAuth, async (req: any, res) => {
@@ -1859,27 +1888,32 @@ export async function createServerInstance() {
 
   // Likes and Favorites
   app.post('/api/stories/:id/like', requireAuth, async (req: any, res) => {
-    const like = await prisma.storyLike.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
-    const story = await prisma.story.findUnique({ where: { id: req.params.id } });
-    if (story && story.authorId !== req.user.id) {
-      const notification = await prisma.notification.create({
-        data: {
-          userId: story.authorId,
-          type: 'LIKE' as any,
-          title: 'Nouveau like',
-          message: 'Quelqu’un a aimé ton histoire.',
+    try {
+      const like = await prisma.storyLike.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
+      const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+      if (story && story.authorId !== req.user.id) {
+        const notification = await prisma.notification.create({
           data: {
-            actorId: req.user.id,
-            actorName: req.user.username,
-            actorAvatar: req.user.avatar || '',
-            storyId: req.params.id,
-            storyTitle: story.title,
-          } as any
-        }
-      });
-      io.to(`user:${story.authorId}`).emit('new_notification', notification);
+            userId: story.authorId,
+            type: 'LIKE' as any,
+            title: 'Nouveau like',
+            message: 'Quelqu’un a aimé ton histoire.',
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+              storyId: req.params.id,
+              storyTitle: story.title,
+            } as any
+          }
+        });
+        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+      }
+      res.status(201).json(like);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du like' });
     }
-    res.status(201).json(like);
   });
 
   app.delete('/api/stories/:id/like', requireAuth, async (req: any, res) => {
@@ -1893,27 +1927,32 @@ export async function createServerInstance() {
   });
 
   app.post('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
-    const favorite = await prisma.favorite.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
-    const story = await prisma.story.findUnique({ where: { id: req.params.id } });
-    if (story && story.authorId !== req.user.id) {
-      const notification = await prisma.notification.create({
-        data: {
-          userId: story.authorId,
-          type: 'FAVORITE' as any,
-          title: 'Nouveau favori',
-          message: 'Quelqu’un a ajouté ton histoire en favori.',
+    try {
+      const favorite = await prisma.favorite.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
+      const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+      if (story && story.authorId !== req.user.id) {
+        const notification = await prisma.notification.create({
           data: {
-            actorId: req.user.id,
-            actorName: req.user.username,
-            actorAvatar: req.user.avatar || '',
-            storyId: req.params.id,
-            storyTitle: story.title,
-          } as any
-        }
-      });
-      io.to(`user:${story.authorId}`).emit('new_notification', notification);
+            userId: story.authorId,
+            type: 'FAVORITE' as any,
+            title: 'Nouveau favori',
+            message: 'Quelqu’un a ajouté ton histoire en favori.',
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+              storyId: req.params.id,
+              storyTitle: story.title,
+            } as any
+          }
+        });
+        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+      }
+      res.status(201).json(favorite);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’ajout en favori' });
     }
-    res.status(201).json(favorite);
   });
 
   app.delete('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
@@ -1928,11 +1967,16 @@ export async function createServerInstance() {
 
   // Reading
   app.post('/api/stories/:id/read', requireAuth, async (req: any, res) => {
-    const chapterId = req.body.chapterId || null;
-    const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
-    await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
-    if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
-    res.status(201).json(history);
+    try {
+      const chapterId = req.body.chapterId || null;
+      const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
+      await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+      if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+      res.status(201).json(history);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de la lecture' });
+    }
   });
 
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
@@ -1941,16 +1985,21 @@ export async function createServerInstance() {
   });
 
   app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {
-    const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id } });
-    if (!chapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
-    const progressPercent = Math.min(100, Math.max(0, Number(req.body.progressPercent || 0)));
-    const progress = await prisma.readingProgress.upsert({
-      where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },
-      update: { progressPercent, lastReadAt: new Date() },
-      create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent },
-      include: { story: true, chapter: true },
-    });
-    res.json({ ...progress, story: { ...progress.story, tags: parseJsonArray(progress.story.tags) }, chapter: serializeChapter(progress.chapter) });
+    try {
+      const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id } });
+      if (!chapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      const progressPercent = Math.min(100, Math.max(0, Number(req.body.progressPercent || 0)));
+      const progress = await prisma.readingProgress.upsert({
+        where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },
+        update: { progressPercent, lastReadAt: new Date() },
+        create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent },
+        include: { story: true, chapter: true },
+      });
+      res.json({ ...progress, story: { ...progress.story, tags: parseJsonArray(progress.story.tags) }, chapter: serializeChapter(progress.chapter) });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de la progression' });
+    }
   });
 
   app.get('/api/stories/:id/progress', requireAuth, async (req: any, res) => {
@@ -1960,14 +2009,19 @@ export async function createServerInstance() {
 
   // Block users
   app.post('/api/users/:id/block', requireAuth, async (req: any, res) => {
-    const blockedId = req.params.id;
-    if (blockedId === req.user.id) return res.status(400).json({ error: 'Tu ne peux pas te bloquer toi-même' });
-    const block = await prisma.blockedUser.upsert({
-      where: { blockerId_blockedId: { blockerId: req.user.id, blockedId } },
-      update: {},
-      create: { blockerId: req.user.id, blockedId },
-    });
-    res.status(201).json(block);
+    try {
+      const blockedId = req.params.id;
+      if (blockedId === req.user.id) return res.status(400).json({ error: 'Tu ne peux pas te bloquer toi-même' });
+      const block = await prisma.blockedUser.upsert({
+        where: { blockerId_blockedId: { blockerId: req.user.id, blockedId } },
+        update: {},
+        create: { blockerId: req.user.id, blockedId },
+      });
+      res.status(201).json(block);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du blocage' });
+    }
   });
 
   app.delete('/api/users/:id/block', requireAuth, async (req: any, res) => {

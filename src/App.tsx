@@ -729,7 +729,8 @@ export default function App() {
 
   const refreshUsersData = async () => {
     try {
-      const usersRes = await fetch('/api/users');
+      // Envoi du token : le backend n'inclut les emails que pour un administrateur.
+      const usersRes = await fetch('/api/users', { headers: authHeaders() });
       if (usersRes.ok) {
         const fetchedUsers = await usersRes.json();
         const mergedUsers = ensureSimulatorAccounts(fetchedUsers as User[]);
