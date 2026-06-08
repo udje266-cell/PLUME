@@ -33,7 +33,6 @@ interface MainNavigationProps {
   onOpenSidebar: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  onQuickRoleChange: (role: UserRole) => void;
   notifications?: AppNotification[];
   onMarkNotificationsRead?: (type?: AppNotification['type'] | 'all') => void;
   unreadMessagesCount?: number;
@@ -46,7 +45,6 @@ export default function MainNavigation({
   onOpenSidebar,
   darkMode,
   onToggleDarkMode,
-  onQuickRoleChange,
   notifications = [],
   onMarkNotificationsRead,
   unreadMessagesCount = 0,
@@ -270,27 +268,6 @@ export default function MainNavigation({
             </div>
           </div>
 
-        </div>
-
-        {/* Dynamic Simulator Profile selector for quick evaluation on the top page */}
-        <div className="mt-2.5 mx-auto bg-gray-50 dark:bg-purple-950/10 p-1 rounded-xl border border-gray-100 dark:border-purple-900/10 flex items-center justify-between text-[10px] text-gray-400 px-2 select-none">
-          <span className="font-bold uppercase tracking-wider text-[9px]">Simulateur :</span>
-          <div className="flex space-x-1">
-            {(['Lecteur', 'Auteur', 'Administrateur'] as UserRole[]).map((role) => (
-              <button
-                key={role}
-                id={`quick-role-${role}`}
-                onClick={() => onQuickRoleChange(role)}
-                className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
-                  currentUser.role === role
-                    ? 'bg-[#7C3AED] text-white shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-purple-600'
-                }`}
-              >
-                {role}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 

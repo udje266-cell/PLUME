@@ -684,6 +684,34 @@ export async function createServerInstance() {
     }
   });
 
+  // Changement de mot de passe par un utilisateur connecté : vérifie le mot de
+  // passe actuel avant d'enregistrer le nouveau.
+  app.post('/api/auth/change-password', authLimiter, requireAuth, async (req: any, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body || {};
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Mot de passe actuel et nouveau mot de passe requis.' });
+      }
+      if (!validatePassword(newPassword)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+      if (!user || !user.passwordHash) {
+        return res.status(400).json({ error: 'Aucun mot de passe défini pour ce compte.' });
+      }
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+      res.json({ message: 'Mot de passe mis à jour avec succès.' });
+    } catch (error) {
+      console.error('[PLUME] change password error:', error);
+      res.status(500).json({ error: 'Erreur lors du changement de mot de passe.' });
+    }
+  });
+
   app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     try {
       const { email, code } = req.body;

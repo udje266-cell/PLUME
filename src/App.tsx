@@ -936,32 +936,6 @@ export default function App() {
     setDarkMode(!darkMode);
   };
 
-  // Switch simulation profile without modifying the role of the previous account.
-  const handleQuickRoleChange = (role: UserRole) => {
-    const availableUsers = ensureSimulatorAccounts(allUsers);
-    const targetUser = availableUsers.find(u => u.role === role);
-
-    if (!targetUser) {
-      console.error(`[PLUME] Impossible de trouver ou créer un compte ${role} pour le simulateur.`);
-      return;
-    }
-
-    const safeTargetUser = mergeLocalUserEdit(targetUser);
-    setAllUsers(availableUsers.map((u) => u.id === safeTargetUser.id ? safeTargetUser : u));
-    setCurrentUser(safeTargetUser);
-    localStorage.setItem('plume_current_user', JSON.stringify(safeTargetUser));
-    setViewedUser(null);
-    setSelectedStoryForReading(null);
-
-    if (role === 'Administrateur') {
-      setActiveTab('admin');
-    } else if (role === 'Auteur') {
-      setActiveTab('write');
-    } else {
-      setActiveTab('home');
-    }
-  };
-
   // Update profile attributes (bio, preferences)
   const handleUpdateProfile = (updatedFields: Partial<User>) => {
     if (!currentUser) return;
@@ -2217,7 +2191,6 @@ export default function App() {
               onOpenSidebar={() => setIsSidebarOpen(true)}
               darkMode={darkMode}
               onToggleDarkMode={handleToggleDarkMode}
-              onQuickRoleChange={handleQuickRoleChange}
               notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
               unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
@@ -2332,7 +2305,6 @@ export default function App() {
                       viewedUser={viewedUser}
                       onBackToMyProfile={() => setViewedUser(null)}
                       onUpdateProfile={handleUpdateProfile}
-                      onQuickRoleChange={handleQuickRoleChange}
                       onUpdateAndVerifyUserStats={handleUpdateAndVerifyUserStats}
                       stories={allowedStories}
                       favorites={favorites}
