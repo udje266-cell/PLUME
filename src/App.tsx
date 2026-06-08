@@ -232,7 +232,7 @@ export default function App() {
 
     saveNotifications(nextNotifications);
 
-    if (isAuthenticated && localStorage.getItem('plume_auth_token')) {
+    if (isAuthenticated) {
       fetch(`/api/notifications/${currentUser.id}/read-all`, {
         method: 'PUT',
         headers: authHeaders(),
@@ -244,12 +244,11 @@ export default function App() {
     return localStorage.getItem('plume_is_logged_in') === 'true';
   });
 
+  // L'authentification repose désormais sur un cookie httpOnly envoyé
+  // automatiquement par le navigateur (same-origin) : on ne lit/stocke plus le
+  // token en JS (protection contre le vol via XSS).
   const authHeaders = (extra: Record<string, string> = {}) => {
-    const token = localStorage.getItem('plume_auth_token');
-    return {
-      ...extra,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    return { ...extra };
   };
 
   const fetchConversationsList = React.useCallback(() => {
@@ -292,7 +291,7 @@ export default function App() {
 
   const mergeLocalUserEdit = (user: User, isBackendUser: boolean = false): User => {
     const edits = getLocalUserEdits();
-    const hasToken = !!localStorage.getItem('plume_auth_token');
+    const hasToken = localStorage.getItem('plume_is_logged_in') === 'true';
     const shouldSkipLocalMerge = hasToken && isBackendUser;
 
     if (shouldSkipLocalMerge) {
@@ -313,7 +312,7 @@ export default function App() {
   };
 
   const ensureSimulatorAccounts = (backendUsers: User[]): User[] => {
-    const isAuth = isAuthenticated || !!localStorage.getItem('plume_auth_token');
+    const isAuth = isAuthenticated || localStorage.getItem('plume_is_logged_in') === 'true';
     if (isAuth) {
       return backendUsers.map(u => mergeLocalUserEdit(u, true));
     }
@@ -476,9 +475,9 @@ export default function App() {
 
     const socket = io(window.location.origin, {
       transports: ['websocket', 'polling'],
-      // Le serveur authentifie la connexion via ce token (handshake) et ne
-      // laisse rejoindre que la room de l'utilisateur correspondant.
-      auth: { token: localStorage.getItem('plume_auth_token') || '' },
+      // Le serveur authentifie la connexion via le cookie httpOnly (envoyé
+      // automatiquement) et ne laisse rejoindre que la room correspondante.
+      withCredentials: true,
     });
 
     socketRef.current = socket;
@@ -736,8 +735,9 @@ export default function App() {
         const mergedUsers = ensureSimulatorAccounts(fetchedUsers as User[]);
         setAllUsers(mergedUsers);
         
-        const token = localStorage.getItem('plume_auth_token');
-        if (token) {
+        const loggedIn = localStorage.getItem('plume_is_logged_in') === 'true';
+        if (loggedIn) {
+          // Le cookie httpOnly est envoyé automatiquement ; /auth/me confirme la session.
           const meRes = await fetch('/api/auth/me', { headers: authHeaders() });
           if (meRes.ok) {
             const me = mergeLocalUserEdit(await meRes.json(), true);
@@ -770,10 +770,10 @@ export default function App() {
       try {
         // 1. Fetch Users & Me
         const me = await refreshUsersData();
-        const token = localStorage.getItem('plume_auth_token');
+        const loggedIn = localStorage.getItem('plume_is_logged_in') === 'true';
         const headers = authHeaders();
 
-        if (token && me) {
+        if (loggedIn && me) {
           const notifRes = await fetch(`/api/notifications/${me.id}`, { headers });
           if (notifRes.ok) {
             const serverNotifs = await notifRes.json();
@@ -1102,14 +1102,11 @@ export default function App() {
     }
     if (!currentUser?.id || !authorId || authorId === currentUser.id) return;
 
-    if (isAuthenticated) {
-      const token = localStorage.getItem('plume_auth_token');
-      if (!token) {
-        alert("Erreur : session expirée ou non connecté. Veuillez vous reconnecter pour vous abonner.");
-        setIsAuthenticated(false);
-        setCurrentUser(null);
-        return;
-      }
+    if (isAuthenticated && localStorage.getItem('plume_is_logged_in') !== 'true') {
+      alert("Erreur : session expirée ou non connecté. Veuillez vous reconnecter pour vous abonner.");
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      return;
     }
 
     const author = allUsers.find((u) => u.id === authorId);
@@ -1492,7 +1489,7 @@ export default function App() {
 
     setLastReadProgress({ storyId, chapterId });
 
-    if (isAuthenticated && localStorage.getItem('plume_auth_token')) {
+    if (isAuthenticated) {
       fetch(`/api/stories/${storyId}/read`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -2035,8 +2032,10 @@ export default function App() {
     }));
   };
 
-  // Log Out Simulation
+  // Log Out
   const handleLogout = () => {
+    // Demande au serveur d'effacer le cookie httpOnly d'authentification.
+    fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
     setIsAuthenticated(false);
     setCurrentUser(null);
     localStorage.removeItem('plume_is_logged_in');

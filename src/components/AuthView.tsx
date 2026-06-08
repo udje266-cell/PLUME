@@ -85,7 +85,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         return;
       }
 
-      localStorage.setItem('plume_auth_token', data.token);
+      // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
       setSuccessMsg('Connexion réussie !');
       onLoginSuccess(data.user);
     } catch (error) {
@@ -274,7 +274,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
           return;
         }
 
-        localStorage.setItem('plume_auth_token', data.token);
+        // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
         setSuccessMsg('Votre compte Plume a été créé et activé avec succès !');
         onRegisterSuccess(data.user);
       } else {
@@ -368,7 +368,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         return;
       }
 
-      localStorage.setItem('plume_auth_token', data.token);
+      // Le serveur a posé un cookie httpOnly ; on ne stocke pas le token en JS.
       setSuccessMsg('Connexion démo réussie !');
       onLoginSuccess(data.user);
     } catch (error) {

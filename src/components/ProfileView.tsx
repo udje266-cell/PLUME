@@ -356,13 +356,10 @@ const user = freshViewedUser || freshCurrentUser;
     }
     setIsSavingPassword(true);
     try {
-      const token = localStorage.getItem('plume_auth_token');
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        // Authentification via le cookie httpOnly (envoyé automatiquement).
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -401,13 +398,10 @@ const user = freshViewedUser || freshCurrentUser;
     const finalReason = selectedReportReason + (customReportDetails.trim() ? ` - Précisions: ${customReportDetails.trim()}` : '');
     
     if (reportTarget === 'account') {
-      const token = localStorage.getItem('plume_auth_token');
       fetch(`/api/users/${user.id}/report`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
+        // Authentification via le cookie httpOnly (envoyé automatiquement).
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: finalReason })
       })
       .then(async (res) => {

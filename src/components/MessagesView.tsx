@@ -211,10 +211,8 @@ export default function MessagesView({
     if (activeConversationId) {
       fetch('/api/messages/read', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('plume_auth_token')}`
-        },
+        // Authentification via le cookie httpOnly (envoyé automatiquement).
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: activeConversationId })
       }).catch(e => console.error(e));
 

@@ -114,6 +114,34 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.user.role).toBe('Lecteur');
     });
 
+    it('should set an httpOnly auth cookie on successful login', async () => {
+      const mockUser = {
+        id: 'user-1',
+        email: 'user@example.com',
+        username: 'user1',
+        passwordHash: mockPasswordHash,
+        role: 'LECTEUR',
+        gender: 'HOMME',
+        createdAt: new Date('2026-01-01'),
+        followers: [],
+        following: [],
+        blockedUsers: [],
+      };
+
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'user@example.com', password: mockPassword })
+        .expect(200);
+
+      const setCookie = res.headers['set-cookie'] as unknown as string[];
+      expect(setCookie).toBeDefined();
+      const authCookie = setCookie.find((c) => c.startsWith('plume_token='));
+      expect(authCookie).toBeDefined();
+      expect(authCookie).toMatch(/HttpOnly/i);
+    });
+
     it('should fail with 401 when password does not match', async () => {
       const mockUser = {
         id: 'user-1',
@@ -188,6 +216,30 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.username).toBe('authuser');
       expect(res.body.email).toBe('auth-user@example.com');
       expect(res.body.role).toBe('Lecteur');
+    });
+
+    it('should authenticate via the httpOnly cookie (no Authorization header)', async () => {
+      const mockUser = {
+        id: 'user-authenticated',
+        email: 'auth-user@example.com',
+        username: 'authuser',
+        role: 'LECTEUR',
+        gender: 'HOMME',
+        createdAt: new Date('2026-01-01'),
+        followers: [],
+        following: [],
+        blockedUsers: [],
+      };
+
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
+      const token = jwt.sign({ userId: mockUser.id }, JWT_SECRET, { expiresIn: '1h' });
+
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Cookie', `plume_token=${token}`)
+        .expect(200);
+
+      expect(res.body.username).toBe('authuser');
     });
 
     it('should return 401 for expired or malformed token', async () => {
