@@ -18,7 +18,7 @@ cp .env.example .env
 
 ## Base de données
 
-Le projet utilise **SQLite** via Prisma.
+Le projet utilise **PostgreSQL** via Prisma.
 
 ```bash
 # Générer le client Prisma
@@ -63,17 +63,16 @@ L'application est accessible sur [http://localhost:3000](http://localhost:3000).
 
 | Variable | Obligatoire | Description |
 |----------|-------------|-------------|
-| `DATABASE_URL` | Oui | `file:./prisma/dev.db` (SQLite) |
-| `JWT_SECRET` | Prod | Secret de signature des tokens |
-| `SMTP_*` | Non | Envoi d'e-mails OTP (sinon console) |
+| `DATABASE_URL` | Oui | URL PostgreSQL (`postgresql://...`) |
+| `JWT_SECRET` | Prod | Secret de signature des tokens (obligatoire en production) |
+| `BREVO_API_KEY` | Non | Envoi d'e-mails OTP via Brevo (sinon code affiché en console) |
 | `VITE_CLOUDINARY_*` | Non | Upload couvertures et avatars |
-| `GEMINI_API_KEY` | Non | IA (non branchée actuellement) |
 
 ## Architecture
 
 - **Frontend** : React 19 + Vite + Tailwind CSS
 - **Backend** : Express + Socket.io
-- **ORM** : Prisma (SQLite)
+- **ORM** : Prisma (PostgreSQL)
 - **Mobile** : Capacitor (Android)
 
 ```
