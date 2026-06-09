@@ -1048,11 +1048,10 @@ export async function createServerInstance() {
           language: story.language || 'fr',
           tags: JSON.stringify(story.tags || []),
           status: storyStatusToPrisma(story.status),
-          views: story.views || 0,
-          reads: story.reads || 0,
-          rating: story.rating || 0,
-          isFlagged: story.isFlagged || false,
-          flagReason: story.flagReason || null,
+          // Les compteurs (views/reads/rating) et le statut de modération
+          // (isFlagged) ne sont jamais pilotés par le client : ils partent des
+          // valeurs par défaut du schéma et n'évoluent que via les routes
+          // dédiées (/read, /like) ou la modération admin.
           ageRating: ageRatingToPrisma(story.ageRating),
           authorId: req.user.id,
           publishedAt: story.status === 'Publié' ? new Date() : null,
@@ -1070,29 +1069,34 @@ export async function createServerInstance() {
     try {
       const existing = await prisma.story.findUnique({ where: { id: req.params.id } });
       if (!existing) return res.status(404).json({ error: 'Récit non trouvé' });
-      if (existing.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      const isAdmin = req.user.role === 'Administrateur';
+      if (existing.authorId !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Action interdite' });
       const story = req.body;
+      const data: any = {
+        title: story.title,
+        description: story.description,
+        cover: story.cover,
+        genre: story.genre,
+        category: story.category,
+        ambiance: story.ambiance,
+        format: story.format,
+        language: story.language,
+        tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
+        status: story.status ? storyStatusToPrisma(story.status) : undefined,
+        ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
+        publishedAt: story.status === 'Publié' ? new Date() : undefined,
+      };
+      // views/reads/rating ne sont jamais modifiables par le client (sinon
+      // gonflage des statistiques). Le statut de modération (isFlagged/
+      // flagReason) est réservé aux administrateurs : un auteur ne peut pas
+      // lever un signalement sur sa propre histoire.
+      if (isAdmin) {
+        data.isFlagged = story.isFlagged;
+        data.flagReason = story.flagReason;
+      }
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },
-        data: {
-          title: story.title,
-          description: story.description,
-          cover: story.cover,
-          genre: story.genre,
-          category: story.category,
-          ambiance: story.ambiance,
-          format: story.format,
-          language: story.language,
-          tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
-          status: story.status ? storyStatusToPrisma(story.status) : undefined,
-          views: story.views,
-          reads: story.reads,
-          rating: story.rating,
-          isFlagged: story.isFlagged,
-          flagReason: story.flagReason,
-          ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
-          publishedAt: story.status === 'Publié' ? new Date() : undefined,
-        },
+        data,
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
       res.json(serializeStory(updatedStory));
@@ -1134,8 +1138,7 @@ export async function createServerInstance() {
           content: chapter.content || '',
           order: chapter.order || 1,
           isPublished: Boolean(chapter.isPublished || chapter.status === 'Publié'),
-          views: chapter.views || 0,
-          reads: chapter.reads || 0,
+          // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
           storyId: req.params.storyId,
           publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
         },
@@ -1159,8 +1162,7 @@ export async function createServerInstance() {
           title: chapter.title,
           content: chapter.content,
           order: chapter.order,
-          views: chapter.views,
-          reads: chapter.reads,
+          // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
@@ -1199,8 +1201,7 @@ export async function createServerInstance() {
           title: chapter.title,
           content: chapter.content,
           order: chapter.order,
-          views: chapter.views,
-          reads: chapter.reads,
+          // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
@@ -1323,9 +1324,29 @@ export async function createServerInstance() {
   app.put('/api/comments/:id/like', requireAuth, async (req: any, res) => {
     try {
       const likedByMe = Boolean(req.body.likedByMe);
+      const commentId = req.params.id;
+      const existing = await prisma.comment.findUnique({ where: { id: commentId } });
+      if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
+
+      // On enregistre le like par (utilisateur, commentaire) : la contrainte
+      // d'unicité rend l'opération idempotente. Un utilisateur ne peut donc plus
+      // gonfler/dégonfler arbitrairement le compteur avec des +/-1 répétés.
+      if (likedByMe) {
+        await prisma.commentLike.upsert({
+          where: { userId_commentId: { userId: req.user.id, commentId } },
+          update: {},
+          create: { userId: req.user.id, commentId },
+        });
+      } else {
+        await prisma.commentLike.deleteMany({ where: { userId: req.user.id, commentId } });
+      }
+
+      // Le compteur dénormalisé est recalculé depuis la source de vérité, jamais
+      // dérivé d'une valeur transmise par le client.
+      const likes = await prisma.commentLike.count({ where: { commentId } });
       const comment = await prisma.comment.update({
-        where: { id: req.params.id },
-        data: { likes: { increment: likedByMe ? 1 : -1 } },
+        where: { id: commentId },
+        data: { likes },
         include: { user: true, replies: { include: { user: true } } },
       });
       res.json(serializeComment(comment));

@@ -19,6 +19,7 @@ vi.mock('./src/server/prisma', () => {
         findMany: vi.fn(),
         findUnique: vi.fn(),
         create: vi.fn(),
+        update: vi.fn(),
       },
       storyLike: {
         upsert: vi.fn(),
@@ -81,6 +82,72 @@ describe('API Integration Tests (Express routes)', () => {
       expect(story.ageRating).toBe('all'); // Mapped ageRating
       expect(story.tags).toEqual(['aventure', 'fantasy']); // Parsed tags JSON
       expect(story.authorName).toBe('AuteurPlume');
+    });
+  });
+
+  describe('Story mass-assignment protection (H2)', () => {
+    const authorId = 'author-1';
+    const authorUser = {
+      id: authorId,
+      email: 'author@example.com',
+      username: 'author',
+      role: 'Auteur',
+      gender: 'HOMME',
+      createdAt: new Date('2026-01-01'),
+      followers: [],
+      following: [],
+      blockedUsers: [],
+    };
+    const token = jwt.sign({ userId: authorId }, JWT_SECRET, { expiresIn: '1h' });
+
+    const serializableStory = {
+      id: 'story-x',
+      title: 'T',
+      tags: '[]',
+      status: 'BROUILLON',
+      ageRating: 'ALL',
+      authorId,
+      author: authorUser,
+      chapters: [],
+      likes: [],
+      favorites: [],
+    };
+
+    it('POST /api/stories ignores client-supplied views/reads/rating/isFlagged', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.create).mockResolvedValue(serializableStory as any);
+
+      await request(app)
+        .post('/api/stories')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'T', views: 9999, reads: 9999, rating: 5, isFlagged: true })
+        .expect(201);
+
+      const data = vi.mocked(prisma.story.create).mock.calls[0][0].data as any;
+      expect(data.views).toBeUndefined();
+      expect(data.reads).toBeUndefined();
+      expect(data.rating).toBeUndefined();
+      expect(data.isFlagged).toBeUndefined();
+      expect(data.authorId).toBe(authorId); // author forced from token
+    });
+
+    it('PUT /api/stories/:id does not let a non-admin author unflag or fake stats', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ id: 'story-x', authorId, isFlagged: true } as any);
+      vi.mocked(prisma.story.update).mockResolvedValue(serializableStory as any);
+
+      await request(app)
+        .put('/api/stories/story-x')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'T2', views: 9999, reads: 9999, rating: 5, isFlagged: false })
+        .expect(200);
+
+      const data = vi.mocked(prisma.story.update).mock.calls[0][0].data as any;
+      expect(data.views).toBeUndefined();
+      expect(data.reads).toBeUndefined();
+      expect(data.rating).toBeUndefined();
+      expect(data.isFlagged).toBeUndefined(); // moderation flag reserved to admins
+      expect(data.flagReason).toBeUndefined();
     });
   });
 
