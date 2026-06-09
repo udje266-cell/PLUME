@@ -1,6 +1,7 @@
 services:
   - type: web
     name: plume-app
+    branch: main
     env: node
     plan: free
     buildCommand: npm install && npx prisma generate && npm run build
