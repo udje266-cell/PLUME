@@ -5,6 +5,7 @@
 
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import express from 'express';
 import { createServer } from 'http';
@@ -175,6 +176,53 @@ function serializeComment(comment: any) {
         })
       : [],
   };
+}
+
+// Message d'erreur OTP volontairement générique : ne révèle ni l'existence du
+// code, ni s'il est expiré/incorrect (réduit les oracles de brute-force).
+const OTP_GENERIC_ERROR = 'Code OTP invalide ou expiré.';
+const OTP_MAX_ATTEMPTS = 5;
+
+// Génère un code OTP à 6 chiffres avec une source cryptographiquement sûre
+// (crypto.randomInt), contrairement à Math.random() qui est prévisible.
+function generateOtpCode(): string {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+// Vérifie un code OTP pour un e-mail. Incrémente un compteur de tentatives et
+// invalide le code au-delà de OTP_MAX_ATTEMPTS (anti brute-force par e-mail).
+// `consume` supprime le code en cas de succès (usage unique) ; on le met à false
+// pour une simple pré-vérification.
+async function checkOtp(
+  email: string,
+  code: string,
+  consume: boolean
+): Promise<{ ok: boolean; status: number; error: string }> {
+  const rec = await prisma.otp.findUnique({ where: { email } });
+  if (!rec) return { ok: false, status: 400, error: OTP_GENERIC_ERROR };
+  if (rec.expiresAt.getTime() < Date.now()) {
+    await prisma.otp.delete({ where: { email } }).catch(() => {});
+    return { ok: false, status: 400, error: OTP_GENERIC_ERROR };
+  }
+  if (rec.code !== code) {
+    const attempts = (rec.attempts ?? 0) + 1;
+    if (attempts >= OTP_MAX_ATTEMPTS) {
+      await prisma.otp.delete({ where: { email } }).catch(() => {});
+      return { ok: false, status: 429, error: 'Trop de tentatives. Veuillez demander un nouveau code.' };
+    }
+    await prisma.otp.update({ where: { email }, data: { attempts } }).catch(() => {});
+    return { ok: false, status: 400, error: OTP_GENERIC_ERROR };
+  }
+  if (consume) await prisma.otp.delete({ where: { email } }).catch(() => {});
+  return { ok: true, status: 200, error: '' };
+}
+
+// Masque les chapitres non publiés d'une histoire pour quiconque n'en est ni
+// l'auteur ni administrateur (les brouillons ne doivent pas fuiter).
+function filterDraftChapters(story: any, requesterId: string | undefined, isAdmin: boolean) {
+  if (!story) return story;
+  if (isAdmin || (requesterId && story.authorId === requesterId)) return story;
+  return { ...story, chapters: Array.isArray(story.chapters) ? story.chapters.filter((c: any) => c.isPublished) : story.chapters };
 }
 
 export async function createServerInstance() {
@@ -484,14 +532,16 @@ export async function createServerInstance() {
       } else if (reason === 'reset') {
         const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
         if (!existingUser) {
-          return res.status(404).json({ error: 'Utilisateur introuvable avec cette adresse e-mail.' });
+          // Anti-énumération : on renvoie la même réponse que si le compte
+          // existait, sans générer ni envoyer de code.
+          return res.json({ message: 'Si un compte existe, un code de validation a été envoyé.', email });
         }
       } else {
         return res.status(400).json({ error: 'Raison invalide.' });
       }
 
       console.log(`[OTP] Génération OTP pour ${normalizedEmail}`);
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const code = generateOtpCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       // Delete existing OTP for this email and expired OTPs globally
@@ -536,28 +586,6 @@ export async function createServerInstance() {
       }
 
       const normalizedEmail = email.toLowerCase();
-      const otpRecord = await prisma.otp.findUnique({
-        where: { email: normalizedEmail },
-      });
-
-      if (!otpRecord) {
-        console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
-        return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
-      }
-
-      console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
-
-      if (otpRecord.expiresAt.getTime() < Date.now()) {
-        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
-        return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
-      }
-
-      if (otpRecord.code !== code) {
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
-        return res.status(400).json({ error: 'Code OTP incorrect.' });
-      }
 
       const existingUser = await prisma.user.findFirst({
         where: {
@@ -568,12 +596,16 @@ export async function createServerInstance() {
         }
       });
       if (existingUser) {
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (utilisateur existant)`);
         return res.status(400).json({ error: 'Cet utilisateur existe déjà' });
       }
 
+      // Vérifie ET consomme le code (usage unique) avec compteur de tentatives.
+      const otpCheck = await checkOtp(normalizedEmail, code, true);
+      if (!otpCheck.ok) {
+        console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
+        return res.status(otpCheck.status).json({ error: otpCheck.error });
+      }
       console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
-      await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
 
       const passwordHash = await bcrypt.hash(password, 12);
       const finalRole = roleToPrisma(role);
@@ -691,15 +723,9 @@ export async function createServerInstance() {
       }
 
       const normalizedEmail = email.toLowerCase();
-      const user = await prisma.user.findFirst({
-        where: { email: normalizedEmail },
-      });
 
-      if (!user) {
-        return res.status(404).json({ error: 'Utilisateur introuvable.' });
-      }
-
-      // Check if request is authenticated
+      // Un utilisateur déjà connecté peut changer son mot de passe sans OTP ;
+      // sinon le code de validation est obligatoire.
       const authUser = await getUserFromAuthorizationHeader(req);
       const isAuthenticated = authUser && authUser.email.toLowerCase() === normalizedEmail;
 
@@ -707,27 +733,18 @@ export async function createServerInstance() {
         if (!code) {
           return res.status(400).json({ error: 'Code OTP requis.' });
         }
-        const otpRecord = await prisma.otp.findUnique({
-          where: { email: normalizedEmail },
-        });
-        if (!otpRecord) {
-          console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
-          console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
-          return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
+        const otpCheck = await checkOtp(normalizedEmail, code, true);
+        if (!otpCheck.ok) {
+          return res.status(otpCheck.status).json({ error: otpCheck.error });
         }
-        console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
+      }
 
-        if (otpRecord.expiresAt.getTime() < Date.now()) {
-          await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
-          console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
-          return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
-        }
-        if (otpRecord.code !== code) {
-          console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
-          return res.status(400).json({ error: 'Code OTP incorrect.' });
-        }
-        console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
-        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
+      const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+      if (!user) {
+        // Le code OTP n'est généré que pour des comptes existants : à ce stade,
+        // l'absence d'utilisateur reste traitée de façon générique
+        // (anti-énumération).
+        return res.status(400).json({ error: OTP_GENERIC_ERROR });
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
@@ -780,29 +797,13 @@ export async function createServerInstance() {
       }
 
       const normalizedEmail = email.toLowerCase();
-      const otpRecord = await prisma.otp.findUnique({
-        where: { email: normalizedEmail },
-      });
-
-      if (!otpRecord) {
-        console.log(`[OTP] OTP introuvable pour ${normalizedEmail}`);
+      // Pré-vérification sans consommer le code (consume=false) : il reste
+      // utilisable pour l'inscription/réinitialisation finale.
+      const otpCheck = await checkOtp(normalizedEmail, code, false);
+      if (!otpCheck.ok) {
         console.log(`[OTP] Vérification échouée pour ${normalizedEmail}`);
-        return res.status(400).json({ error: 'Aucun code OTP généré pour cet e-mail.' });
+        return res.status(otpCheck.status).json({ error: otpCheck.error });
       }
-
-      console.log(`[OTP] OTP trouvé pour ${normalizedEmail}`);
-
-      if (otpRecord.expiresAt.getTime() < Date.now()) {
-        await prisma.otp.delete({ where: { email: normalizedEmail } }).catch(() => {});
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (expiré)`);
-        return res.status(400).json({ error: 'Code OTP expiré. Veuillez en demander un nouveau.' });
-      }
-
-      if (otpRecord.code !== code) {
-        console.log(`[OTP] Vérification échouée pour ${normalizedEmail} (code incorrect)`);
-        return res.status(400).json({ error: 'Code OTP incorrect.' });
-      }
-
       console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
       res.json({ message: 'Code OTP valide.' });
     } catch (error) {
@@ -998,34 +999,52 @@ export async function createServerInstance() {
   app.get('/api/search/stories', async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
+    // La recherche ne révèle jamais les brouillons (seuls les récits publiés).
     const stories = await prisma.story.findMany({
-      where: { OR: [{ title: { contains: q } }, { description: { contains: q } }, { genre: { contains: q } }, { tags: { contains: q } }] },
+      where: { status: 'PUBLIE', OR: [{ title: { contains: q } }, { description: { contains: q } }, { genre: { contains: q } }, { tags: { contains: q } }] },
       include: { author: true, chapters: true, likes: true, favorites: true },
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
-    res.json(stories.map(serializeStory));
+    res.json(stories.map((s) => serializeStory(filterDraftChapters(s, undefined, false))));
   });
 
   // Stories
-  app.get('/api/stories', async (_req, res) => {
+  app.get('/api/stories', async (req: any, res) => {
     try {
-      const stories = await prisma.story.findMany({ include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' } });
-      res.json(stories.map(serializeStory));
+      // Routes publiques : on ne renvoie que les récits publiés, plus les
+      // brouillons du demandeur lui-même (identifié via le cookie/token) et
+      // tout pour un administrateur.
+      const requester = await getUserFromAuthorizationHeader(req);
+      const isAdmin = requester?.role === 'Administrateur';
+      const where = isAdmin
+        ? {}
+        : requester
+          ? { OR: [{ status: 'PUBLIE' }, { authorId: requester.id }] }
+          : { status: 'PUBLIE' };
+      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' } });
+      res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin))));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des histoires' });
     }
   });
 
-  app.get('/api/stories/:id', async (req, res) => {
+  app.get('/api/stories/:id', async (req: any, res) => {
     try {
       const story = await prisma.story.findUnique({
         where: { id: req.params.id },
         include: { author: true, chapters: true, likes: true, favorites: true, comments: { include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
       });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
-      res.json(serializeStory(story));
+      const requester = await getUserFromAuthorizationHeader(req);
+      const isAdmin = requester?.role === 'Administrateur';
+      const isOwner = requester?.id === story.authorId;
+      // Un brouillon n'est visible que par son auteur ou un administrateur.
+      if (story.status !== 'PUBLIE' && !isOwner && !isAdmin) {
+        return res.status(404).json({ error: 'Récit non trouvé' });
+      }
+      res.json(serializeStory(filterDraftChapters(story, requester?.id, isAdmin)));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement du récit' });
@@ -1048,11 +1067,10 @@ export async function createServerInstance() {
           language: story.language || 'fr',
           tags: JSON.stringify(story.tags || []),
           status: storyStatusToPrisma(story.status),
-          views: story.views || 0,
-          reads: story.reads || 0,
-          rating: story.rating || 0,
-          isFlagged: story.isFlagged || false,
-          flagReason: story.flagReason || null,
+          // Les compteurs (views/reads/rating) et le statut de modération
+          // (isFlagged) ne sont jamais pilotés par le client : ils partent des
+          // valeurs par défaut du schéma et n'évoluent que via les routes
+          // dédiées (/read, /like) ou la modération admin.
           ageRating: ageRatingToPrisma(story.ageRating),
           authorId: req.user.id,
           publishedAt: story.status === 'Publié' ? new Date() : null,
@@ -1070,29 +1088,34 @@ export async function createServerInstance() {
     try {
       const existing = await prisma.story.findUnique({ where: { id: req.params.id } });
       if (!existing) return res.status(404).json({ error: 'Récit non trouvé' });
-      if (existing.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      const isAdmin = req.user.role === 'Administrateur';
+      if (existing.authorId !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Action interdite' });
       const story = req.body;
+      const data: any = {
+        title: story.title,
+        description: story.description,
+        cover: story.cover,
+        genre: story.genre,
+        category: story.category,
+        ambiance: story.ambiance,
+        format: story.format,
+        language: story.language,
+        tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
+        status: story.status ? storyStatusToPrisma(story.status) : undefined,
+        ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
+        publishedAt: story.status === 'Publié' ? new Date() : undefined,
+      };
+      // views/reads/rating ne sont jamais modifiables par le client (sinon
+      // gonflage des statistiques). Le statut de modération (isFlagged/
+      // flagReason) est réservé aux administrateurs : un auteur ne peut pas
+      // lever un signalement sur sa propre histoire.
+      if (isAdmin) {
+        data.isFlagged = story.isFlagged;
+        data.flagReason = story.flagReason;
+      }
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },
-        data: {
-          title: story.title,
-          description: story.description,
-          cover: story.cover,
-          genre: story.genre,
-          category: story.category,
-          ambiance: story.ambiance,
-          format: story.format,
-          language: story.language,
-          tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
-          status: story.status ? storyStatusToPrisma(story.status) : undefined,
-          views: story.views,
-          reads: story.reads,
-          rating: story.rating,
-          isFlagged: story.isFlagged,
-          flagReason: story.flagReason,
-          ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
-          publishedAt: story.status === 'Publié' ? new Date() : undefined,
-        },
+        data,
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
       res.json(serializeStory(updatedStory));
@@ -1116,8 +1139,18 @@ export async function createServerInstance() {
   });
 
   // Chapters
-  app.get('/api/stories/:storyId/chapters', async (req, res) => {
-    const chapters = await prisma.chapter.findMany({ where: { storyId: req.params.storyId }, orderBy: { order: 'asc' } });
+  app.get('/api/stories/:storyId/chapters', async (req: any, res) => {
+    const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true, status: true } });
+    if (!story) return res.json([]);
+    const requester = await getUserFromAuthorizationHeader(req);
+    const isAdmin = requester?.role === 'Administrateur';
+    const isOwner = requester?.id === story.authorId;
+    // Brouillon non visible aux tiers ; pour un récit publié, on masque les
+    // chapitres encore non publiés à quiconque n'en est pas l'auteur/admin.
+    if (story.status !== 'PUBLIE' && !isOwner && !isAdmin) return res.json([]);
+    const where: any = { storyId: req.params.storyId };
+    if (!isOwner && !isAdmin) where.isPublished = true;
+    const chapters = await prisma.chapter.findMany({ where, orderBy: { order: 'asc' } });
     res.json(chapters.map(serializeChapter));
   });
 
@@ -1134,8 +1167,7 @@ export async function createServerInstance() {
           content: chapter.content || '',
           order: chapter.order || 1,
           isPublished: Boolean(chapter.isPublished || chapter.status === 'Publié'),
-          views: chapter.views || 0,
-          reads: chapter.reads || 0,
+          // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
           storyId: req.params.storyId,
           publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
         },
@@ -1159,8 +1191,7 @@ export async function createServerInstance() {
           title: chapter.title,
           content: chapter.content,
           order: chapter.order,
-          views: chapter.views,
-          reads: chapter.reads,
+          // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
@@ -1199,8 +1230,7 @@ export async function createServerInstance() {
           title: chapter.title,
           content: chapter.content,
           order: chapter.order,
-          views: chapter.views,
-          reads: chapter.reads,
+          // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
@@ -1323,9 +1353,29 @@ export async function createServerInstance() {
   app.put('/api/comments/:id/like', requireAuth, async (req: any, res) => {
     try {
       const likedByMe = Boolean(req.body.likedByMe);
+      const commentId = req.params.id;
+      const existing = await prisma.comment.findUnique({ where: { id: commentId } });
+      if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
+
+      // On enregistre le like par (utilisateur, commentaire) : la contrainte
+      // d'unicité rend l'opération idempotente. Un utilisateur ne peut donc plus
+      // gonfler/dégonfler arbitrairement le compteur avec des +/-1 répétés.
+      if (likedByMe) {
+        await prisma.commentLike.upsert({
+          where: { userId_commentId: { userId: req.user.id, commentId } },
+          update: {},
+          create: { userId: req.user.id, commentId },
+        });
+      } else {
+        await prisma.commentLike.deleteMany({ where: { userId: req.user.id, commentId } });
+      }
+
+      // Le compteur dénormalisé est recalculé depuis la source de vérité, jamais
+      // dérivé d'une valeur transmise par le client.
+      const likes = await prisma.commentLike.count({ where: { commentId } });
       const comment = await prisma.comment.update({
-        where: { id: req.params.id },
-        data: { likes: { increment: likedByMe ? 1 : -1 } },
+        where: { id: commentId },
+        data: { likes },
         include: { user: true, replies: { include: { user: true } } },
       });
       res.json(serializeComment(comment));

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Otp" ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0;

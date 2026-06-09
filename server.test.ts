@@ -19,10 +19,19 @@ vi.mock('./src/server/prisma', () => {
         findMany: vi.fn(),
         findUnique: vi.fn(),
         create: vi.fn(),
+        update: vi.fn(),
       },
       storyLike: {
         upsert: vi.fn(),
         delete: vi.fn(),
+      },
+      otp: {
+        findUnique: vi.fn(),
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        deleteMany: vi.fn(),
       },
     },
   };
@@ -81,6 +90,140 @@ describe('API Integration Tests (Express routes)', () => {
       expect(story.ageRating).toBe('all'); // Mapped ageRating
       expect(story.tags).toEqual(['aventure', 'fantasy']); // Parsed tags JSON
       expect(story.authorName).toBe('AuteurPlume');
+    });
+  });
+
+  describe('Story mass-assignment protection (H2)', () => {
+    const authorId = 'author-1';
+    const authorUser = {
+      id: authorId,
+      email: 'author@example.com',
+      username: 'author',
+      role: 'Auteur',
+      gender: 'HOMME',
+      createdAt: new Date('2026-01-01'),
+      followers: [],
+      following: [],
+      blockedUsers: [],
+    };
+    const token = jwt.sign({ userId: authorId }, JWT_SECRET, { expiresIn: '1h' });
+
+    const serializableStory = {
+      id: 'story-x',
+      title: 'T',
+      tags: '[]',
+      status: 'BROUILLON',
+      ageRating: 'ALL',
+      authorId,
+      author: authorUser,
+      chapters: [],
+      likes: [],
+      favorites: [],
+    };
+
+    it('POST /api/stories ignores client-supplied views/reads/rating/isFlagged', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.create).mockResolvedValue(serializableStory as any);
+
+      await request(app)
+        .post('/api/stories')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'T', views: 9999, reads: 9999, rating: 5, isFlagged: true })
+        .expect(201);
+
+      const data = vi.mocked(prisma.story.create).mock.calls[0][0].data as any;
+      expect(data.views).toBeUndefined();
+      expect(data.reads).toBeUndefined();
+      expect(data.rating).toBeUndefined();
+      expect(data.isFlagged).toBeUndefined();
+      expect(data.authorId).toBe(authorId); // author forced from token
+    });
+
+    it('PUT /api/stories/:id does not let a non-admin author unflag or fake stats', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ id: 'story-x', authorId, isFlagged: true } as any);
+      vi.mocked(prisma.story.update).mockResolvedValue(serializableStory as any);
+
+      await request(app)
+        .put('/api/stories/story-x')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'T2', views: 9999, reads: 9999, rating: 5, isFlagged: false })
+        .expect(200);
+
+      const data = vi.mocked(prisma.story.update).mock.calls[0][0].data as any;
+      expect(data.views).toBeUndefined();
+      expect(data.reads).toBeUndefined();
+      expect(data.rating).toBeUndefined();
+      expect(data.isFlagged).toBeUndefined(); // moderation flag reserved to admins
+      expect(data.flagReason).toBeUndefined();
+    });
+  });
+
+  describe('Draft visibility (M1)', () => {
+    it('GET /api/stories only lists published stories for anonymous visitors', async () => {
+      vi.mocked(prisma.story.findMany).mockResolvedValue([] as any);
+
+      await request(app).get('/api/stories').expect(200);
+
+      const args = vi.mocked(prisma.story.findMany).mock.calls[0][0] as any;
+      expect(args.where).toEqual({ status: 'PUBLIE' });
+    });
+  });
+
+  describe('OTP enumeration & brute-force protection (M5/M6)', () => {
+    beforeEach(() => {
+      // Les helpers OTP appellent .catch() sur ces promesses : les mocks
+      // doivent donc résoudre une promesse (sinon TypeError → 500).
+      vi.mocked(prisma.otp.delete).mockResolvedValue(undefined as any);
+      vi.mocked(prisma.otp.update).mockResolvedValue(undefined as any);
+      vi.mocked(prisma.otp.deleteMany).mockResolvedValue(undefined as any);
+      vi.mocked(prisma.otp.create).mockResolvedValue(undefined as any);
+    });
+
+    it('otp/request reset returns a generic message and creates no code for unknown emails', async () => {
+      vi.mocked(prisma.user.findFirst).mockResolvedValue(null as any);
+
+      const res = await request(app)
+        .post('/api/auth/otp/request')
+        .send({ email: 'nobody@example.com', reason: 'reset' })
+        .expect(200);
+
+      expect(res.body.message).toMatch(/si un compte existe/i);
+      expect(vi.mocked(prisma.otp.create)).not.toHaveBeenCalled();
+    });
+
+    it('verify-otp invalidates the code after too many wrong attempts', async () => {
+      vi.mocked(prisma.otp.findUnique).mockResolvedValue({
+        email: 'user@example.com',
+        code: '111111',
+        attempts: 4, // next wrong attempt reaches the limit
+        expiresAt: new Date(Date.now() + 60_000),
+      } as any);
+
+      const res = await request(app)
+        .post('/api/auth/verify-otp')
+        .send({ email: 'user@example.com', code: '000000' })
+        .expect(429);
+
+      expect(res.body.error).toMatch(/trop de tentatives/i);
+      expect(vi.mocked(prisma.otp.delete)).toHaveBeenCalled();
+    });
+
+    it('verify-otp returns a generic error (no oracle) on a wrong but non-final attempt', async () => {
+      vi.mocked(prisma.otp.findUnique).mockResolvedValue({
+        email: 'user@example.com',
+        code: '111111',
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 60_000),
+      } as any);
+
+      const res = await request(app)
+        .post('/api/auth/verify-otp')
+        .send({ email: 'user@example.com', code: '000000' })
+        .expect(400);
+
+      expect(res.body.error).toBe('Code OTP invalide ou expiré.');
+      expect(vi.mocked(prisma.otp.update)).toHaveBeenCalled();
     });
   });
 
