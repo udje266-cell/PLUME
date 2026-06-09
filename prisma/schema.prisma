@@ -305,6 +305,7 @@ model Otp {
   id        String   @id @default(cuid())
   email     String   @unique
   code      String
+  attempts  Int      @default(0)
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
