@@ -109,7 +109,9 @@ function serializeUser(user: any, includePrivate = false) {
   const followers = Array.isArray(user.followers) ? user.followers.map((f: any) => f.followerId || f.id || f) : [];
   const following = Array.isArray(user.following) ? user.following.map((f: any) => f.followingId || f.id || f) : [];
   const blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers.map((b: any) => b.blockedId || b.id || b) : [];
-  const { passwordHash, email, birthDate, ...safeUser } = user;
+  // flagReason est un motif de modération : on ne l'expose qu'en mode privé
+  // (soi-même / administrateur), jamais sur les profils publics.
+  const { passwordHash, email, birthDate, flagReason, ...safeUser } = user;
   const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
@@ -125,6 +127,7 @@ function serializeUser(user: any, includePrivate = false) {
   if (includePrivate) {
     result.email = email;
     result.birthDate = birthDate ? new Date(birthDate).toISOString().split('T')[0] : undefined;
+    result.flagReason = flagReason ?? null;
   }
   return result;
 }
