@@ -33,6 +33,7 @@ export interface RecommendationWeights {
   popularity: number;
   freshness: number;
   coldStart: number;
+  collaborative: number;
 }
 
 /** Profil « équilibré » : pertinent, mais avec une vraie place pour la découverte. */
@@ -43,7 +44,39 @@ export const DEFAULT_WEIGHTS: RecommendationWeights = {
   popularity: 2,
   freshness: 1.5,
   coldStart: 2,
+  collaborative: 2.5,
 };
+
+/**
+ * Construit un jeu de pondérations selon un curseur découverte↔pertinence.
+ * @param discovery 0 = pertinence maximale (affinité/collaboratif/qualité),
+ *                  0.5 ≈ équilibre, 1 = découverte maximale (cold-start/fraîcheur).
+ */
+export function weightsForDiscovery(discovery: number): RecommendationWeights {
+  const d = Math.max(0, Math.min(1, discovery));
+  const relevance: RecommendationWeights = {
+    affinity: 4, social: 3.5, quality: 2.5, popularity: 1.5, freshness: 1, coldStart: 0.5, collaborative: 3.5,
+  };
+  const explore: RecommendationWeights = {
+    affinity: 1.5, social: 1.5, quality: 1.5, popularity: 2, freshness: 2.5, coldStart: 4, collaborative: 1.5,
+  };
+  const lerp = (a: number, b: number) => a + (b - a) * d;
+  return {
+    affinity: lerp(relevance.affinity, explore.affinity),
+    social: lerp(relevance.social, explore.social),
+    quality: lerp(relevance.quality, explore.quality),
+    popularity: lerp(relevance.popularity, explore.popularity),
+    freshness: lerp(relevance.freshness, explore.freshness),
+    coldStart: lerp(relevance.coldStart, explore.coldStart),
+    collaborative: lerp(relevance.collaborative, explore.collaborative),
+  };
+}
+
+/** Part d'exploration recommandée selon le curseur : 5% (pertinence) → 30% (découverte). */
+export function explorationRatioForDiscovery(discovery: number): number {
+  const d = Math.max(0, Math.min(1, discovery));
+  return 0.05 + 0.25 * d;
+}
 
 export interface RecommendationOptions {
   weights?: RecommendationWeights;
@@ -190,12 +223,41 @@ interface RawComponents {
   popularity: number;
   freshness: number;
   coldStart: number;
+  collaborative: number;
   followsAuthor: boolean;
   networkProof: boolean;
 }
 
 function normalize(value: number, max: number): number {
   return max > 0 ? value / max : 0;
+}
+
+/** Public engagé par un récit : union des lecteurs qui l'ont liké ou mis en favori. */
+function audienceOf(story: Story): Set<string> {
+  return new Set<string>([...(story.likedBy || []), ...(story.favoritedBy || [])]);
+}
+
+/** Similarité de Jaccard entre deux ensembles de lecteurs (0..1). */
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let inter = 0;
+  for (const x of small) if (large.has(x)) inter++;
+  const union = a.size + b.size - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+/**
+ * Filtrage collaboratif léger (item-item) : « les lecteurs qui ont aimé les
+ * mêmes récits que toi ont aussi aimé celui-ci ». Pour un récit candidat, on
+ * somme la similarité de Jaccard entre son public et celui de chaque récit que
+ * le lecteur a déjà aimé/mis en favori. Valeur brute (normalisée ensuite).
+ */
+function collaborativeRaw(candidateAudience: Set<string>, likedAudiences: Set<string>[]): number {
+  if (candidateAudience.size === 0 || likedAudiences.length === 0) return 0;
+  let total = 0;
+  for (const liked of likedAudiences) total += jaccard(candidateAudience, liked);
+  return total;
 }
 
 /**
@@ -229,6 +291,12 @@ export function recommendStories(
     ? rated.reduce((sum, s) => sum + (s.rating || 0), 0) / rated.length
     : 3.5;
 
+  // Filtrage collaboratif : public des récits que le lecteur a déjà aimés/favoris
+  // (calculé une fois). Sert à mesurer la proximité de goût des candidats.
+  const likedAudiences = stories
+    .filter((s) => (s.likedBy || []).includes(user.id) || (s.favoritedBy || []).includes(user.id))
+    .map(audienceOf);
+
   // 1) Composantes brutes.
   const raw: RawComponents[] = eligible.map((story) => {
     const social = socialRaw(user, story);
@@ -241,6 +309,7 @@ export function recommendStories(
       popularity: hotScore(story, now, gravity),
       freshness: 1 / (daysSince + 1),
       coldStart: coldStartBoost(story, coldStartScale),
+      collaborative: collaborativeRaw(audienceOf(story), likedAudiences),
       followsAuthor: social.followsAuthor,
       networkProof: social.value - (social.followsAuthor ? 4 : 0) > 0,
     };
@@ -254,6 +323,7 @@ export function recommendStories(
     popularity: Math.max(...raw.map((r) => r.popularity), 0),
     freshness: Math.max(...raw.map((r) => r.freshness), 0),
     coldStart: Math.max(...raw.map((r) => r.coldStart), 0),
+    collaborative: Math.max(...raw.map((r) => r.collaborative), 0),
   };
 
   // 3) Score pondéré + explications.
@@ -264,6 +334,7 @@ export function recommendStories(
     const nPopularity = normalize(r.popularity, max.popularity);
     const nFreshness = normalize(r.freshness, max.freshness);
     const nColdStart = normalize(r.coldStart, max.coldStart);
+    const nCollaborative = normalize(r.collaborative, max.collaborative);
 
     const score =
       weights.affinity * nAffinity +
@@ -271,11 +342,13 @@ export function recommendStories(
       weights.quality * nQuality +
       weights.popularity * nPopularity +
       weights.freshness * nFreshness +
-      weights.coldStart * nColdStart;
+      weights.coldStart * nColdStart +
+      weights.collaborative * nCollaborative;
 
     const reasons: string[] = [];
     if (r.followsAuthor) reasons.push('Par un auteur que tu suis');
     if (r.networkProof) reasons.push('Apprécié dans ton réseau');
+    if (nCollaborative >= 0.5) reasons.push('Aimé par des lecteurs comme toi');
     if (nAffinity >= 0.5) reasons.push('Dans tes genres favoris');
     if (nPopularity >= 0.6) reasons.push('Tendance en ce moment');
     if (nColdStart >= 0.8 && (r.story.reads || 0) < coldStartScale) reasons.push('Pépite à découvrir');

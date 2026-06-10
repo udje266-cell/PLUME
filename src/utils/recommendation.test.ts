@@ -11,6 +11,8 @@ import {
   hotScore,
   coldStartBoost,
   DEFAULT_WEIGHTS,
+  weightsForDiscovery,
+  explorationRatioForDiscovery,
 } from './recommendation';
 import { Story, User } from '../types';
 
@@ -222,5 +224,50 @@ describe('recommendStories', () => {
     const user = makeUser();
     const result = recommendStories([makeStory({ id: 'x', authorId: 'a1' })], user, { now: NOW });
     expect(result).toHaveLength(1);
+  });
+
+  it('filtrage collaboratif : favorise un récit dont le public recoupe celui de tes lectures aimées', () => {
+    const user = makeUser({ id: 'me' });
+    // L'utilisateur a aimé "liked" (public : alice, bob, carol).
+    const liked = makeStory({
+      id: 'liked', authorId: 'a0', reads: 50, rating: 4,
+      likedBy: ['me', 'alice', 'bob', 'carol'],
+    });
+    // "near" partage le public d'aimeurs (alice, bob, carol) → fort signal collaboratif.
+    const near = makeStory({
+      id: 'near', authorId: 'a1', reads: 50, rating: 4,
+      likedBy: ['alice', 'bob', 'carol'],
+    });
+    // "far" a un public disjoint → aucun signal collaboratif.
+    const far = makeStory({
+      id: 'far', authorId: 'a2', reads: 50, rating: 4,
+      likedBy: ['zoe', 'yann', 'xavier'],
+    });
+    const result = recommendStories([liked, near, far], user, det);
+    const nearPos = result.findIndex((r) => r.story.id === 'near');
+    const farPos = result.findIndex((r) => r.story.id === 'far');
+    expect(nearPos).toBeLessThan(farPos);
+    expect(result[nearPos].reasons).toContain('Aimé par des lecteurs comme toi');
+  });
+});
+
+describe('weightsForDiscovery', () => {
+  it('penche vers la pertinence a 0 et la decouverte a 1', () => {
+    const relevance = weightsForDiscovery(0);
+    const discovery = weightsForDiscovery(1);
+    // En mode pertinence, l'affinite domine le cold-start ; l'inverse en decouverte.
+    expect(relevance.affinity).toBeGreaterThan(relevance.coldStart);
+    expect(discovery.coldStart).toBeGreaterThan(discovery.affinity);
+  });
+
+  it('clamp les valeurs hors bornes', () => {
+    expect(weightsForDiscovery(-5)).toEqual(weightsForDiscovery(0));
+    expect(weightsForDiscovery(9)).toEqual(weightsForDiscovery(1));
+  });
+
+  it('explorationRatioForDiscovery croit avec la decouverte', () => {
+    expect(explorationRatioForDiscovery(0)).toBeCloseTo(0.05, 5);
+    expect(explorationRatioForDiscovery(1)).toBeCloseTo(0.3, 5);
+    expect(explorationRatioForDiscovery(0.5)).toBeGreaterThan(explorationRatioForDiscovery(0));
   });
 });

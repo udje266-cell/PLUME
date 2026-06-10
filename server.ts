@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
+import { recommendStories, weightsForDiscovery, explorationRatioForDiscovery } from './src/utils/recommendation';
 
 // La logique de certification (src/utils/achievements) référence localStorage
 // pour les dates de déblocage. Côté serveur, seul le COMPTAGE des accomplissements
@@ -1277,6 +1278,69 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la recherche.' });
+    }
+  });
+
+  // Fil personnalisé : applique l'algorithme de diffusion partagé
+  // (src/utils/recommendation) côté serveur, sur l'ensemble du catalogue publié,
+  // avec pagination par curseur. ?discovery=0..1 règle découverte↔pertinence.
+  app.get('/api/feed', requireAuth, async (req: any, res) => {
+    try {
+      const discovery = Math.max(0, Math.min(1, parseFloat(String(req.query.discovery ?? '0.5')) || 0.5));
+      const limit = Math.max(1, Math.min(50, parseInt(String(req.query.limit ?? '20'), 10) || 20));
+      const cursor = Math.max(0, parseInt(String(req.query.cursor ?? '0'), 10) || 0);
+
+      // Requérant enrichi (forme User côté client) pour l'algorithme.
+      const me = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: {
+          followers: true,
+          following: true,
+          blockedUsers: true,
+          readingHistory: { select: { storyId: true } },
+        },
+      });
+      if (!me) return res.status(404).json({ error: 'Utilisateur introuvable' });
+      const user: any = serializeUser(me, true);
+      user.readingHistory = Array.from(new Set((me.readingHistory || []).map((h: any) => h.storyId)));
+
+      // Catalogue publié enrichi : on expose likedBy/favoritedBy (ids) pour les
+      // briques sociale et collaborative, absents de serializeStory.
+      const dbStories = await prisma.story.findMany({
+        where: { status: 'PUBLIE' },
+        include: {
+          author: true,
+          chapters: true,
+          likes: { select: { userId: true } },
+          favorites: { select: { userId: true } },
+        },
+      });
+      const stories = dbStories.map((s: any) => {
+        const serialized: any = serializeStory(filterDraftChapters(s, undefined, false));
+        return {
+          ...serialized,
+          // Fallback de date pour les récits publiés sans publishedAt explicite.
+          publishDate: serialized.publishDate || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : undefined),
+          likedBy: (s.likes || []).map((l: any) => l.userId),
+          favoritedBy: (s.favorites || []).map((f: any) => f.userId),
+        };
+      });
+
+      const ranked = recommendStories(stories as any, user, {
+        weights: weightsForDiscovery(discovery),
+        explorationRatio: explorationRatioForDiscovery(discovery),
+      });
+
+      const page = ranked.slice(cursor, cursor + limit);
+      const nextCursor = cursor + limit < ranked.length ? cursor + limit : null;
+      res.json({
+        items: page.map((p) => ({ story: p.story, reasons: p.reasons, isExploration: p.isExploration })),
+        nextCursor,
+        total: ranked.length,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la génération du fil.' });
     }
   });
 

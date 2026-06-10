@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   BookOpen, 
   Heart, 
@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
 import { VerifiedBadge } from './VerifiedBadge';
-import { recommendStories, hotScore } from '../utils/recommendation';
+import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
+import { authHeaders } from '../utils/auth';
 
 interface HomeViewProps {
   currentUser: User;
@@ -57,6 +58,26 @@ export default function HomeView({
   
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Curseur « découverte ↔ pertinence » du fil « Pour toi » (0 = pertinence, 1 =
+  // découverte). Persisté par utilisateur pour respecter le choix du lecteur.
+  const discoveryStorageKey = `plume_feed_discovery_${currentUser.id}`;
+  const [discovery, setDiscovery] = useState<number>(() => {
+    try {
+      const v = parseFloat(localStorage.getItem(discoveryStorageKey) || '');
+      return isNaN(v) ? 0.5 : Math.min(1, Math.max(0, v));
+    } catch {
+      return 0.5;
+    }
+  });
+  const updateDiscovery = (value: number) => {
+    setDiscovery(value);
+    try {
+      localStorage.setItem(discoveryStorageKey, String(value));
+    } catch {
+      /* stockage indisponible : on garde juste l'état en mémoire */
+    }
+  };
 
   // Filter out published and safe stories
   const publishedStories = stories.filter(s => s.status === 'Publié' && !s.isFlagged);
@@ -96,10 +117,38 @@ export default function HomeView({
   // 2. "Pour toi" — diffusion personnalisée via l'algorithme de recommandation
   // (affinité de goût + signal social + qualité lissée + popularité à déclin
   // temporel + coup de pouce aux nouveautés + exploration). Cf. utils/recommendation.
-  const displayForYou = useMemo(
-    () => recommendStories(stories, currentUser, { limit: 12 }).map((r) => r.story),
-    [stories, currentUser],
+  // Fil « Pour toi » calculé localement (instantané, fonctionne hors-ligne).
+  const localForYou = useMemo(
+    () => recommendStories(stories, currentUser, {
+      weights: weightsForDiscovery(discovery),
+      explorationRatio: explorationRatioForDiscovery(discovery),
+      limit: 12,
+    }),
+    [stories, currentUser, discovery],
   );
+
+  // Le serveur expose le MÊME algorithme sur tout le catalogue (incl. signaux
+  // sociaux/collaboratifs complets) via /api/feed. On l'utilise s'il répond,
+  // avec repli transparent sur le calcul local en cas d'échec/chargement.
+  const [serverForYou, setServerForYou] = useState<ScoredStory[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/feed?discovery=${discovery}&limit=12`, { headers: authHeaders() });
+        if (!res.ok) throw new Error(`feed ${res.status}`);
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.items)) {
+          setServerForYou(data.items as ScoredStory[]);
+        }
+      } catch {
+        if (!cancelled) setServerForYou(null); // repli sur le local
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [discovery, currentUser.id]);
+
+  const displayForYou = serverForYou ?? localForYou;
 
   // 3. "Tendances populaires" — popularité AVEC déclin temporel (style HN/Reddit)
   // pour faire tourner le contenu au lieu de figer les vieux hits en tête.
@@ -216,14 +265,35 @@ export default function HomeView({
 
       {/* SECTION 2: POUR TOI (Personalized recommendations based on tags or category) */}
       <section className="space-y-3">
-        <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400 flex items-center space-x-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-          <span>Pour toi (Recommandations)</span>
-        </h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400 flex items-center space-x-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span>Pour toi (Recommandations)</span>
+          </h3>
+
+          {/* Curseur découverte ↔ pertinence : ajuste l'algorithme de diffusion. */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[8px] font-bold uppercase tracking-wide text-gray-400" title="Davantage de récits qui collent à tes goûts">Pertinent</span>
+            <input
+              id="feed-discovery-slider"
+              type="range"
+              min={0}
+              max={1}
+              step={0.1}
+              value={discovery}
+              onChange={(e) => updateDiscovery(parseFloat(e.target.value))}
+              className="w-20 accent-purple-600 cursor-pointer"
+              aria-label="Curseur découverte / pertinence du fil Pour toi"
+              title="Glisse vers la découverte pour voir plus de nouveautés et de nouveaux auteurs"
+            />
+            <span className="text-[8px] font-bold uppercase tracking-wide text-gray-400" title="Davantage de nouveautés et de nouveaux auteurs">Découverte</span>
+          </div>
+        </div>
 
         <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
-          {displayForYou.map((story) => {
+          {displayForYou.map(({ story, reasons, isExploration }) => {
             const isFav = favorites.includes(story.id);
+            const topReason = reasons[0];
             return (
               <div 
                 key={story.id} 
@@ -254,7 +324,20 @@ export default function HomeView({
 
                 {/* Cover info */}
                 <div className="text-left mt-2 space-y-1">
-                  <h4 
+                  {topReason && (
+                    <span
+                      className={`inline-flex items-center gap-0.5 text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
+                        isExploration
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-300'
+                      }`}
+                      title="Pourquoi ce récit t'est proposé"
+                    >
+                      {isExploration ? <Compass className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+                      <span className="line-clamp-1">{topReason}</span>
+                    </span>
+                  )}
+                  <h4
                     onClick={() => onSelectStory(story)}
                     className="font-serif font-black text-xs text-gray-950 dark:text-gray-50 line-clamp-1 hover:text-purple-600 cursor-pointer"
                   >
