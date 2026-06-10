@@ -414,9 +414,11 @@ export async function createServerInstance() {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+  // Origines de l'app native (Capacitor) : toujours tolérées pour Socket.io.
+  const SOCKET_NATIVE_ORIGINS = ['capacitor://localhost', 'ionic://localhost', 'http://localhost', 'https://localhost'];
   const corsOrigin: any =
     allowedOrigins.length > 0
-      ? allowedOrigins
+      ? [...allowedOrigins, ...SOCKET_NATIVE_ORIGINS]
       : process.env.NODE_ENV === 'production'
         ? false
         : '*';
@@ -519,6 +521,29 @@ export async function createServerInstance() {
   }
 
   app.use(express.json({ limit: '10mb' }));
+
+  // ── CORS HTTP (en plus de la config Socket.io) ─────────────────────────────
+  // Indispensable pour le build natif (Capacitor) : l'app y tourne sur une
+  // origine locale (capacitor://localhost, https://localhost) et appelle le
+  // backend en cross-origin. On autorise ces origines + la whitelist configurée,
+  // avec les credentials (cookie/Authorization).
+  const NATIVE_ORIGINS = ['capacitor://localhost', 'ionic://localhost', 'http://localhost', 'https://localhost'];
+  const httpAllowedOrigins = new Set([...allowedOrigins, ...NATIVE_ORIGINS]);
+  app.use((req, res, next) => {
+    const origin = req.headers.origin as string | undefined;
+    const allow =
+      origin &&
+      (httpAllowedOrigins.has(origin) || process.env.NODE_ENV !== 'production');
+    if (allow && origin) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
 
   // ── Rate limiting simple en mémoire (par IP) ───────────────────────────────
   // Protège les routes sensibles (login, OTP, reset) contre le brute-force et le
@@ -1175,6 +1200,32 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(404).json({ error: 'Utilisateur non trouvé ou erreur de modification' });
+    }
+  });
+
+  // Suppression de compte (RGPD + exigence obligatoire Apple/Google pour les
+  // apps avec comptes). Un utilisateur supprime son propre compte ; un admin
+  // peut supprimer n'importe quel compte. Les données liées (récits, chapitres,
+  // commentaires, likes, favoris, follows, messages, notifications…) partent en
+  // cascade via les relations onDelete: Cascade du schéma Prisma.
+  app.delete('/api/users/:id', requireAuth, async (req: any, res) => {
+    try {
+      const authUser = req.user;
+      const isSelf = authUser.id === req.params.id;
+      const isAdmin = authUser.role === 'Administrateur';
+      if (!isSelf && !isAdmin) return res.status(403).json({ error: 'Action interdite' });
+
+      const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!existing) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+      await prisma.user.delete({ where: { id: req.params.id } });
+
+      // L'utilisateur qui supprime SON compte voit aussi sa session révoquée.
+      if (isSelf) res.clearCookie(AUTH_COOKIE, { path: '/' });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
     }
   });
 

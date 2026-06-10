@@ -32,7 +32,8 @@ import AdminDashboard from './components/AdminDashboard';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
-import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken } from './utils/auth';
+import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
+import { API_BASE } from './utils/api';
 import { 
   getUserStats,
   saveUserStats,
@@ -575,7 +576,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || !currentUser?.id) return;
 
-    const socket = io(window.location.origin, {
+    const socket = io(API_BASE || window.location.origin, {
       transports: ['websocket', 'polling'],
       // Authentification via le token mémoire (handshake) et/ou le cookie
       // httpOnly envoyé automatiquement. Le serveur n'autorise que la room
@@ -879,6 +880,10 @@ export default function App() {
   useEffect(() => {
     const fetchApiData = async () => {
       try {
+        // 0. Natif : réhydrate le token persistant avant tout appel authentifié
+        //    (le cookie httpOnly n'existe pas hors web same-origin).
+        await restoreAuthToken();
+
         // 1. Fetch Users & Me
         const me = await refreshUsersData();
         const loggedIn = localStorage.getItem('plume_is_logged_in') === 'true';

@@ -26,6 +26,15 @@
   }
 }
 
+/* Safe-areas (encoche, barre d'état, home indicator) : appliquées uniquement
+   dans le build natif (classe posée par initNative) pour ne pas décaler le web. */
+.native-app body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

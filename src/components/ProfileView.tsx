@@ -3755,12 +3755,23 @@ const user = freshViewedUser || freshCurrentUser;
                         <span className="text-[9px] text-zinc-450 block font-medium">Cette action effacera définitivement toutes vos données Plume.</span>
                       </div>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const confirmDelete = window.confirm("ATTENTION : Êtes-vous absolument sûr de vouloir supprimer définitivement votre compte Plume ? Cette opération est irréversible.");
-                          if (confirmDelete && onLogout) {
-                            onLogout();
+                          if (!confirmDelete) return;
+                          try {
+                            const res = await fetch(`/api/users/${currentUser.id}`, {
+                              method: 'DELETE',
+                              headers: authHeaders(),
+                            });
+                            if (!res.ok && res.status !== 204) {
+                              const data = await res.json().catch(() => ({}));
+                              throw new Error(data.error || `Erreur ${res.status}`);
+                            }
                             setIsSettingsOpen(false);
-                            alert("Votre compte a été supprimé définitivement. Au revoir !");
+                            onLogout?.();
+                            alert("Votre compte et toutes vos données ont été supprimés définitivement. Au revoir !");
+                          } catch (err: any) {
+                            alert(`La suppression a échoué : ${err.message || 'erreur serveur'}. Réessayez plus tard.`);
                           }
                         }}
                         className="py-2 px-3 bg-red-650 hover:bg-red-750 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer"
