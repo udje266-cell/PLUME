@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BookOpen, 
   Heart, 
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
 import { VerifiedBadge } from './VerifiedBadge';
+import { recommendStories, hotScore } from '../utils/recommendation';
 
 interface HomeViewProps {
   currentUser: User;
@@ -92,22 +93,20 @@ export default function HomeView({
     return { percent, lastRead };
   };
 
-  // 2. "Pour toi" Recommendations
-  // Recommendations build based on user's favorite genres + following author's books
-  const recommendedStories = publishedStories.filter(story => {
-    const matchesGenre = currentUser.favoriteGenres.some(genre => story.genre.includes(genre));
-    const matchesAuthor = currentUser.following.includes(story.authorId);
-    return matchesGenre || matchesAuthor;
-  });
+  // 2. "Pour toi" — diffusion personnalisée via l'algorithme de recommandation
+  // (affinité de goût + signal social + qualité lissée + popularité à déclin
+  // temporel + coup de pouce aux nouveautés + exploration). Cf. utils/recommendation.
+  const displayForYou = useMemo(
+    () => recommendStories(stories, currentUser, { limit: 12 }).map((r) => r.story),
+    [stories, currentUser],
+  );
 
-  // Fallback if no matching genres (e.g. recommend popular ones)
-  const displayForYou = recommendedStories.length > 0 
-    ? recommendedStories 
-    : publishedStories.slice().sort((a, b) => b.rating - a.rating);
-
-  // 3. "Tendances populaires" (reads + likes)
-  const trendingStories = publishedStories.slice()
-    .sort((a, b) => (b.reads + b.likes * 3) - (a.reads + a.likes * 3));
+  // 3. "Tendances populaires" — popularité AVEC déclin temporel (style HN/Reddit)
+  // pour faire tourner le contenu au lieu de figer les vieux hits en tête.
+  const trendingStories = useMemo(() => {
+    const now = Date.now();
+    return publishedStories.slice().sort((a, b) => hotScore(b, now, 1.5) - hotScore(a, now, 1.5));
+  }, [publishedStories]);
 
   // 4. "Nouveautés"
   const newsStories = publishedStories.slice()
