@@ -20,7 +20,9 @@ import {
   Bell,
   Heart,
   MessageCircle,
-  Users
+  Users,
+  Send,
+  Star
 } from 'lucide-react';
 import { User, UserRole, AppNotification } from '../types';
 import Logo from './Logo';
@@ -34,7 +36,7 @@ interface MainNavigationProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   notifications?: AppNotification[];
-  onMarkNotificationsRead?: (type?: AppNotification['type'] | 'all') => void;
+  onMarkNotificationsRead?: (type?: AppNotification['type'] | AppNotification['type'][] | 'all') => void;
   unreadMessagesCount?: number;
 }
 
@@ -53,19 +55,29 @@ export default function MainNavigation({
   const canWrite = currentUser.role === 'Auteur';
   const isAdmin = currentUser.role === 'Administrateur';
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [activeNotificationTab, setActiveNotificationTab] = useState<'all' | 'follow' | 'comment' | 'like'>('all');
+  const [activeNotificationTab, setActiveNotificationTab] = useState<string>('all');
+
+  // Catégories alignées sur les vrais types de notifications du serveur.
+  const NOTIF_CATEGORIES: { id: string; label: string; types: AppNotification['type'][] | null }[] = [
+    { id: 'all', label: 'Tout', types: null },
+    { id: 'social', label: 'Social', types: ['follow', 'friend'] },
+    { id: 'comment', label: 'Com.', types: ['comment'] },
+    { id: 'reaction', label: 'Réact.', types: ['like', 'favorite'] },
+    { id: 'message', label: 'Msg', types: ['message'] },
+  ];
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
-  const followNotifications = notifications.filter((notification) => notification.type === 'follow');
-  const commentNotifications = notifications.filter((notification) => notification.type === 'comment');
-  const likeNotifications = notifications.filter((notification) => notification.type === 'like');
+  const countFor = (types: AppNotification['type'][] | null) =>
+    types ? notifications.filter((n) => types.includes(n.type)).length : notifications.length;
 
-  const getVisibleNotifications = () => {
-    if (activeNotificationTab === 'follow') return followNotifications;
-    if (activeNotificationTab === 'comment') return commentNotifications;
-    if (activeNotificationTab === 'like') return likeNotifications;
-    return notifications;
-  };
+  const activeCategory = NOTIF_CATEGORIES.find((c) => c.id === activeNotificationTab) || NOTIF_CATEGORIES[0];
+  const getVisibleNotifications = () =>
+    activeCategory.types ? notifications.filter((n) => activeCategory.types!.includes(n.type)) : notifications;
+
+  const notifIcon = (t: AppNotification['type']) =>
+    t === 'follow' || t === 'friend' ? Users : t === 'comment' ? MessageCircle : t === 'message' ? Send : t === 'favorite' ? Star : Heart;
+  const notifColor = (t: AppNotification['type']) =>
+    t === 'like' ? 'text-pink-500' : t === 'favorite' ? 'text-amber-500' : t === 'comment' ? 'text-purple-500' : t === 'message' ? 'text-blue-500' : 'text-indigo-500';
 
   const formatNotificationDate = (dateValue: string) => {
     const date = new Date(dateValue);
@@ -145,7 +157,7 @@ export default function MainNavigation({
                   const nextOpenState = !isNotificationsOpen;
                   setIsNotificationsOpen(nextOpenState);
                   if (nextOpenState) {
-                    onMarkNotificationsRead?.(activeNotificationTab);
+                    onMarkNotificationsRead?.(activeCategory.types ?? 'all');
                   }
                 }}
                 className="relative p-2 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-purple-950/20 transition-all active:scale-95 duration-200 outline-none cursor-pointer"
@@ -174,29 +186,27 @@ export default function MainNavigation({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-1 p-2 bg-zinc-50 dark:bg-zinc-950/40">
-                    {[
-                      { id: 'all' as const, label: 'Tout', count: notifications.length },
-                      { id: 'follow' as const, label: 'Suivis', count: followNotifications.length },
-                      { id: 'comment' as const, label: 'Com.', count: commentNotifications.length },
-                      { id: 'like' as const, label: 'Likes', count: likeNotifications.length },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveNotificationTab(tab.id);
-                          onMarkNotificationsRead?.(tab.id);
-                        }}
-                        className={`py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition ${
-                          activeNotificationTab === tab.id
-                            ? 'bg-purple-600 text-white shadow-sm'
-                            : 'text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900'
-                        }`}
-                      >
-                        {tab.label}
-                        {tab.count > 0 && <span className="ml-1 opacity-80">{tab.count}</span>}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-5 gap-1 p-2 bg-zinc-50 dark:bg-zinc-950/40">
+                    {NOTIF_CATEGORIES.map((cat) => {
+                      const count = countFor(cat.types);
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            setActiveNotificationTab(cat.id);
+                            onMarkNotificationsRead?.(cat.types ?? 'all');
+                          }}
+                          className={`py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition ${
+                            activeNotificationTab === cat.id
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900'
+                          }`}
+                        >
+                          {cat.label}
+                          {count > 0 && <span className="ml-1 opacity-80">{count}</span>}
+                        </button>
+                      );
+                    })}
                   </div>
 
                   <div className="max-h-80 overflow-y-auto scrollbar-none">
@@ -207,7 +217,7 @@ export default function MainNavigation({
                       </div>
                     ) : (
                       getVisibleNotifications().map((notification) => {
-                        const Icon = notification.type === 'follow' ? Users : notification.type === 'comment' ? MessageCircle : Heart;
+                        const Icon = notifIcon(notification.type);
                         return (
                           <div
                             key={notification.id}
@@ -226,9 +236,7 @@ export default function MainNavigation({
                                 <p className="text-[11px] font-black text-zinc-850 dark:text-zinc-100 leading-snug">
                                   {notification.title}
                                 </p>
-                                <Icon className={`w-3.5 h-3.5 shrink-0 ${
-                                  notification.type === 'like' ? 'text-pink-500' : notification.type === 'comment' ? 'text-purple-500' : 'text-indigo-500'
-                                }`} />
+                                <Icon className={`w-3.5 h-3.5 shrink-0 ${notifColor(notification.type)}`} />
                               </div>
                               <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-350 leading-snug line-clamp-2">
                                 {notification.message}

@@ -142,7 +142,7 @@ export interface ReadingProgress {
   lastReadTime: string;
 }
 
-export type AppNotificationType = 'follow' | 'comment' | 'like' | 'favorite';
+export type AppNotificationType = 'follow' | 'friend' | 'comment' | 'like' | 'favorite' | 'message';
 
 export interface AppNotification {
   id: string;

@@ -54,9 +54,9 @@ function mapServerNotificationType(type: string): AppNotification['type'] {
     COMMENT: 'comment',
     LIKE: 'like',
     FAVORITE: 'favorite',
-    FRIEND_REQUEST: 'follow',
-    FRIEND_ACCEPTED: 'follow',
-    MESSAGE: 'comment',
+    FRIEND_REQUEST: 'friend',
+    FRIEND_ACCEPTED: 'friend',
+    MESSAGE: 'message',
     COMMENT_REPLY: 'comment',
     NEW_CHAPTER: 'comment',
   };
@@ -276,11 +276,13 @@ export default function App() {
     }
   };
 
-  const handleMarkNotificationsRead = (type?: AppNotification['type'] | 'all') => {
+  const handleMarkNotificationsRead = (type?: AppNotification['type'] | AppNotification['type'][] | 'all') => {
     if (!currentUser) return;
+    const matchesType = (t: AppNotification['type']) =>
+      !type || type === 'all' ? true : Array.isArray(type) ? type.includes(t) : t === type;
     const nextNotifications = notifications.map((notification) => {
       if (notification.targetUserId !== currentUser.id) return notification;
-      if (!type || type === 'all' || notification.type === type) {
+      if (matchesType(notification.type)) {
         return { ...notification, read: true };
       }
       return notification;
