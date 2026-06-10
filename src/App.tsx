@@ -2117,6 +2117,20 @@ export default function App() {
     localStorage.removeItem('plume_is_logged_in');
     localStorage.removeItem('plume_auth_token');
     localStorage.removeItem('plume_current_user');
+    // Purge les caches de données propres au compte (clés globales) pour éviter
+    // qu'elles ne fuitent vers le compte suivant connecté sur le même navigateur.
+    [
+      'plume_notifications',
+      'plume_reading_groups',
+      'plume_group_messages',
+      'plume_favorites',
+      'plume_currently_reading',
+      'plume_completed',
+      'plume_read_later',
+      'plume_read_chapters',
+      'plume_last_read_progress',
+      'plume_active_interlocutor_id',
+    ].forEach((key) => localStorage.removeItem(key));
   };
 
   // Wrap fetch globally to catch 401 errors
