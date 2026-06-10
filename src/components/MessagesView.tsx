@@ -270,8 +270,9 @@ export default function MessagesView({
   }, [callState]);
 
   const handleStartCall = () => {
-    setCallDuration(0);
-    setCallState('ringing');
+    // Les appels audio ne sont pas encore implémentés (pas d'infrastructure
+    // temps réel média) : on ne simule plus de connexion fictive.
+    alert('Les appels audio arriveront prochainement sur PLUME.');
   };
 
   const handleEndCall = () => {
@@ -308,9 +309,10 @@ export default function MessagesView({
     setMessageText('');
   };
 
-  // Start voice note simulation
+  // Les notes vocales ne sont pas encore implémentées (pas d'enregistrement/
+  // upload audio réel) : on n'envoie plus de fausse note (un simple libellé texte).
   const handleStartVoiceNote = () => {
-    setIsRecording(true);
+    alert('Les notes vocales arriveront prochainement sur PLUME.');
   };
 
   // Discard voice note recording
