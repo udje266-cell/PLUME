@@ -31,9 +31,30 @@ VITE_API_URL="https://plume-app.onrender.com" npm run cap:sync
 
 `cap:sync` lance `vite build` puis copie `dist/` dans les projets natifs.
 
-## 4. Initialiser iOS (sur Mac, une seule fois)
+## 4. iOS
 
-Le dossier `android/` est déjà présent. Pour iOS :
+⚠️ **iOS ne se compile que sur macOS avec Xcode.** Deux options :
+
+### Option A — Sans Mac : build dans le cloud (GitHub Actions)
+Un workflow `.github/workflows/ios-build.yml` est fourni. Il compile l'app iOS
+sur un runner **macOS** :
+1. Dans GitHub : **Settings → Secrets and variables → Actions → Variables** →
+   ajoute `VITE_API_URL = https://ton-backend.onrender.com`.
+2. Onglet **Actions → « iOS build » → Run workflow**.
+3. Récupère l'artefact `PLUME-ios-simulator-app` (build non signé, simulateur :
+   vérifie que tout compile).
+
+Pour un **vrai test iPhone / une soumission App Store**, il faut **signer** avec
+un compte Apple Developer (certificat + profil de provisioning) puis envoyer sur
+**TestFlight** — le job `build-signed` (commenté dans le workflow) décrit les
+secrets nécessaires. Alternatives clés en main : **Codemagic**, **Ionic
+Appflow**, **EAS Build** (offrent des Mac dans le cloud + la signature).
+
+> Rappel : sur iOS il n'y a **pas de sideload** comme l'APK Android. Le test sur
+> appareil réel passe **obligatoirement par TestFlight** (compte Apple requis).
+
+### Option B — Avec un Mac
+Le dossier `android/` est déjà présent. Pour iOS, sur le Mac :
 
 ```bash
 npx cap add ios

@@ -1,0 +1,98 @@
+# Build iOS de PLUME sur un runner macOS GitHub Actions.
+#
+# iOS ne se compile que sur macOS (Xcode) — ce workflow le fait pour toi dans le
+# cloud, sans posséder de Mac.
+#
+#  • Déclenchement manuel : onglet « Actions » → « iOS build » → « Run workflow ».
+#  • Par défaut : build NON SIGNÉ pour simulateur (vérifie que l'app compile) +
+#    artefact App.app téléchargeable.
+#  • Pour un vrai test sur iPhone / une soumission App Store, il faut SIGNER avec
+#    ton compte Apple Developer (voir le bloc commenté « signed / TestFlight » et
+#    MOBILE.md).
+#
+# Variable de dépôt à définir (Settings → Secrets and variables → Actions →
+# Variables) : VITE_API_URL = https://ton-backend.onrender.com
+
+name: iOS build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-unsigned:
+    name: Build iOS (non signé, simulateur)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Build du bundle web (vers le backend)
+        run: npm run build:mobile
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://plume-app.onrender.com' }}
+
+      - name: Ajouter la plateforme iOS si absente
+        run: |
+          if [ ! -d ios ]; then npx cap add ios; fi
+
+      - name: Synchroniser Capacitor (iOS)
+        run: npx cap sync ios
+
+      - name: Générer icônes & splash iOS
+        run: npx capacitor-assets generate --ios || echo "assets generation skipped"
+
+      - name: Compiler (non signé, simulateur)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Publier l'app simulateur en artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PLUME-ios-simulator-app
+          path: ios/build/Build/Products/Debug-iphonesimulator/App.app
+          if-no-files-found: warn
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Build SIGNÉ + envoi TestFlight (à activer quand tu as un compte Apple
+  # Developer). Renseigne d'abord ces secrets (Settings → Secrets → Actions) :
+  #   BUILD_CERTIFICATE_BASE64   (certificat de distribution .p12 encodé base64)
+  #   P12_PASSWORD               (mot de passe du .p12)
+  #   PROVISIONING_PROFILE_BASE64(profil de provisioning encodé base64)
+  #   APPSTORE_ISSUER_ID / APPSTORE_KEY_ID / APPSTORE_PRIVATE_KEY
+  #                              (clé API App Store Connect, pour l'upload)
+  # Puis décommente ce job. La doc complète est dans MOBILE.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  #
+  # build-signed:
+  #   name: Build iOS signé + TestFlight
+  #   runs-on: macos-14
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with: { node-version: '20' }
+  #     - run: npm ci
+  #     - run: npm run build:mobile
+  #       env:
+  #         VITE_API_URL: ${{ vars.VITE_API_URL }}
+  #     - run: |
+  #         if [ ! -d ios ]; then npx cap add ios; fi
+  #         npx cap sync ios
+  #     # … import du certificat + profil, puis :
+  #     # xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+  #     #   -configuration Release -archivePath build/App.xcarchive archive
+  #     # xcodebuild -exportArchive -archivePath build/App.xcarchive \
+  #     #   -exportPath build -exportOptionsPlist ExportOptions.plist
+  #     # xcrun altool --upload-app -f build/App.ipa  (ou Transporter / fastlane)
