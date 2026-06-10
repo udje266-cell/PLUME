@@ -1197,18 +1197,20 @@ const user = freshViewedUser || freshCurrentUser;
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
         
-        {/* Paramètres Button */}
-        <button
-          id="profile-settings-btn"
-          onClick={() => {
-            setSelectedRoleType(currentUser.role);
-            setIsSettingsOpen(true);
-          }}
-          className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-xl p-2.5 transition backdrop-blur-md cursor-pointer shadow-md border border-white/5 active:scale-95 z-20"
-          title="Paramètres de profil"
-        >
-          <Settings className="w-4 h-4 text-purple-200" />
-        </button>
+        {/* Paramètres Button — UNIQUEMENT sur son propre profil. */}
+        {isOwnProfile && (
+          <button
+            id="profile-settings-btn"
+            onClick={() => {
+              setSelectedRoleType(currentUser.role);
+              setIsSettingsOpen(true);
+            }}
+            className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-xl p-2.5 transition backdrop-blur-md cursor-pointer shadow-md border border-white/5 active:scale-95 z-20"
+            title="Paramètres de profil"
+          >
+            <Settings className="w-4 h-4 text-purple-200" />
+          </button>
+        )}
 
         {/* Banner selector activator button */}
         {isOwnProfile && (

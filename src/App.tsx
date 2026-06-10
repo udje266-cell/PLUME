@@ -20,7 +20,6 @@ import {
   BookmarkCheck
 } from 'lucide-react';
 import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
-import { USERS, INITIAL_STORIES, INITIAL_COMMENTS, INITIAL_MESSAGES } from './data';
 import MainNavigation from './components/MainNavigation';
 import LateralMenu from './components/LateralMenu';
 import ExplorerView from './components/ExplorerView';
@@ -386,35 +385,11 @@ export default function App() {
     };
   };
 
+  // Applique les éditions locales aux comptes RÉELS du backend. (Les anciens
+  // comptes de démonstration/testeurs ont été retirés : l'app n'affiche plus que
+  // de vrais utilisateurs.)
   const ensureSimulatorAccounts = (backendUsers: User[]): User[] => {
-    const isAuth = isAuthenticated || localStorage.getItem('plume_is_logged_in') === 'true';
-    if (isAuth) {
-      return backendUsers.map(u => mergeLocalUserEdit(u, true));
-    }
-
-    const mergedById = new Map<string, User>();
-    const backendIds = new Set(backendUsers.map(u => u.id));
-
-    [...backendUsers, ...USERS].forEach((user) => {
-      if (!user?.id) return;
-      const existing = mergedById.get(user.id);
-      const isBackend = backendIds.has(user.id);
-      mergedById.set(user.id, mergeLocalUserEdit(existing ? { ...user, ...existing } : user, isBackend));
-    });
-
-    const users = Array.from(mergedById.values());
-    const requiredRoles: UserRole[] = ['Lecteur', 'Auteur', 'Administrateur'];
-
-    requiredRoles.forEach((role) => {
-      if (!users.some((user) => user.role === role)) {
-        const seed = USERS.find((user) => user.role === role);
-        if (seed) {
-          users.push(mergeLocalUserEdit(seed, false));
-        }
-      }
-    });
-
-    return users;
+    return backendUsers.map(u => mergeLocalUserEdit(u, true));
   };
 
   const getLikedStoriesStorageKey = (userId: string) => `plume_liked_stories_${userId}`;

@@ -6,7 +6,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft } from 'lucide-react';
 import { User, UserRole } from '../types';
-import { USERS } from '../data';
 import { setAuthToken } from '../utils/auth';
 import { apiPost } from '../utils/api';
 import Logo from './Logo';
@@ -270,43 +269,6 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     if (e.key === 'Backspace' && !otpCode[idx] && idx > 0) {
       const prevInput = document.getElementById(`otp-input-${idx - 1}`);
       prevInput?.focus();
-    }
-  };
-
-  // Fast demo-bypass
-  const handleQuickDemoAccess = async (userEmail: string) => {
-    setIsLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
-    // On cherche le compte de démo dans les données seed (qui contiennent les
-    // emails) : la liste allUsers ne renvoie plus les emails des autres comptes.
-    const target = USERS.find(u => u.email === userEmail) || allUsers.find(u => u.email === userEmail);
-    if (!target) {
-      setErrorMsg('Compte de démonstration introuvable.');
-      setIsLoading(false);
-      return;
-    }
-    try {
-      const data = await apiPost('/api/auth/demo-login', {
-        email: target.email,
-        username: target.username,
-        role: target.role,
-        avatar: target.avatar,
-        bio: target.bio,
-        birthDate: target.birthDate,
-        gender: target.gender,
-        favoriteGenres: target.favoriteGenres,
-      });
-      // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
-      // par le serveur pour la persistance après rechargement.
-      setAuthToken(data.token);
-      setSuccessMsg('Connexion démo réussie !');
-      onLoginSuccess(data.user);
-    } catch (error: any) {
-      console.error(error);
-      setErrorMsg(error?.message || 'Connexion démo impossible.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -809,39 +771,6 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
             </div>
           </div>
         )}
-      </div>
-
-      {/* QUICK SELECT PROFILE UTILITY IN FOOTER */}
-      <div className="mt-8 p-4 w-full max-w-sm bg-gray-50 dark:bg-zinc-900/60 border border-gray-150 dark:border-zinc-800/40 rounded-xl">
-        <h4 className="text-[9px] font-black uppercase tracking-widest text-[#7C3AED] dark:text-purple-400 mb-2.5 text-center">
-          Accès instantané (Comptes de test)
-        </h4>
-        <div className="grid grid-cols-2 gap-2 text-center text-[9px] font-bold">
-          <button
-            onClick={() => handleQuickDemoAccess('charlotte@plume.fr')}
-            className="p-1 px-2.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 rounded-lg hover:border-purple-500 transition line-clamp-1 cursor-pointer"
-          >
-            Charlotte (@Charlotte_B)
-          </button>
-          <button
-            onClick={() => handleQuickDemoAccess('alexandre@plume.fr')}
-            className="p-1 px-2.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 rounded-lg hover:border-purple-500 transition line-clamp-1 cursor-pointer"
-          >
-            Alexandre (@Alexandre_Dumas)
-          </button>
-          <button
-            onClick={() => handleQuickDemoAccess('sophie.lefevre@plume.fr')}
-            className="p-1 px-2.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 rounded-lg hover:border-purple-500 transition line-clamp-1 col-span-2 cursor-pointer"
-          >
-            Sophie (@Sophie_L - Lit et Écrit)
-          </button>
-          <button
-            onClick={() => handleQuickDemoAccess('gaby.mod@plume.fr')}
-            className="p-1 px-2.5 bg-gradient-to-r from-purple-500/10 to-violet-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg hover:border-purple-500 transition col-span-2 cursor-pointer"
-          >
-            Gabriel (@Gabriel_Plume_Mod)
-          </button>
-        </div>
       </div>
 
       {/* Liens légaux (requis stores) */}
