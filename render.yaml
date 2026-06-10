@@ -39,6 +39,12 @@ services:
       # Socket.io). Laisser vide en mono-instance. Voir SCALING.md.
       - key: REDIS_URL
         sync: false
+      # Compte administrateur (re)créé par le seed auto au démarrage. Le seed est
+      # idempotent. Définir ADMIN_PASSWORD pour activer cette création.
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_EMAIL
+        value: udje266@gmail.com
 
 databases:
   - name: plume-db

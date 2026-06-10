@@ -28,10 +28,45 @@ const cover = (id: string) => `https://images.unsplash.com/${id}?w=600&h=900&fit
 
 const DAY = 86_400_000;
 
+/**
+ * Crée (ou met à jour) le compte ADMINISTRATEUR du propriétaire. Idempotent
+ * (upsert par e-mail). Le mot de passe vient de `ADMIN_PASSWORD` — on ne stocke
+ * jamais de mot de passe en clair dans le dépôt. Si la variable n'est pas
+ * définie, l'étape est ignorée.
+ */
+async function ensureAdmin() {
+  const email = (process.env.ADMIN_EMAIL || 'udje266@gmail.com').toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    console.log('[seed] ADMIN_PASSWORD non défini → compte administrateur non créé/mis à jour.');
+    return;
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const profile = {
+    username: process.env.ADMIN_USERNAME || 'hyde.._',
+    role: 'Administrateur',
+    gender: 'Homme',
+    birthDate: new Date('2002-09-18'),
+    emailVerified: true, // pas d'OTP requis pour se connecter
+    isVerified: true,     // badge certifié (compte propriétaire)
+  };
+  await prisma.user.upsert({
+    where: { email },
+    update: { ...profile, passwordHash },
+    create: { ...profile, email, passwordHash, favoriteGenres: '[]', bio: '' },
+  });
+  console.log(`[seed] ✅ Compte administrateur prêt : ${email} (${profile.username})`);
+}
+
 async function main() {
+  // Compte administrateur du propriétaire : créé/garanti à CHAQUE exécution
+  // (indépendamment du contenu de démo), via upsert par e-mail. Le mot de passe
+  // n'est JAMAIS en dur dans le dépôt : il provient de la variable ADMIN_PASSWORD.
+  await ensureAdmin();
+
   const existingStories = await prisma.story.count();
   if (existingStories > 0) {
-    console.log(`[seed] ${existingStories} récit(s) déjà présents — seed ignoré (idempotent).`);
+    console.log(`[seed] ${existingStories} récit(s) déjà présents — contenu de démo ignoré (idempotent).`);
     return;
   }
 
