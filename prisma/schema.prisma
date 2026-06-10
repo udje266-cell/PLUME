@@ -59,6 +59,8 @@ model User {
   favorites         Favorite[]
   blockedUsers      BlockedUser[] @relation("Blocker")
   blockedBy         BlockedUser[] @relation("Blocked")
+  reportsMade       Report[] @relation("ReportReporter")
+  reportsReceived   Report[] @relation("ReportReported")
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -299,6 +301,19 @@ model BlockedUser {
   @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  reportedId String
+  reason     String?
+  reporter   User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported   User     @relation("ReportReported", fields: [reportedId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([reporterId, reportedId])
+  @@index([reportedId])
 }
 
 model Otp {

@@ -25,6 +25,24 @@ vi.mock('./src/server/prisma', () => {
         upsert: vi.fn(),
         delete: vi.fn(),
       },
+      blockedUser: {
+        findFirst: vi.fn(),
+      },
+      follow: {
+        findUnique: vi.fn(),
+        upsert: vi.fn(),
+      },
+      report: {
+        upsert: vi.fn(),
+        count: vi.fn(),
+      },
+      readingHistory: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+      },
+      chapter: {
+        update: vi.fn(),
+      },
       otp: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -224,6 +242,88 @@ describe('API Integration Tests (Express routes)', () => {
 
       expect(res.body.error).toBe('Code OTP invalide ou expiré.');
       expect(vi.mocked(prisma.otp.update)).toHaveBeenCalled();
+    });
+  });
+
+  describe('Block & privacy enforcement (M2/M3)', () => {
+    const me = { id: 'me', email: 'me@example.com', username: 'me', role: 'Lecteur', followers: [], following: [], blockedUsers: [] };
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    it('POST /api/users/:id/follow is refused when a block exists', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(me as any); // requireAuth + target
+      vi.mocked(prisma.blockedUser.findFirst).mockResolvedValue({ id: 'b1' } as any);
+
+      const res = await request(app)
+        .post('/api/users/target-1/follow')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      expect(res.body.error).toMatch(/blocage/i);
+      expect(vi.mocked(prisma.follow.upsert)).not.toHaveBeenCalled();
+    });
+
+    it('POST /api/users/:id/follow is refused when target disabled new followers', async () => {
+      vi.mocked(prisma.user.findUnique)
+        .mockResolvedValueOnce(me as any) // requireAuth
+        .mockResolvedValueOnce({ whoCanFollow: 'none' } as any); // target lookup
+
+      const res = await request(app)
+        .post('/api/users/target-1/follow')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      expect(res.body.error).toMatch(/abonn/i);
+      expect(vi.mocked(prisma.follow.upsert)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Report abuse protection (M4)', () => {
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    it('rejects self-reporting', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'me', role: 'Lecteur' } as any);
+
+      const res = await request(app)
+        .post('/api/users/me/report')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(400);
+
+      expect(res.body.error).toMatch(/vous-même/i);
+    });
+
+    it('does not flag an account below the report threshold', async () => {
+      vi.mocked(prisma.user.findUnique)
+        .mockResolvedValueOnce({ id: 'me', role: 'Lecteur' } as any) // requireAuth
+        .mockResolvedValueOnce({ id: 'target', isFlagged: false } as any); // target lookup
+      vi.mocked(prisma.report.upsert).mockResolvedValue({} as any);
+      vi.mocked(prisma.report.count).mockResolvedValue(1 as any);
+
+      const res = await request(app)
+        .post('/api/users/target/report')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason: 'spam' })
+        .expect(200);
+
+      expect(res.body.isFlagged).toBe(false);
+      expect(res.body.reportCount).toBe(1);
+      expect(vi.mocked(prisma.user.update)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Read-count inflation protection (M7)', () => {
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    it('does not increment counters for a recent repeated read', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'me', role: 'Lecteur' } as any);
+      vi.mocked(prisma.readingHistory.findFirst).mockResolvedValue({ id: 'recent' } as any);
+      vi.mocked(prisma.readingHistory.create).mockResolvedValue({ id: 'h1' } as any);
+
+      await request(app)
+        .post('/api/stories/story-1/read')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(201);
+
+      expect(vi.mocked(prisma.story.update)).not.toHaveBeenCalled();
     });
   });
 

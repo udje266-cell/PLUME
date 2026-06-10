@@ -217,6 +217,49 @@ async function checkOtp(
   return { ok: true, status: 200, error: '' };
 }
 
+// Seuil de signalements distincts à partir duquel un compte est automatiquement
+// marqué pour modération (évite qu'un seul utilisateur puisse flaguer autrui).
+const REPORT_FLAG_THRESHOLD = 3;
+
+// Vrai s'il existe un blocage dans un sens ou l'autre entre deux utilisateurs.
+async function blockExistsBetween(aId: string | undefined, bId: string | undefined): Promise<boolean> {
+  if (!aId || !bId || aId === bId) return false;
+  const found = await prisma.blockedUser.findFirst({
+    where: {
+      OR: [
+        { blockerId: aId, blockedId: bId },
+        { blockerId: bId, blockedId: aId },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
+// Détermine si `requesterId` a le droit de commenter une histoire selon le
+// réglage « Qui peut commenter » de l'auteur et l'état de blocage. L'auteur peut
+// toujours commenter ses propres histoires.
+async function ensureCanComment(
+  requesterId: string,
+  authorId: string | undefined,
+  whoCanComment: string | null | undefined
+): Promise<{ ok: boolean; error?: string }> {
+  if (!authorId || requesterId === authorId) return { ok: true };
+  if (await blockExistsBetween(requesterId, authorId)) {
+    return { ok: false, error: 'Action impossible : un blocage est actif.' };
+  }
+  if (whoCanComment === 'none') {
+    return { ok: false, error: 'L’auteur a désactivé les commentaires sur cette histoire.' };
+  }
+  if (whoCanComment === 'followers') {
+    const follow = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: requesterId, followingId: authorId } },
+    }).catch(() => null);
+    if (!follow) return { ok: false, error: 'Seuls les abonnés de l’auteur peuvent commenter.' };
+  }
+  return { ok: true };
+}
+
 // Masque les chapitres non publiés d'une histoire pour quiconque n'en est ni
 // l'auteur ni administrateur (les brouillons ne doivent pas fuiter).
 function filterDraftChapters(story: any, requesterId: string | undefined, isAdmin: boolean) {
@@ -966,18 +1009,37 @@ export async function createServerInstance() {
   // seul ce flux (et non un PUT arbitraire) peut positionner isFlagged.
   app.post('/api/users/:id/report', requireAuth, async (req: any, res) => {
     try {
+      const reportedId = req.params.id;
+      if (reportedId === req.user.id) {
+        return res.status(400).json({ error: 'Vous ne pouvez pas vous signaler vous-même.' });
+      }
       const { reason } = req.body || {};
-      const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+      const target = await prisma.user.findUnique({ where: { id: reportedId }, select: { id: true, isFlagged: true } });
       if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
-      const updated = await prisma.user.update({
-        where: { id: req.params.id },
-        data: {
-          isFlagged: true,
-          flagReason: typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 500) : 'Signalé par un utilisateur',
-        },
+
+      const cleanReason = typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 500) : null;
+
+      // Un seul signalement par couple (reporter, signalé) : idempotent, donc un
+      // utilisateur ne peut pas gonfler le compteur en répétant l'appel.
+      await prisma.report.upsert({
+        where: { reporterId_reportedId: { reporterId: req.user.id, reportedId } },
+        update: { reason: cleanReason },
+        create: { reporterId: req.user.id, reportedId, reason: cleanReason },
       });
-      console.log(`[REPORT] compte ${req.params.id} signalé par ${req.user.id}`);
-      res.json({ success: true, isFlagged: updated.isFlagged });
+
+      // Le compte n'est marqué pour modération qu'au-delà d'un seuil de
+      // signalements DISTINCTS (anti-abus / harcèlement par un compte isolé).
+      const reportCount = await prisma.report.count({ where: { reportedId } });
+      let flagged = target.isFlagged;
+      if (!target.isFlagged && reportCount >= REPORT_FLAG_THRESHOLD) {
+        await prisma.user.update({
+          where: { id: reportedId },
+          data: { isFlagged: true, flagReason: cleanReason || `Signalé par ${reportCount} utilisateurs` },
+        });
+        flagged = true;
+      }
+      console.log(`[REPORT] compte ${reportedId} signalé par ${req.user.id} (total distinct: ${reportCount})`);
+      res.json({ success: true, reportCount, isFlagged: flagged });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du signalement.' });
@@ -1270,9 +1332,12 @@ export async function createServerInstance() {
     try {
       const { storyId, chapterId, content } = req.body;
       if (!storyId || !chapterId || !content) return res.status(400).json({ error: 'storyId, chapterId et content sont requis' });
+      const story = await prisma.story.findUnique({ where: { id: storyId }, select: { authorId: true, title: true, author: { select: { whoCanComment: true } } } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
+      if (!permission.ok) return res.status(403).json({ error: permission.error });
       const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: true, replies: true } });
-      const story = await prisma.story.findUnique({ where: { id: storyId }, select: { authorId: true, title: true } });
-      if (story && story.authorId !== req.user.id) {
+      if (story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
             userId: story.authorId,
@@ -1304,12 +1369,15 @@ export async function createServerInstance() {
     try {
       const { chapterId, content } = req.body;
       if (!chapterId || !content) return res.status(400).json({ error: 'chapterId et content sont requis' });
+      const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true, title: true, author: { select: { whoCanComment: true } } } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
+      if (!permission.ok) return res.status(403).json({ error: permission.error });
       const comment = await prisma.comment.create({
         data: { storyId: req.params.storyId, chapterId, userId: req.user.id, content },
         include: { user: true, replies: true },
       });
-      const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true, title: true } });
-      if (story && story.authorId !== req.user.id) {
+      if (story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
             userId: story.authorId,
@@ -1466,14 +1534,7 @@ export async function createServerInstance() {
   app.post('/api/conversations', requireAuth, async (req: any, res) => {
     try {
       const { participantIds } = req.body;
-      const targetUserId = participantIds?.find((id: string) => id !== req.user.id);
-      console.log("currentUser.id =", req.user.id);
-      console.log("targetUser.id =", targetUserId);
-      if (req.user.id.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
-        console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
-      }
-      console.log(`[CONVERSATION] tentative de création de conversation - participantIds: ${JSON.stringify(participantIds)}, initiateur: ${req.user.id}`);
-      
+
       if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
         return res.status(400).json({ error: 'participantIds (tableau non vide) est requis' });
       }
@@ -1488,6 +1549,19 @@ export async function createServerInstance() {
       if (users.length !== targetIds.length) {
         console.warn(`[CONVERSATION] erreur création : certains participants n'existent pas dans targetIds: ${JSON.stringify(targetIds)}`);
         return res.status(400).json({ error: 'Un ou plusieurs participants n’existent pas' });
+      }
+
+      // Réglage « accepte les messages » + blocages : on n'autorise pas à ouvrir
+      // une conversation avec un utilisateur qui les refuse ou qui est en
+      // relation de blocage avec l'initiateur.
+      const others = users.filter((u: any) => u.id !== req.user.id);
+      for (const other of others) {
+        if (other.allowMessages === false) {
+          return res.status(403).json({ error: 'Cet utilisateur n’accepte pas les messages.' });
+        }
+        if (await blockExistsBetween(req.user.id, other.id)) {
+          return res.status(403).json({ error: 'Action impossible : un blocage est actif.' });
+        }
       }
 
       // If it's a 1-to-1 conversation, try to find an existing one
@@ -1665,6 +1739,13 @@ export async function createServerInstance() {
         return res.status(403).json({ error: 'Action interdite' });
       }
 
+      // Un blocage (dans un sens ou l'autre) interdit l'envoi de message.
+      for (const p of conversation.participants) {
+        if (p.id !== senderId && await blockExistsBetween(senderId, p.id)) {
+          return res.status(403).json({ error: 'Action impossible : un blocage est actif.' });
+        }
+      }
+
       // Create message
       let message;
       try {
@@ -1779,14 +1860,19 @@ export async function createServerInstance() {
   // Follow
   app.post('/api/users/:id/follow', requireAuth, async (req: any, res) => {
     const followingId = req.params.id;
-    console.log("currentUser.id =", req.user.id);
-    console.log("targetUser.id =", followingId);
-    if (req.user.id.startsWith("user_") || followingId.startsWith("user_")) {
-      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
-    }
     try {
       if (followingId === req.user.id) {
         return res.status(400).json({ error: 'Tu ne peux pas te suivre toi-même' });
+      }
+      const target = await prisma.user.findUnique({ where: { id: followingId }, select: { whoCanFollow: true } });
+      if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+      // Réglage « Qui peut me suivre » : 'none' bloque tout nouvel abonnement.
+      if (target.whoCanFollow === 'none') {
+        return res.status(403).json({ error: 'Cet utilisateur n’accepte pas de nouveaux abonnés.' });
+      }
+      // Un blocage (dans un sens ou l'autre) interdit le suivi.
+      if (await blockExistsBetween(req.user.id, followingId)) {
+        return res.status(403).json({ error: 'Action impossible : un blocage est actif.' });
       }
       const follow = await prisma.follow.upsert({
         where: { followerId_followingId: { followerId: req.user.id, followingId } },
@@ -1839,11 +1925,6 @@ export async function createServerInstance() {
 
   app.delete('/api/users/:id/follow', requireAuth, async (req: any, res) => {
     const followingId = req.params.id;
-    console.log("currentUser.id =", req.user.id);
-    console.log("targetUser.id =", followingId);
-    if (req.user.id.startsWith("user_") || followingId.startsWith("user_")) {
-      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
-    }
     try {
       await prisma.follow.deleteMany({
         where: {
@@ -2068,9 +2149,19 @@ export async function createServerInstance() {
   app.post('/api/stories/:id/read', requireAuth, async (req: any, res) => {
     try {
       const chapterId = req.body.chapterId || null;
+      // Anti-gonflage : les compteurs ne sont incrémentés qu'une fois par
+      // fenêtre glissante (6 h) et par utilisateur. L'historique de lecture,
+      // lui, est toujours enregistré.
+      const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+      const alreadyCounted = await prisma.readingHistory.findFirst({
+        where: { userId: req.user.id, storyId: req.params.id, chapterId, createdAt: { gte: since } },
+        select: { id: true },
+      });
       const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
-      await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
-      if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+      if (!alreadyCounted) {
+        await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+        if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
+      }
       res.status(201).json(history);
     } catch (error) {
       console.error(error);
