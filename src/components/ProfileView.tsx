@@ -2519,8 +2519,14 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 9. DETAILED ACCOMPLISHMENTS VIEW OVERLAY */}
       {showAllAchievements && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animation-fade-in font-sans">
-          <div className="bg-white dark:bg-[#0E0E14] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative flex flex-col max-h-[90vh]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animation-fade-in font-sans"
+          onClick={() => { setShowAllAchievements(false); setAchievementsSearch(''); }}
+        >
+          <div
+            className="bg-white dark:bg-[#0E0E14] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={() => {
                 setShowAllAchievements(false);
@@ -4523,8 +4529,14 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 14. SOCIAL LIST MODAL POPUP (Abonnés, Suivis, Amis, Mentions) */}
       {activeUserListModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animation-fade-in font-sans select-none">
-          <div className="bg-white dark:bg-[#0E0E14] border border-gray-200 dark:border-purple-950/40 rounded-2xl max-w-sm w-full h-[380px] shadow-[0_24px_70px_rgba(0,0,0,0.65)] relative flex flex-col overflow-hidden text-left animate-scale-up">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animation-fade-in font-sans select-none"
+          onClick={() => setActiveUserListModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#0E0E14] border border-gray-200 dark:border-purple-950/40 rounded-2xl max-w-sm w-full h-[380px] shadow-[0_24px_70px_rgba(0,0,0,0.65)] relative flex flex-col overflow-hidden text-left animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="px-5 py-4 border-b border-gray-150 dark:border-zinc-850 flex items-center justify-between shrink-0">
               <span className="font-serif font-black text-xs uppercase tracking-wider text-purple-605 dark:text-purple-400">

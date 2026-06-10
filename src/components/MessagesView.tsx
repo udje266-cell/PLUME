@@ -995,8 +995,14 @@ export default function MessagesView({
 
       {/* POPUP MODAL: WRITE A NEW DIRECT MESSAGE */}
       {isNewChatOpen && (
-        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left">
+        <div
+          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setIsNewChatOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-5 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
               <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100 uppercase tracking-wider flex items-center space-x-1.5">
                 <PlusCircle className="w-5 h-5 text-purple-600" />
@@ -1057,8 +1063,14 @@ export default function MessagesView({
 
       {/* POPUP MODAL: CREATE A READING GROUP */}
       {isNewGroupOpen && (
-        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left">
+        <div
+          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setIsNewGroupOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-5 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
               <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100 uppercase tracking-wider flex items-center space-x-1.5 select-none">
                 <Users className="w-5 h-5 text-purple-600" />

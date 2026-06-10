@@ -134,7 +134,7 @@ export default function MainNavigation({
 
           {/* Center Brand */}
           <div className="cursor-pointer" onClick={() => onChangeTab('home')}>
-            <Logo size="md" showText={true} />
+            <Logo size="lg" showText={true} />
           </div>
 
           {/* Right: Theme Toggle or Mini Avatar */}
@@ -172,6 +172,13 @@ export default function MainNavigation({
               </button>
 
               {isNotificationsOpen && (
+                <>
+                  {/* Fond cliquable : ferme le panneau en touchant n'importe où à l'écran. */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsNotificationsOpen(false)}
+                    aria-hidden="true"
+                  />
                 <div className="absolute right-0 top-11 w-80 max-w-[88vw] bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-zinc-850 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
                     <div>
@@ -254,6 +261,7 @@ export default function MainNavigation({
                     )}
                   </div>
                 </div>
+                </>
               )}
             </div>
 

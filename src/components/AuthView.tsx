@@ -875,6 +875,21 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               >
                 Renvoyer le code OTP
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOtpCode(['', '', '', '', '', '']);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                  // Retour vers l'étape précédente selon le contexte OTP.
+                  setMode(otpReason === 'reset' ? 'forgot' : 'register');
+                }}
+                className="w-full flex items-center justify-center space-x-1 text-[11px] font-bold text-gray-500 dark:text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 transition pt-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>{otpReason === 'reset' ? "Modifier l'adresse e-mail" : "Retour à l'inscription"}</span>
+              </button>
             </div>
           </div>
         )}
