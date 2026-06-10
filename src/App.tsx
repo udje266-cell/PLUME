@@ -34,9 +34,8 @@ import AuthView from './components/AuthView';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken } from './utils/auth';
 import { 
-  getUserStats, 
-  saveUserStats, 
-  countAndEvaluateCertification, 
+  getUserStats,
+  saveUserStats,
   UserStats,
   generateReaderAchievements,
   generateAuthorAchievements
@@ -952,17 +951,9 @@ export default function App() {
     
     let nextUser = { ...currentUser, ...updatedFields } as User;
     
-    // Recalcule la certification lors d'un changement de rôle : seul un Auteur
-    // peut être certifié, donc passer à un autre rôle (ex. Lecteur) retire le badge.
-    if (updatedFields.role) {
-      const stats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
-      const evalResult = countAndEvaluateCertification(updatedFields.role, stats);
-      if (evalResult.shouldCertify && !nextUser.isVerified) {
-        nextUser = { ...nextUser, isVerified: true };
-      } else if (!evalResult.shouldCertify && nextUser.isVerified) {
-        nextUser = { ...nextUser, isVerified: false };
-      }
-    }
+    // La certification (isVerified) est calculée et persistée par le serveur
+    // (rôle Auteur + accomplissements réels). On ne la devine plus côté client :
+    // la réponse du PUT /api/users renvoie la valeur autoritative, appliquée plus bas.
 
     setCurrentUser(nextUser);
     saveLocalUserEdit(nextUser);
@@ -1065,31 +1056,10 @@ export default function App() {
       });
     }
 
-    // Evaluate for automatic certification
-    const evalResult = countAndEvaluateCertification(currentUser.role, nextStats, currentUser.id);
-    if (evalResult.shouldCertify && !currentUser.isVerified) {
-      // Auto verify!
-      const nextUser = { ...currentUser!, isVerified: true };
-      setCurrentUser(nextUser);
-      setAllUsers(prev => prev.map(u => u.id === currentUser!.id ? nextUser : u));
-
-      fetch(`/api/users/${currentUser!.id}`, {
-        method: 'PUT',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(nextUser)
-      }).catch(e => console.error('[PLUME] Erreur de certification auto :', e));
-    } else if (!evalResult.shouldCertify && currentUser.isVerified) {
-      // Auto decertify!
-      const nextUser = { ...currentUser!, isVerified: false };
-      setCurrentUser(nextUser);
-      setAllUsers(prev => prev.map(u => u.id === currentUser!.id ? nextUser : u));
-
-      fetch(`/api/users/${currentUser!.id}`, {
-        method: 'PUT',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(nextUser)
-      }).catch(e => console.error('[PLUME] Erreur de décertification auto :', e));
-    }
+    // La certification est désormais décidée par le serveur (rôle Auteur +
+    // accomplissements réels en base) et renvoyée via /api/auth/me et les réponses
+    // d'écriture. Le client ne fabrique ni ne pousse plus isVerified : il se
+    // contente de suivre les statistiques/trophées pour l'affichage.
   };
 
   // Follow author handler
