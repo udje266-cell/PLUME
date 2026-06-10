@@ -49,6 +49,8 @@ interface MessagesViewProps {
   setGroups: React.Dispatch<React.SetStateAction<ReadingGroup[]>>;
   groupMessages: GroupMessage[];
   setGroupMessages: React.Dispatch<React.SetStateAction<GroupMessage[]>>;
+  onCreateGroup: (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }) => Promise<ReadingGroup | null>;
+  onSendGroupMessage: (groupId: string, content: string) => void;
   stories: Story[];
   onSelectStory: (story: Story) => void;
 }
@@ -141,6 +143,8 @@ export default function MessagesView({
   setGroups,
   groupMessages,
   setGroupMessages,
+  onCreateGroup,
+  onSendGroupMessage,
   stories,
   onSelectStory
 }: MessagesViewProps) {
@@ -295,25 +299,8 @@ export default function MessagesView({
     if (!messageText.trim()) return;
 
     if (activeGroupId) {
-      // Send to group
-      const newGMsg: GroupMessage = {
-        id: 'gmsg_' + Date.now(),
-        groupId: activeGroupId,
-        senderId: currentUser.id,
-        senderName: currentUser.username,
-        senderAvatar: currentUser.avatar,
-        content: messageText.trim(),
-        date: new Date().toISOString()
-      };
-      setGroupMessages(prev => [...prev, newGMsg]);
-
-      // Update the groups last message state
-      setGroups(prev => prev.map(g => g.id === activeGroupId ? {
-        ...g,
-        lastMessage: messageText.trim(),
-        lastMessageDate: new Date().toISOString()
-      } : g));
-
+      // Message de groupe persisté côté serveur (diffusé en temps réel).
+      onSendGroupMessage(activeGroupId, messageText.trim());
     } else if (activeConversationId) {
       // Send personal
       onSendMessage(activeConversationId, messageText.trim());
@@ -341,21 +328,7 @@ export default function MessagesView({
     const voiceTag = `[🎙️ Note Vocale - ${finalFormattedStr}]`;
 
     if (activeGroupId) {
-      const newGMsg: GroupMessage = {
-        id: 'gmsg_' + Date.now(),
-        groupId: activeGroupId,
-        senderId: currentUser.id,
-        senderName: currentUser.username,
-        senderAvatar: currentUser.avatar,
-        content: voiceTag,
-        date: new Date().toISOString()
-      };
-      setGroupMessages(prev => [...prev, newGMsg]);
-      setGroups(prev => prev.map(g => g.id === activeGroupId ? {
-        ...g,
-        lastMessage: '🎙️ Note vocale',
-        lastMessageDate: new Date().toISOString()
-      } : g));
+      onSendGroupMessage(activeGroupId, voiceTag);
     } else if (activeConversationId) {
       onSendMessage(activeConversationId, voiceTag);
     }
@@ -369,30 +342,9 @@ export default function MessagesView({
     e.preventDefault();
     if (!simulationText.trim()) return;
 
-    if (activeGroupId) {
-      // Group simulated response - pick selected simulation sender or default to first group member
-      const otherMembers = activeGroup
-        ? allUsers.filter(u => activeGroup.members.includes(u.id) && u.id !== currentUser.id)
-        : [];
-      const simGroupAuthor = otherMembers[0] || allUsers[1];
-
-      const newGMsg: GroupMessage = {
-        id: 'gmsg_' + Date.now(),
-        groupId: activeGroupId,
-        senderId: simGroupAuthor.id,
-        senderName: simGroupAuthor.username,
-        senderAvatar: simGroupAuthor.avatar,
-        content: simulationText.trim(),
-        date: new Date().toISOString()
-      };
-      setGroupMessages(prev => [...prev, newGMsg]);
-      setGroups(prev => prev.map(g => g.id === activeGroupId ? {
-        ...g,
-        lastMessage: simulationText.trim(),
-        lastMessageDate: new Date().toISOString()
-      } : g));
-
-    } else if (activeConversationId && interlocutor) {
+    // La simulation ne concerne que les conversations privées (outil de test) ;
+    // les groupes sont réels et persistés, on n'y injecte pas de faux messages.
+    if (activeConversationId && interlocutor) {
       onSimulateReceiveMessage(activeConversationId, interlocutor.id, simulationText.trim());
     }
     setSimulationText('');
@@ -405,28 +357,24 @@ export default function MessagesView({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Create new group handler
-  const handleCreateGroupSubmit = (e: React.FormEvent) => {
+  // Create new group handler (persisté côté serveur)
+  const handleCreateGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
 
-    const newGrpId = 'group_' + Date.now();
-    const freshMembers = [currentUser.id, ...groupSelectedMembers];
-    const newGrp: ReadingGroup = {
-      id: newGrpId,
+    const group = await onCreateGroup({
       name: newGroupName.trim(),
       description: newGroupDesc.trim() || 'Cercle de partage et de critiques narratives',
-      members: freshMembers,
-      lastMessage: 'Groupe de lecture créé par ' + currentUser.username,
-      lastMessageDate: new Date().toISOString(),
-      storyId: newGroupStoryId || undefined
-    };
+      storyId: newGroupStoryId || undefined,
+      memberIds: groupSelectedMembers,
+    });
 
-    setGroups(prev => [newGrp, ...prev]);
-    setActiveGroupId(newGrpId);
-    setActiveTab('groups');
-    setIsNewGroupOpen(false);
-    setMobileShowThread(true);
+    if (group) {
+      setActiveGroupId(group.id);
+      setActiveTab('groups');
+      setIsNewGroupOpen(false);
+      setMobileShowThread(true);
+    }
 
     // reset fields
     setNewGroupName('');
@@ -435,83 +383,6 @@ export default function MessagesView({
     setGroupSelectedMembers([]);
   };
 
-  const handleTriggerAutoDebate = () => {
-    if (!activeGroupId || !activeGroup) return;
-
-    // Find other members of the group
-    const otherMembers = allUsers.filter(u => activeGroup.members.includes(u.id) && u.id !== currentUser.id);
-    if (otherMembers.length === 0) return;
-
-    const story = activeGroup.storyId ? stories.find(s => s.id === activeGroup.storyId) : null;
-
-    // Define messages sequence
-    const sequence = story 
-      ? [
-          {
-            sender: otherMembers[0] || allUsers[1],
-            content: `Franchement, j'ai commencé la lecture de "${story.title}" et je suis bluffé(e) par la plume de l'auteur ! Le style est vraiment immersif.`,
-            delay: 1000
-          },
-          {
-            sender: otherMembers[1] || otherMembers[0] || allUsers[2],
-            content: `Ah oui ? J'aime beaucoup aussi ! Surtout la manière dont l'ambiance "${story.ambiance || story.genre}" s'installe dès le premier chapitre.`,
-            delay: 3500
-          },
-          {
-            sender: otherMembers[2] || otherMembers[0] || allUsers[3],
-            content: `Je suis d'accord ! C'est très typique du genre "${story.genre}". C'est exactement le type d'œuvres qu'on aime voir partagées sur l'archipel PLUME.`,
-            delay: 6000
-          }
-        ]
-      : [
-          {
-            sender: otherMembers[0] || allUsers[1],
-            content: "Je viens de terminer mes lectures en cours, vous auriez des pépites littéraires du moment à me conseiller dans l'archipel ?",
-            delay: 1000
-          },
-          {
-            sender: otherMembers[1] || otherMembers[0] || allUsers[2],
-            content: "Tu as jeté un œil aux œuvres tendances ? Il y a des récits de SF et de Fantasy très sympas en ce moment.",
-            delay: 3500
-          },
-          {
-            sender: otherMembers[2] || otherMembers[0] || allUsers[3],
-            content: "Carrément ! Et si certains d'entre vous écrivent, n'hésitez pas à poster vos brouillons ici pour avoir des bêta-lectures !",
-            delay: 6000
-          }
-        ];
-
-    // Annule d'éventuels timers d'un débat précédent encore en attente.
-    autoDebateTimersRef.current.forEach((id) => clearTimeout(id));
-    autoDebateTimersRef.current = [];
-
-    // Trigger sequential messages
-    sequence.forEach((msgInfo, idx) => {
-      const timerId = setTimeout(() => {
-        setGroupMessages(prev => {
-          const newGMsg: GroupMessage = {
-            id: `gmsg_auto_${Date.now()}_${idx}`,
-            groupId: activeGroupId,
-            senderId: msgInfo.sender.id,
-            senderName: msgInfo.sender.username,
-            senderAvatar: msgInfo.sender.avatar,
-            content: msgInfo.content,
-            date: new Date().toISOString()
-          };
-
-          // Also update the group's last message
-          setGroups(prevGroups => prevGroups.map(g => g.id === activeGroupId ? {
-            ...g,
-            lastMessage: msgInfo.content,
-            lastMessageDate: new Date().toISOString()
-          } : g));
-
-          return [...prev, newGMsg];
-        });
-      }, msgInfo.delay);
-      autoDebateTimersRef.current.push(timerId);
-    });
-  };
 
   // Start direct message selection
   const selectDirectAuthor = async (authorId: string) => {
@@ -1108,16 +979,6 @@ export default function MessagesView({
                       >
                         Simuler
                       </button>
-                      {activeGroupId && (
-                        <button
-                          type="button"
-                          onClick={handleTriggerAutoDebate}
-                          className="bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-lg px-3 py-1.5 text-[9px] uppercase tracking-wider transition shrink-0 active:scale-95 cursor-pointer"
-                          title="Déclencher une discussion automatique simulée entre les membres"
-                        >
-                          Débat Auto
-                        </button>
-                      )}
                     </div>
                   </form>
                 </div>

@@ -198,6 +198,36 @@ function serializeComment(comment: any) {
   };
 }
 
+function serializeGroupMessage(m: any) {
+  if (!m) return m;
+  return {
+    id: m.id,
+    groupId: m.groupId,
+    senderId: m.senderId,
+    senderName: m.sender?.username || '',
+    senderAvatar: m.sender?.avatar || '',
+    content: m.content,
+    date: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+  };
+}
+
+function serializeGroup(group: any) {
+  if (!group) return group;
+  const last = Array.isArray(group.messages) && group.messages.length ? group.messages[0] : null;
+  return {
+    id: group.id,
+    name: group.name,
+    description: group.description || '',
+    storyId: group.storyId || undefined,
+    creatorId: group.creatorId,
+    members: Array.isArray(group.members) ? group.members.map((m: any) => m.id || m) : [],
+    lastMessage: last ? last.content : undefined,
+    lastMessageDate: last?.createdAt ? new Date(last.createdAt).toISOString() : undefined,
+    createdAt: group.createdAt ? new Date(group.createdAt).toISOString() : undefined,
+    updatedAt: group.updatedAt ? new Date(group.updatedAt).toISOString() : undefined,
+  };
+}
+
 // Message d'erreur OTP volontairement générique : ne révèle ni l'existence du
 // code, ni s'il est expiré/incorrect (réduit les oracles de brute-force).
 const OTP_GENERIC_ERROR = 'Code OTP invalide ou expiré.';
@@ -1982,6 +2012,95 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du marquage comme lu' });
+    }
+  });
+
+  // ── Groupes de lecture ──────────────────────────────────────────────────────
+  const GROUP_INCLUDE = {
+    members: true,
+    messages: { include: { sender: true }, orderBy: { createdAt: 'desc' as const }, take: 1 },
+  };
+
+  app.post('/api/groups', requireAuth, async (req: any, res) => {
+    try {
+      const { name, description, storyId, memberIds } = req.body || {};
+      if (!name || !String(name).trim()) {
+        return res.status(400).json({ error: 'Le nom du groupe est requis.' });
+      }
+      const requested = Array.isArray(memberIds) ? memberIds : [];
+      const ids = Array.from(new Set([req.user.id, ...requested]));
+      // On ne connecte que des membres réels.
+      const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
+      const validIds = users.map((u) => u.id);
+      const group = await prisma.readingGroup.create({
+        data: {
+          name: String(name).trim().slice(0, 120),
+          description: String(description || '').slice(0, 500),
+          storyId: storyId || null,
+          creatorId: req.user.id,
+          members: { connect: validIds.map((id) => ({ id })) },
+        },
+        include: GROUP_INCLUDE,
+      });
+      const serialized = serializeGroup(group);
+      validIds.forEach((id) => io.to(`user:${id}`).emit('group_created', serialized));
+      res.status(201).json(serialized);
+    } catch (error) {
+      console.error('[GROUP] création:', error);
+      res.status(500).json({ error: 'Erreur lors de la création du groupe.' });
+    }
+  });
+
+  app.get('/api/groups', requireAuth, async (req: any, res) => {
+    try {
+      const groups = await prisma.readingGroup.findMany({
+        where: { members: { some: { id: req.user.id } } },
+        include: GROUP_INCLUDE,
+        orderBy: { updatedAt: 'desc' },
+      });
+      res.json(groups.map(serializeGroup));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement des groupes.' });
+    }
+  });
+
+  app.get('/api/groups/:id/messages', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      const messages = await prisma.groupMessage.findMany({
+        where: { groupId: req.params.id },
+        include: { sender: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      res.json(messages.map(serializeGroupMessage));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement des messages du groupe.' });
+    }
+  });
+
+  app.post('/api/groups/:id/messages', requireAuth, async (req: any, res) => {
+    try {
+      const content = String(req.body?.content || '').trim();
+      if (!content) return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide.' });
+      if (content.length > 2000) return res.status(400).json({ error: 'Message trop long (2000 caractères max).' });
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      const message = await prisma.groupMessage.create({
+        data: { groupId: req.params.id, senderId: req.user.id, content },
+        include: { sender: true },
+      });
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { updatedAt: new Date() } });
+      const serialized = serializeGroupMessage(message);
+      group.members.forEach((m) => io.to(`user:${m.id}`).emit('new_group_message', serialized));
+      res.status(201).json(serialized);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’envoi du message de groupe.' });
     }
   });
 

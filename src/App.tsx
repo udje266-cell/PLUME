@@ -220,6 +220,62 @@ export default function App() {
   });
 
 
+  // ── Groupes de lecture (persistés côté serveur) ─────────────────────────────
+  const fetchGroups = async () => {
+    try {
+      const res = await fetch('/api/groups', { headers: authHeaders() });
+      if (!res.ok) return;
+      const data: ReadingGroup[] = await res.json();
+      setGroups(data);
+      const all: GroupMessage[] = [];
+      for (const g of data) {
+        try {
+          const mres = await fetch(`/api/groups/${g.id}/messages`, { headers: authHeaders() });
+          if (mres.ok) {
+            const ms: GroupMessage[] = await mres.json();
+            all.push(...ms);
+          }
+        } catch { /* ignore par groupe */ }
+      }
+      setGroupMessages(all);
+    } catch (e) {
+      console.error('[PLUME] Erreur chargement groupes :', e);
+    }
+  };
+
+  const handleCreateGroup = async (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }): Promise<ReadingGroup | null> => {
+    try {
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      const group: ReadingGroup = await res.json();
+      setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
+      return group;
+    } catch (e) {
+      console.error('[PLUME] Erreur création de groupe :', e);
+      return null;
+    }
+  };
+
+  const handleSendGroupMessage = async (groupId: string, content: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/messages`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) return;
+      const msg: GroupMessage = await res.json();
+      setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
+    } catch (e) {
+      console.error('[PLUME] Erreur envoi message de groupe :', e);
+    }
+  };
+
   const handleMarkNotificationsRead = (type?: AppNotification['type'] | 'all') => {
     if (!currentUser) return;
     const nextNotifications = notifications.map((notification) => {
@@ -243,6 +299,12 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('plume_is_logged_in') === 'true';
   });
+
+  // Charge les groupes de lecture (persistés côté serveur) à l'authentification.
+  useEffect(() => {
+    if (isAuthenticated) fetchGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   // L'authentification repose sur un cookie httpOnly (rechargement) + un token
   // gardé en mémoire et envoyé en en-tête pour la session active. Le token
@@ -581,6 +643,15 @@ export default function App() {
       refreshUsersData();
     });
 
+    socket.on('group_created', (group: ReadingGroup) => {
+      setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
+    });
+
+    socket.on('new_group_message', (msg: GroupMessage) => {
+      setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
+    });
+
     return () => {
       socket.off('connect');
       socket.off('new_notification');
@@ -589,6 +660,8 @@ export default function App() {
       socket.off('messages_read');
       socket.off('user_followed');
       socket.off('user_unfollowed');
+      socket.off('group_created');
+      socket.off('new_group_message');
       socket.disconnect();
       socketRef.current = null;
     };
@@ -2324,6 +2397,8 @@ export default function App() {
                       setGroups={setGroups}
                       groupMessages={groupMessages}
                       setGroupMessages={setGroupMessages}
+                      onCreateGroup={handleCreateGroup}
+                      onSendGroupMessage={handleSendGroupMessage}
                       stories={allowedStories}
                       onSelectStory={handleSelectStoryForReading}
                     />

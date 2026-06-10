@@ -47,6 +47,9 @@ model User {
   commentReplies    CommentReply[]
   conversations     Conversation[] @relation("UserConversations")
   messages          Message[]
+  readingGroups     ReadingGroup[] @relation("GroupMembers")
+  createdGroups     ReadingGroup[] @relation("GroupCreator")
+  groupMessages     GroupMessage[]
   following         Follow[]  @relation("UserFollowing")
   followers         Follow[]  @relation("UserFollowers")
   friendshipsSent   Friendship[] @relation("FriendshipRequester")
@@ -330,6 +333,34 @@ model Report {
 
   @@unique([reporterId, reportedId])
   @@index([reportedId])
+}
+
+model ReadingGroup {
+  id          String         @id @default(cuid())
+  name        String
+  description String         @default("")
+  storyId     String?
+  creatorId   String
+  creator     User           @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members     User[]         @relation("GroupMembers")
+  messages    GroupMessage[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([creatorId])
+}
+
+model GroupMessage {
+  id        String       @id @default(cuid())
+  groupId   String
+  senderId  String
+  content   String
+  group     ReadingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender    User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@index([groupId])
+  @@index([createdAt])
 }
 
 model Otp {

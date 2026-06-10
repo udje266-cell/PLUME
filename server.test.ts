@@ -30,6 +30,16 @@ vi.mock('./src/server/prisma', () => {
         aggregate: vi.fn(),
         findUnique: vi.fn(),
       },
+      readingGroup: {
+        create: vi.fn(),
+        findMany: vi.fn(),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+      },
+      groupMessage: {
+        create: vi.fn(),
+        findMany: vi.fn(),
+      },
       blockedUser: {
         findFirst: vi.fn(),
       },
@@ -412,6 +422,34 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.myRating).toBe(4);
       const upd = vi.mocked(prisma.story.update).mock.calls[0][0].data as any;
       expect(upd.rating).toBe(4.5);
+    });
+  });
+
+  describe('Reading groups', () => {
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    beforeEach(() => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'me', role: 'Lecteur' } as any);
+    });
+
+    it('rejects group creation without a name', async () => {
+      const res = await request(app)
+        .post('/api/groups')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ description: 'x' })
+        .expect(400);
+      expect(res.body.error).toMatch(/nom/i);
+    });
+
+    it('refuses posting a group message for a non-member', async () => {
+      vi.mocked(prisma.readingGroup.findUnique).mockResolvedValue({ id: 'g1', members: [{ id: 'other' }] } as any);
+
+      const res = await request(app)
+        .post('/api/groups/g1/messages')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content: 'hi' })
+        .expect(403);
+      expect(res.body.error).toMatch(/interdite/i);
     });
   });
 
