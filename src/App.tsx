@@ -2413,6 +2413,7 @@ export default function App() {
                   {activeTab === 'explore' && (
                     <ExplorerView
                       stories={allowedStories}
+                      users={allUsers}
                       onSelectStory={(story) => handleSelectStoryForReading(story)}
                       activeFilter={activeFilter}
                       onClearFilter={handleClearFilter}

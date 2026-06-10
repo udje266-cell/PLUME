@@ -26,6 +26,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 
 interface ExplorerViewProps {
   stories: Story[];
+  users?: User[];
   onSelectStory: (story: Story) => void;
   activeFilter: { type: string; value: string } | null;
   onClearFilter: () => void;
@@ -34,6 +35,15 @@ interface ExplorerViewProps {
 }
 
 type SortOption = 'trending' | 'reads' | 'rating' | 'newest' | 'comments';
+
+// Normalise une chaîne pour une recherche tolérante : minuscules + suppression
+// des accents/diacritiques (« Éveil » devient « eveil »), afin que « eveil »
+// trouve « Éveil » et que « alice » trouve « Alice ».
+const normalizeText = (value: string) =>
+  (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
 
 interface SavedFilter {
   id: string;
@@ -58,6 +68,7 @@ const ALL_SPEC_GENRES = [
 
 export default function ExplorerView({
   stories,
+  users,
   onSelectStory,
   activeFilter,
   onClearFilter,
@@ -138,14 +149,15 @@ export default function ExplorerView({
     if (story.isFlagged) return false;
     if (story.status !== 'Publié') return false;
 
-    // Search query check (title, author, tags, description)
-    const textQuery = searchQuery.toLowerCase().trim();
+    // Search query check (title, author, tags, description), insensible à la
+    // casse ET aux accents.
+    const textQuery = normalizeText(searchQuery.trim());
     if (textQuery) {
-      const matchTitle = story.title.toLowerCase().includes(textQuery);
-      const matchAuthor = story.authorName.toLowerCase().includes(textQuery);
-      const matchDesc = story.description.toLowerCase().includes(textQuery);
-      const matchTags = story.tags.some(t => t.toLowerCase().includes(textQuery));
-      const matchGenre = story.genre.toLowerCase().includes(textQuery);
+      const matchTitle = normalizeText(story.title).includes(textQuery);
+      const matchAuthor = normalizeText(story.authorName).includes(textQuery);
+      const matchDesc = normalizeText(story.description).includes(textQuery);
+      const matchTags = story.tags.some(t => normalizeText(t).includes(textQuery));
+      const matchGenre = normalizeText(story.genre).includes(textQuery);
       if (!matchTitle && !matchAuthor && !matchDesc && !matchTags && !matchGenre) {
         return false;
       }
@@ -187,9 +199,22 @@ export default function ExplorerView({
       const countB = b.chapters.length * 4 + b.likes + b.id.charCodeAt(0);
       return countB - countA;
     }
-    // Default 'trending' 
+    // Default 'trending'
     return (b.rating * b.reads) - (a.rating * a.reads);
   });
+
+  // Profils correspondants : on ne les affiche que lorsqu'une recherche texte
+  // est saisie (sinon on listerait tout le monde). Recherche sur le pseudo, la
+  // bio et les genres favoris, insensible à la casse et aux accents.
+  const profileQuery = normalizeText(searchQuery.trim());
+  const matchedUsers = profileQuery
+    ? (users || []).filter((u) => {
+        if (u.isFlagged) return false;
+        if (normalizeText(u.username).includes(profileQuery)) return true;
+        if (u.bio && normalizeText(u.bio).includes(profileQuery)) return true;
+        return (u.favoriteGenres || []).some((g) => normalizeText(g).includes(profileQuery));
+      }).slice(0, 12)
+    : [];
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
@@ -241,7 +266,7 @@ export default function ExplorerView({
           <input
             id="explorer-search-field"
             type="text"
-            placeholder="Rechercher titre, auteur, mot-clé, tag..."
+            placeholder="Rechercher un titre, un profil, un mot-clé, un tag..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 rounded-xl pl-9 pr-8 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-600 text-gray-900 dark:text-white"
@@ -335,8 +360,54 @@ export default function ExplorerView({
 
       </div>
 
+      {/* 3.5 Matching profiles (only when a text search is active) */}
+      {matchedUsers.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 px-1">
+            <UserCheck className="w-3.5 h-3.5 text-purple-500" />
+            <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Profils ({matchedUsers.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {matchedUsers.map((u) => (
+              <div
+                key={u.id}
+                id={`search-profile-${u.id}`}
+                onClick={() => onViewProfile?.(u.id)}
+                className="flex items-center gap-3 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-150/50 dark:border-purple-900/15 p-2.5 hover:shadow-md transition cursor-pointer"
+              >
+                <img
+                  src={u.avatar}
+                  alt={u.username}
+                  className="w-10 h-10 rounded-full object-cover bg-zinc-200 dark:bg-zinc-800 flex-shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{u.username}</span>
+                    {u.isVerified && <VerifiedBadge size="xs" className="flex-shrink-0" />}
+                  </div>
+                  <p className="text-[11px] text-gray-400 truncate">{u.bio || u.role}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDiscussion(u.id);
+                  }}
+                  className="flex-shrink-0 p-2 rounded-full text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition"
+                  title="Envoyer un message"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 4. Results List / Grid */}
-      {sortedStories.length === 0 ? (
+      {sortedStories.length === 0 && matchedUsers.length === 0 ? (
         <div className="py-16 text-center bg-gray-50/50 dark:bg-[#0E0E14] border border-gray-150/40 dark:border-purple-900/15 rounded-2xl">
           <SlidersHorizontal className="w-10 h-10 mx-auto text-purple-400 stroke-1" />
           <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300 mt-2">Aucun résultat trouvé</h4>
