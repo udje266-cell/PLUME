@@ -117,14 +117,26 @@ export default function HomeView({
   // 2. "Pour toi" — diffusion personnalisée via l'algorithme de recommandation
   // (affinité de goût + signal social + qualité lissée + popularité à déclin
   // temporel + coup de pouce aux nouveautés + exploration). Cf. utils/recommendation.
+  // Récits déjà lus (≥1 chapitre lu) ou en favori : on ne les re-pousse pas dans
+  // « Pour toi », qui sert à faire découvrir de nouveaux récits.
+  const excludeStoryIds = useMemo(() => {
+    const readChapterSet = new Set(readChapters);
+    const ids = new Set<string>(favorites);
+    for (const story of stories) {
+      if (story.chapters.some((ch) => readChapterSet.has(ch.id))) ids.add(story.id);
+    }
+    return Array.from(ids);
+  }, [stories, favorites, readChapters]);
+
   // Fil « Pour toi » calculé localement (instantané, fonctionne hors-ligne).
   const localForYou = useMemo(
     () => recommendStories(stories, currentUser, {
       weights: weightsForDiscovery(discovery),
       explorationRatio: explorationRatioForDiscovery(discovery),
+      excludeStoryIds,
       limit: 12,
     }),
-    [stories, currentUser, discovery],
+    [stories, currentUser, discovery, excludeStoryIds],
   );
 
   // Le serveur expose le MÊME algorithme sur tout le catalogue (incl. signaux

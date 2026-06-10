@@ -1298,11 +1298,21 @@ export async function createServerInstance() {
           following: true,
           blockedUsers: true,
           readingHistory: { select: { storyId: true } },
+          favorites: { select: { storyId: true } },
+          likes: { select: { storyId: true } },
         },
       });
       if (!me) return res.status(404).json({ error: 'Utilisateur introuvable' });
       const user: any = serializeUser(me, true);
-      user.readingHistory = Array.from(new Set((me.readingHistory || []).map((h: any) => h.storyId)));
+      const readStoryIds = (me.readingHistory || []).map((h: any) => h.storyId);
+      user.readingHistory = Array.from(new Set(readStoryIds));
+      // On ne re-pousse pas dans le fil les récits déjà lus, aimés ou en favori :
+      // « Pour toi » sert à faire DÉCOUVRIR, pas à ressasser ce qu'on connaît déjà.
+      const excludeStoryIds = Array.from(new Set([
+        ...readStoryIds,
+        ...(me.favorites || []).map((f: any) => f.storyId),
+        ...(me.likes || []).map((l: any) => l.storyId),
+      ]));
 
       // Catalogue publié enrichi : on expose likedBy/favoritedBy (ids) pour les
       // briques sociale et collaborative, absents de serializeStory.
@@ -1329,6 +1339,7 @@ export async function createServerInstance() {
       const ranked = recommendStories(stories as any, user, {
         weights: weightsForDiscovery(discovery),
         explorationRatio: explorationRatioForDiscovery(discovery),
+        excludeStoryIds,
       });
 
       const page = ranked.slice(cursor, cursor + limit);
