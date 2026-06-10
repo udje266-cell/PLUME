@@ -275,7 +275,7 @@ export default function WriteView({
         favoritesCount: 0,
         views: 0,
         reads: 0,
-        rating: 5.0,
+        rating: 0,
         isFlagged: false,
         chapters: [],
         ageRating,

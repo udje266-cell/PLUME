@@ -53,6 +53,8 @@ interface ReadingViewProps {
   isFavorited: boolean;
   onToggleStoryLike: (storyId: string) => void;
   isLiked: boolean;
+  onRateStory: (storyId: string, value: number) => void;
+  userRating: number;
   onMarkChapterRead: (storyId: string, chapterId: string) => void;
   readChapters: string[];
   onOpenDiscussion: (partnerId: string) => void;
@@ -413,6 +415,8 @@ export default function ReadingView({
   isFavorited,
   onToggleStoryLike,
   isLiked,
+  onRateStory,
+  userRating,
   onMarkChapterRead,
   readChapters,
   onOpenDiscussion,
@@ -1763,6 +1767,22 @@ export default function ReadingView({
                   <Star className={`w-3.5 h-3.5 ${isFavorited ? 'fill-purple-600 text-purple-650' : ''}`} />
                   <span>{story.favoritesCount || 0}</span>
                 </button>
+
+                {/* Notation 1 à 5 (moyenne réelle recalculée côté serveur) */}
+                <div id="reader-rating" className="flex items-center gap-0.5 px-2.5 py-1.5 rounded-xl border bg-white dark:bg-gray-850 border-gray-200 dark:border-gray-700" title="Noter cette histoire">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      id={`reader-rate-${n}`}
+                      onClick={() => onRateStory(story.id, n)}
+                      className="cursor-pointer leading-none"
+                      title={`Noter ${n}/5`}
+                    >
+                      <Star className={`w-3.5 h-3.5 ${n <= userRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300 dark:text-gray-600 hover:text-amber-400'}`} />
+                    </button>
+                  ))}
+                  <span className="text-[10px] font-black text-gray-400 ml-1">{(story.rating || 0).toFixed(1)}</span>
+                </div>
               </div>
 
             </div>

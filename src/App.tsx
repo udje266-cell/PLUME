@@ -1662,7 +1662,7 @@ export default function App() {
       views: 0,
       viewedBy: [],
       reads: 0,
-      rating: 5.0,
+      rating: 0,
       isFlagged: false,
       ageRating: storyData.ageRating || 'all'
     };
@@ -2128,6 +2128,27 @@ export default function App() {
     return storyToSync;
   };
 
+  // Note personnelle de l'utilisateur par histoire (la moyenne publique vit dans story.rating).
+  const [myRatings, setMyRatings] = useState<Record<string, number>>({});
+
+  const handleRateStory = (storyId: string, value: number) => {
+    setMyRatings(prev => ({ ...prev, [storyId]: value })); // retour visuel immédiat
+    fetch(`/api/stories/${storyId}/rate`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ value }),
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data && typeof data.rating === 'number') {
+          setStories(prev => prev.map(s => (s.id === storyId ? { ...s, rating: data.rating } : s)));
+          setSelectedStoryForReading(prev => (prev && prev.id === storyId ? { ...prev, rating: data.rating } : prev));
+          setMyRatings(prev => ({ ...prev, [storyId]: data.myRating }));
+        }
+      })
+      .catch(e => console.error('[PLUME] Erreur de notation :', e));
+  };
+
   const handleSelectStoryForReading = (story: Story) => {
     const age = calculateAge(currentUser?.birthDate);
     if (!isUserAgeAllowed(age, story.ageRating) && story.authorId !== currentUser?.id) {
@@ -2137,6 +2158,18 @@ export default function App() {
     const freshStory = stories.find((s) => s.id === story.id) || story;
     const viewedStory = handleRecordStoryView(freshStory.id) || freshStory;
     setSelectedStoryForReading(viewedStory);
+
+    // Charge la note réelle (moyenne + ma note) pour cette histoire.
+    fetch(`/api/stories/${viewedStory.id}/rating`, { headers: authHeaders() })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data) return;
+        setMyRatings(prev => ({ ...prev, [viewedStory.id]: data.myRating || 0 }));
+        if (typeof data.rating === 'number') {
+          setStories(prev => prev.map(s => (s.id === viewedStory.id ? { ...s, rating: data.rating } : s)));
+        }
+      })
+      .catch(() => {});
   };
 
   return (
@@ -2219,6 +2252,8 @@ export default function App() {
                   isFavorited={favorites.includes(selectedStoryForReading.id)}
                   onToggleStoryLike={handleToggleStoryLike}
                   isLiked={(selectedStoryForReading.likedBy || []).includes(currentUser?.id || '') || likedStories.includes(selectedStoryForReading.id)}
+                  onRateStory={handleRateStory}
+                  userRating={myRatings[selectedStoryForReading.id] || 0}
                   onMarkChapterRead={handleMarkChapterRead}
                   readChapters={readChapters.map(key => key.includes(':') ? key.split(':').pop() || key : key)}
                   onOpenDiscussion={handleOpenDiscussion}

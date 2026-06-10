@@ -2238,6 +2238,42 @@ export async function createServerInstance() {
     res.json(likes.map((l: any) => serializeUser(l.user)));
   });
 
+  // Notation des histoires (1 à 5). La note d'une histoire (Story.rating) est la
+  // MOYENNE recalculée des notes réelles — jamais une valeur fournie par le client.
+  app.post('/api/stories/:id/rate', requireAuth, async (req: any, res) => {
+    try {
+      const value = Math.round(Number(req.body.value));
+      if (!Number.isFinite(value) || value < 1 || value > 5) {
+        return res.status(400).json({ error: 'La note doit être comprise entre 1 et 5.' });
+      }
+      const story = await prisma.story.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      await prisma.storyRating.upsert({
+        where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } },
+        update: { value },
+        create: { userId: req.user.id, storyId: req.params.id, value },
+      });
+      const agg = await prisma.storyRating.aggregate({ where: { storyId: req.params.id }, _avg: { value: true }, _count: true });
+      const average = agg._avg.value || 0;
+      await prisma.story.update({ where: { id: req.params.id }, data: { rating: average } });
+      res.json({ rating: average, count: agg._count, myRating: value });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la notation.' });
+    }
+  });
+
+  app.get('/api/stories/:id/rating', async (req: any, res) => {
+    const agg = await prisma.storyRating.aggregate({ where: { storyId: req.params.id }, _avg: { value: true }, _count: true });
+    let myRating = 0;
+    const requester = await getUserFromAuthorizationHeader(req);
+    if (requester) {
+      const mine = await prisma.storyRating.findUnique({ where: { userId_storyId: { userId: requester.id, storyId: req.params.id } } });
+      myRating = mine?.value || 0;
+    }
+    res.json({ rating: agg._avg.value || 0, count: agg._count, myRating });
+  });
+
   app.post('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
     try {
       const favorite = await prisma.favorite.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });

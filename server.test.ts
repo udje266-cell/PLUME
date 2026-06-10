@@ -25,6 +25,11 @@ vi.mock('./src/server/prisma', () => {
         upsert: vi.fn(),
         delete: vi.fn(),
       },
+      storyRating: {
+        upsert: vi.fn(),
+        aggregate: vi.fn(),
+        findUnique: vi.fn(),
+      },
       blockedUser: {
         findFirst: vi.fn(),
       },
@@ -371,6 +376,42 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.isVerified).toBe(false);
       const updateData = vi.mocked(prisma.user.update).mock.calls[0][0].data as any;
       expect(updateData.isVerified).toBeUndefined();
+    });
+  });
+
+  describe('Story rating (real average)', () => {
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    beforeEach(() => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'me', role: 'Lecteur' } as any);
+    });
+
+    it('rejects an out-of-range rating', async () => {
+      const res = await request(app)
+        .post('/api/stories/s1/rate')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ value: 6 })
+        .expect(400);
+      expect(res.body.error).toMatch(/1 et 5/);
+    });
+
+    it('upserts the rating and returns the recomputed average', async () => {
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ id: 's1' } as any);
+      vi.mocked(prisma.storyRating.upsert).mockResolvedValue({} as any);
+      vi.mocked(prisma.storyRating.aggregate).mockResolvedValue({ _avg: { value: 4.5 }, _count: 2 } as any);
+      vi.mocked(prisma.story.update).mockResolvedValue({} as any);
+
+      const res = await request(app)
+        .post('/api/stories/s1/rate')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ value: 4 })
+        .expect(200);
+
+      expect(res.body.rating).toBe(4.5);
+      expect(res.body.count).toBe(2);
+      expect(res.body.myRating).toBe(4);
+      const upd = vi.mocked(prisma.story.update).mock.calls[0][0].data as any;
+      expect(upd.rating).toBe(4.5);
     });
   });
 
