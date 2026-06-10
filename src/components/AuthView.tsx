@@ -8,6 +8,7 @@ import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check,
 import { User, UserRole } from '../types';
 import { USERS } from '../data';
 import { setAuthToken } from '../utils/auth';
+import { apiPost } from '../utils/api';
 import Logo from './Logo';
 
 interface AuthViewProps {
@@ -73,28 +74,15 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMsg(data.error || 'Connexion impossible.');
-        setIsLoading(false);
-        return;
-      }
-
+      const data = await apiPost('/api/auth/login', { email, password });
       // Token gardé en mémoire (pas dans localStorage) ; le serveur a aussi posé
       // un cookie httpOnly pour la persistance après rechargement.
       setAuthToken(data.token);
       setSuccessMsg('Connexion réussie !');
       onLoginSuccess(data.user);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg('Erreur de connexion au serveur.');
+      setErrorMsg(error?.message || 'Connexion impossible.');
     } finally {
       setIsLoading(false);
     }
@@ -127,19 +115,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/otp/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, reason: 'register' }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMsg(data.error || "Impossible d'envoyer le code OTP.");
-        setIsLoading(false);
-        return;
-      }
+      const data = await apiPost('/api/auth/otp/request', { email, reason: 'register' });
 
       setOtpReason('register');
       setPendingUser({
@@ -162,9 +138,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
 
       setMode('otp');
       setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg("Erreur de connexion au serveur d'authentification.");
+      setErrorMsg(error?.message || "Impossible d'envoyer le code OTP.");
     } finally {
       setIsLoading(false);
     }
@@ -184,26 +160,13 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/otp/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, reason: 'reset' }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMsg(data.error || "Impossible d'envoyer le code OTP.");
-        setIsLoading(false);
-        return;
-      }
-
+      const data = await apiPost('/api/auth/otp/request', { email, reason: 'reset' });
       setOtpReason('reset');
       setMode('otp');
       setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg("Erreur de connexion au serveur d'authentification.");
+      setErrorMsg(error?.message || "Impossible d'envoyer le code OTP.");
     } finally {
       setIsLoading(false);
     }
@@ -223,28 +186,16 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, code: verifiedOtpCode }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMsg(data.error || 'Réinitialisation impossible.');
-        setIsLoading(false);
-        return;
-      }
+      await apiPost('/api/auth/reset-password', { email, password, code: verifiedOtpCode });
 
       setPassword('');
       setVerifiedOtpCode('');
       setOtpCode(['', '', '', '', '', '']);
       setMode('login');
       setSuccessMsg('Votre mot de passe a été réinitialisé. Vous pouvez vous connecter.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg('Erreur de connexion au serveur.');
+      setErrorMsg(error?.message || 'Réinitialisation impossible.');
     } finally {
       setIsLoading(false);
     }
@@ -264,19 +215,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
 
     try {
       if (otpReason === 'register' && pendingUser) {
-        const response = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...pendingUser, password, code: codeEntered }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          setErrorMsg(data.error || 'Inscription impossible.');
-          setIsLoading(false);
-          return;
-        }
+        const data = await apiPost('/api/auth/register', { ...pendingUser, password, code: codeEntered });
 
         // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
         // par le serveur pour la persistance après rechargement.
@@ -290,9 +229,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         setMode('new-password');
         setSuccessMsg('Code renseigné. Choisissez maintenant un nouveau mot de passe.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg('Erreur de connexion au serveur.');
+      setErrorMsg(error?.message || 'Inscription impossible.');
     } finally {
       setIsLoading(false);
     }
@@ -303,23 +242,12 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setSuccessMsg('');
     setIsLoading(true);
     try {
-      const response = await fetch('/api/auth/otp/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, reason: otpReason }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMsg(data.error || "Impossible de renvoyer le code OTP.");
-      } else {
-        setSuccessMsg(data.message || 'Nouveau code OTP envoyé par e-mail.');
-        setTimeout(() => setSuccessMsg(''), 5000);
-      }
-    } catch (error) {
+      const data = await apiPost('/api/auth/otp/request', { email, reason: otpReason });
+      setSuccessMsg(data.message || 'Nouveau code OTP envoyé par e-mail.');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg("Erreur lors de la connexion au serveur.");
+      setErrorMsg(error?.message || "Impossible de renvoyer le code OTP.");
     } finally {
       setIsLoading(false);
     }
@@ -359,36 +287,24 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
       return;
     }
     try {
-      const response = await fetch('/api/auth/demo-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: target.email,
-          username: target.username,
-          role: target.role,
-          avatar: target.avatar,
-          bio: target.bio,
-          birthDate: target.birthDate,
-          gender: target.gender,
-          favoriteGenres: target.favoriteGenres,
-        }),
+      const data = await apiPost('/api/auth/demo-login', {
+        email: target.email,
+        username: target.username,
+        role: target.role,
+        avatar: target.avatar,
+        bio: target.bio,
+        birthDate: target.birthDate,
+        gender: target.gender,
+        favoriteGenres: target.favoriteGenres,
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        setErrorMsg(data.error || 'Connexion démo impossible.');
-        setIsLoading(false);
-        return;
-      }
-
       // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
       // par le serveur pour la persistance après rechargement.
       setAuthToken(data.token);
       setSuccessMsg('Connexion démo réussie !');
       onLoginSuccess(data.user);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorMsg('Erreur lors de la connexion au serveur.');
+      setErrorMsg(error?.message || 'Connexion démo impossible.');
     } finally {
       setIsLoading(false);
     }

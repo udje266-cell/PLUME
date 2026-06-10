@@ -30,6 +30,39 @@ export function apiUrl(path: string): string {
   return path.startsWith('/api') ? `${API_BASE}${path}` : path;
 }
 
+/**
+ * POST JSON vers l'API avec un timeout et des messages d'erreur DIAGNOSTIQUES.
+ * Distingue clairement : serveur injoignable (réseau/CORS), délai dépassé
+ * (démarrage à froid possible), et erreur applicative — au lieu d'un opaque
+ * « erreur de connexion ». Lève une Error dont le `message` est affichable.
+ */
+export async function apiPost<T = any>(path: string, body: unknown, timeoutMs = 20000): Promise<T> {
+  const target = API_BASE || 'le serveur';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      throw new Error(`Le serveur (${target}) met trop de temps à répondre. Il est peut-être en cours de démarrage — patientez ~30 s puis réessayez.`);
+    }
+    throw new Error(`Impossible de joindre le serveur (${target}). Vérifiez votre connexion internet, puis réessayez.`);
+  } finally {
+    clearTimeout(timer);
+  }
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.error) || `Erreur serveur (${res.status}).`);
+  }
+  return data as T;
+}
+
 function isApiPath(url: string): boolean {
   return url.startsWith('/api') || (!!API_BASE && url.startsWith(`${API_BASE}/api`));
 }

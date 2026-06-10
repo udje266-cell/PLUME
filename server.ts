@@ -1448,9 +1448,17 @@ export async function createServerInstance() {
     }
   });
 
+  // Bornes de taille par champ texte (le corps JSON est déjà plafonné à 10mb
+  // globalement ; ceci évite qu'un seul champ n'atteigne cette taille).
+  const LIMITS = { title: 300, description: 8000, chapterContent: 200_000, comment: 8000 };
+  const tooLong = (v: unknown, max: number) => typeof v === 'string' && v.length > max;
+
   app.post('/api/stories', requireAuth, async (req: any, res) => {
     try {
       const story = req.body;
+      if (tooLong(story.title, LIMITS.title) || tooLong(story.description, LIMITS.description)) {
+        return res.status(400).json({ error: 'Titre (max 300) ou description (max 8000) trop long.' });
+      }
       const newStory = await prisma.story.create({
         data: {
           id: story.id || undefined,
@@ -1489,6 +1497,9 @@ export async function createServerInstance() {
       const isAdmin = req.user.role === 'Administrateur';
       if (existing.authorId !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Action interdite' });
       const story = req.body;
+      if (tooLong(story.title, LIMITS.title) || tooLong(story.description, LIMITS.description)) {
+        return res.status(400).json({ error: 'Titre (max 300) ou description (max 8000) trop long.' });
+      }
       const data: any = {
         title: story.title,
         description: story.description,
@@ -1560,6 +1571,9 @@ export async function createServerInstance() {
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
+      if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
+        return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
+      }
       const newChapter = await prisma.chapter.create({
         data: {
           id: chapter.id || undefined,
@@ -1675,6 +1689,7 @@ export async function createServerInstance() {
     try {
       const { storyId, chapterId, content } = req.body;
       if (!storyId || !chapterId || !content) return res.status(400).json({ error: 'storyId, chapterId et content sont requis' });
+      if (tooLong(content, LIMITS.comment)) return res.status(400).json({ error: 'Commentaire trop long (max 8000 caractères).' });
       const story = await prisma.story.findUnique({ where: { id: storyId }, select: { authorId: true, title: true, author: { select: { whoCanComment: true } } } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
@@ -1712,6 +1727,7 @@ export async function createServerInstance() {
     try {
       const { chapterId, content } = req.body;
       if (!chapterId || !content) return res.status(400).json({ error: 'chapterId et content sont requis' });
+      if (tooLong(content, LIMITS.comment)) return res.status(400).json({ error: 'Commentaire trop long (max 8000 caractères).' });
       const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true, title: true, author: { select: { whoCanComment: true } } } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
@@ -1752,9 +1768,13 @@ export async function createServerInstance() {
     try {
       const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
       if (!content) return res.status(400).json({ error: 'content est requis' });
-      const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
+      if (content.length > LIMITS.comment) return res.status(400).json({ error: 'Texte trop long (max 8000 caractères).' });
+      const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
       if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
-      if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      // Seul l'AUTEUR du commentaire (ou un admin) peut en MODIFIER le contenu.
+      // L'auteur du récit peut modérer en SUPPRIMANT (cf. DELETE), mais pas
+      // réécrire les propos d'un lecteur.
+      if (existing.userId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content }, include: { user: true, replies: { include: { user: true } } } });
       res.json(serializeComment(comment));
     } catch (error) {
@@ -1815,6 +1835,7 @@ export async function createServerInstance() {
     try {
       const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
       if (!content) return res.status(400).json({ error: 'content est requis' });
+      if (content.length > LIMITS.comment) return res.status(400).json({ error: 'Texte trop long (max 8000 caractères).' });
       // On vérifie que le commentaire parent existe AVANT d'insérer la réponse,
       // sinon Prisma lève une erreur de clé étrangère renvoyée en 500 opaque.
       const parent = await prisma.comment.findUnique({ where: { id: req.params.id }, select: { userId: true, storyId: true, chapterId: true } });
@@ -2655,8 +2676,13 @@ export async function createServerInstance() {
 
   app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {
     try {
-      const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id } });
+      const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: { select: { authorId: true } } } });
       if (!chapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
+      // Un chapitre non publié ne doit pas être lisible/traçable par autrui : on
+      // renvoie 404 (sans révéler son existence ni son contenu) sauf à l'auteur.
+      if (!chapter.isPublished && chapter.story?.authorId !== req.user.id && req.user.role !== 'Administrateur') {
+        return res.status(404).json({ error: 'Chapitre non trouvé' });
+      }
       const progressPercent = Math.min(100, Math.max(0, Number(req.body.progressPercent || 0)));
       const progress = await prisma.readingProgress.upsert({
         where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },

@@ -1680,7 +1680,12 @@ export default function App() {
     saveLikeMap(COMMENT_LIKERS_STORAGE_KEY, likeMap);
 
     const likedCommentsKey = `plume_liked_comments_${currentUser.id}`;
-    const savedLikedComments = JSON.parse(localStorage.getItem(likedCommentsKey) || '[]') as string[];
+    let savedLikedComments: string[] = [];
+    try {
+      savedLikedComments = JSON.parse(localStorage.getItem(likedCommentsKey) || '[]');
+    } catch {
+      savedLikedComments = [];
+    }
 
     const nextLikedComments = hasLiked
       ? savedLikedComments.filter((id) => id !== commentId)
