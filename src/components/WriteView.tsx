@@ -411,7 +411,7 @@ export default function WriteView({
                   type="button"
                   onClick={handleCancelCoverCrop}
                   disabled={isUploadingCover}
-                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-250 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-200 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
                 >
                   Annuler
                 </button>
@@ -1127,7 +1127,7 @@ export default function WriteView({
                                               setExpandedMenuStoryId(null);
                                               handleOpenEditStory(story);
                                             }}
-                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
+                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
                                           >
                                             <Edit className="w-3.5 h-3.5 text-zinc-400" />
                                             <span>Modifier l'histoire</span>
@@ -1139,7 +1139,7 @@ export default function WriteView({
                                               setExpandedMenuStoryId(null);
                                               setManagingStoryChapters(story);
                                             }}
-                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
+                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
                                           >
                                             <FileText className="w-3.5 h-3.5 text-zinc-400" />
                                             <span>Continuer l'écriture</span>
@@ -1151,7 +1151,7 @@ export default function WriteView({
                                               setExpandedMenuStoryId(null);
                                               handleToggleStoryPublish(story);
                                             }}
-                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
+                                            className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-purple-650/10 hover:text-purple-605 dark:hover:bg-purple-650/15 transition flex items-center gap-2 cursor-pointer"
                                           >
                                             <Power className="w-3.5 h-3.5 text-zinc-400" />
                                             <span>{story.status === 'Publié' ? 'Dépublier l\'histoire' : 'Publier l\'histoire'}</span>
@@ -1191,7 +1191,7 @@ export default function WriteView({
                                   <button
                                     id={`edit-story-meta-${story.id}`}
                                     onClick={() => handleOpenEditStory(story)}
-                                    className="h-8.5 rounded-xl border border-gray-150 dark:border-zinc-800 text-[11px] font-bold text-gray-805 dark:text-gray-205 hover:bg-gray-100 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5"
+                                    className="h-8.5 rounded-xl border border-gray-150 dark:border-zinc-800 text-[11px] font-bold text-gray-805 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5"
                                     title="Modifier les options du livre"
                                   >
                                     <Edit className="w-3.5 h-3.5 text-gray-500" />
@@ -1255,7 +1255,7 @@ export default function WriteView({
                 <button
                   id="confirm-delete-cancel"
                   onClick={() => setStoryToDelete(null)}
-                  className="w-full py-2 bg-gray-100 dark:bg-zinc-850 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-705 dark:text-zinc-250 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
+                  className="w-full py-2 bg-gray-100 dark:bg-zinc-850 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-705 dark:text-zinc-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
                 >
                   Annuler
                 </button>

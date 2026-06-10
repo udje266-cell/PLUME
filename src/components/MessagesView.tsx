@@ -769,7 +769,7 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <Users className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-gray-900 dark:text-gray-105 text-sm">Groupe de lecture sécurisé</h5>
+                  <h5 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Groupe de lecture sécurisé</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
                     Les membres de ce cercle de lecture peuvent tous échanger ici. Écrivez le premier message coopératif !
                   </p>
@@ -922,7 +922,7 @@ export default function MessagesView({
                   id="message-input-chat-box"
                   type="text"
                   placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                  className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-150 placeholder-gray-400"
+                  className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                 />
@@ -998,7 +998,7 @@ export default function MessagesView({
         <div className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left">
             <div className="p-5 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
-              <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-105 uppercase tracking-wider flex items-center space-x-1.5">
+              <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100 uppercase tracking-wider flex items-center space-x-1.5">
                 <PlusCircle className="w-5 h-5 text-purple-600" />
                 <span>Nouveau Message</span>
               </h3>
@@ -1060,7 +1060,7 @@ export default function MessagesView({
         <div className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left">
             <div className="p-5 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
-              <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-105 uppercase tracking-wider flex items-center space-x-1.5 select-none">
+              <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100 uppercase tracking-wider flex items-center space-x-1.5 select-none">
                 <Users className="w-5 h-5 text-purple-600" />
                 <span>Créer un groupe de lecture</span>
               </h3>
@@ -1082,7 +1082,7 @@ export default function MessagesView({
                   placeholder="Ex: Passion Thriller, Club Victor Hugo, etc."
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-xs text-gray-805 dark:text-gray-105 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-650"
+                  className="w-full bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-xs text-gray-805 dark:text-gray-100 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-650"
                 />
               </div>
 
@@ -1093,7 +1093,7 @@ export default function MessagesView({
                   placeholder="Ex: Lecture partagée des oeuvres classiques gothiques."
                   value={newGroupDesc}
                   onChange={(e) => setNewGroupDesc(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-805 text-xs text-gray-805 dark:text-gray-105 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-650"
+                  className="w-full bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-805 text-xs text-gray-805 dark:text-gray-100 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-650"
                 />
               </div>
 

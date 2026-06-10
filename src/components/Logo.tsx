@@ -15,11 +15,11 @@ interface LogoProps {
 
 export default function Logo({ className = '', size = 'xl' }: LogoProps) {
   const sizeClass = {
-    sm: 'h-[48px]',
-    md: 'h-[56px]',
-    lg: 'h-[72px]',
-    xl: 'h-[88px]',
-    '2xl': 'h-[116px]',
+    sm: 'h-[56px]',
+    md: 'h-[72px]',
+    lg: 'h-[88px]',
+    xl: 'h-[104px]',
+    '2xl': 'h-[150px]',
   }[size];
 
   return (

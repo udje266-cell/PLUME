@@ -1831,7 +1831,7 @@ export default function ReadingView({
                   className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition flex items-center space-x-1 ${
                     readLater.includes(story.id)
                       ? 'bg-blue-600 text-white shadow-xs font-black'
-                      : 'bg-white dark:bg-gray-855 text-gray-600 dark:text-gray-305 border border-gray-200 dark:border-zinc-800 hover:text-blue-500'
+                      : 'bg-white dark:bg-gray-855 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-zinc-800 hover:text-blue-500'
                   }`}
                 >
                   <span>⏳ À lire</span>
@@ -1929,7 +1929,7 @@ export default function ReadingView({
                 <span className="text-[10px] uppercase font-black text-gray-400 block tracking-widest font-sans">Citations fondamentales</span>
                 <div className="space-y-2">
                   {capMeta.quotes.map((quote, idx) => (
-                    <blockquote key={idx} className="p-3 bg-purple-600/5 border-l-4 border-purple-500/40 rounded-r-xl text-xs text-zinc-650 dark:text-zinc-305 italic leading-relaxed">
+                    <blockquote key={idx} className="p-3 bg-purple-600/5 border-l-4 border-purple-500/40 rounded-r-xl text-xs text-zinc-650 dark:text-zinc-300 italic leading-relaxed">
                       {quote}
                     </blockquote>
                   ))}
@@ -2121,7 +2121,7 @@ export default function ReadingView({
                       </span>
                     </div>
 
-                    <p className="text-xs text-gray-650 dark:text-gray-350 whitespace-pre-line leading-relaxed">
+                    <p className="text-xs text-gray-650 dark:text-gray-300 whitespace-pre-line leading-relaxed">
                       {com.content}
                     </p>
 

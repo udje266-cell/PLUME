@@ -900,7 +900,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
           </button>
           <button
             onClick={() => handleQuickDemoAccess('sophie.lefevre@plume.fr')}
-            className="p-1 px-2.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-305 rounded-lg hover:border-purple-500 transition line-clamp-1 col-span-2 cursor-pointer"
+            className="p-1 px-2.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 rounded-lg hover:border-purple-500 transition line-clamp-1 col-span-2 cursor-pointer"
           >
             Sophie (@Sophie_L - Lit et Écrit)
           </button>

@@ -773,7 +773,7 @@ const user = freshViewedUser || freshCurrentUser;
                           setExpandedMenuStoryId(null);
                           handleOpenEditStoryMeta(story);
                         }}
-                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
                       >
                         <Edit className="w-3.5 h-3.5 text-zinc-400" />
                         <span>Modifier l'histoire</span>
@@ -785,7 +785,7 @@ const user = freshViewedUser || freshCurrentUser;
                           setExpandedMenuStoryId(null);
                           triggerBookOpenAnimation(story);
                         }}
-                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
                       >
                         <FileText className="w-3.5 h-3.5 text-zinc-400" />
                         <span>Continuer l'écriture</span>
@@ -798,7 +798,7 @@ const user = freshViewedUser || freshCurrentUser;
                           const nextStatus = story.status === 'Publié' ? 'Brouillon' : 'Publié';
                           onUpdateStory(story.id, { status: nextStatus });
                         }}
-                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
                       >
                         <Power className="w-3.5 h-3.5 text-zinc-400" />
                         <span>{story.status === 'Publié' ? "Dépublier l'histoire" : "Publier l'histoire"}</span>
@@ -826,7 +826,7 @@ const user = freshViewedUser || freshCurrentUser;
                           setExpandedMenuStoryId(null);
                           triggerBookOpenAnimation(story);
                         }}
-                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-250 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3.5 py-2 text-[10.5px] font-bold text-gray-700 dark:text-zinc-200 hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] dark:hover:bg-[#7C3AED]/15 transition flex items-center gap-2 cursor-pointer"
                       >
                         <BookOpen className="w-3.5 h-3.5 text-purple-500" />
                         <span>Lire l'histoire</span>
@@ -855,12 +855,12 @@ const user = freshViewedUser || freshCurrentUser;
 
         {/* Story Metadata Title Footer & labels */}
         <div className="mt-2 text-center w-full min-w-0 font-sans">
-          <p className="text-[10px] font-serif font-black text-zinc-800 dark:text-zinc-150 truncate leading-tight group-hover:text-purple-600 transition">
+          <p className="text-[10px] font-serif font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight group-hover:text-purple-600 transition">
             {story.title}
           </p>
           
           {isDraft ? (
-            <div className="flex items-center justify-center space-x-1 text-[8px] font-mono text-zinc-400 dark:text-zinc-550 mt-1">
+            <div className="flex items-center justify-center space-x-1 text-[8px] font-mono text-zinc-400 dark:text-zinc-500 mt-1">
               <span className="bg-zinc-155 dark:bg-zinc-850 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Brouillon</span>
             </div>
           ) : (
@@ -1096,7 +1096,7 @@ const user = freshViewedUser || freshCurrentUser;
                   type="button"
                   onClick={handleCancelAvatarCrop}
                   disabled={isUploadingAvatar}
-                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-250 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-200 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
                 >
                   Annuler
                 </button>
@@ -1162,7 +1162,7 @@ const user = freshViewedUser || freshCurrentUser;
                   type="button"
                   onClick={handleCancelBannerCrop}
                   disabled={isUploadingBanner}
-                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-250 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                  className="py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-850 text-zinc-700 dark:text-zinc-200 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
                 >
                   Annuler
                 </button>
@@ -1322,7 +1322,7 @@ const user = freshViewedUser || freshCurrentUser;
               <span className="mx-2 text-zinc-300 dark:text-zinc-700">•</span>
             )}
             {user.gender && (
-              <span className="font-sans font-bold text-zinc-650 dark:text-zinc-350 bg-zinc-100 dark:bg-zinc-850 px-2 py-0.5 rounded-md inline-block uppercase text-[8px]">{user.gender}</span>
+              <span className="font-sans font-bold text-zinc-650 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-850 px-2 py-0.5 rounded-md inline-block uppercase text-[8px]">{user.gender}</span>
             )}
           </p>
 
@@ -1456,7 +1456,7 @@ const user = freshViewedUser || freshCurrentUser;
 
           return (
             <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl text-left space-y-3 shadow-xs select-none animation-fade-in">
-              <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-550 tracking-wider">
+              <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-500 tracking-wider">
                 <BookOpen className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
                 <span>Activité Littéraire</span>
               </div>
@@ -1902,7 +1902,7 @@ const user = freshViewedUser || freshCurrentUser;
 
                           {/* Metadata & Mini shelf action controls */}
                           <div className="mt-2 text-center w-full min-w-0">
-                            <p className="text-[10px] font-serif font-black text-zinc-800 dark:text-zinc-150 truncate leading-tight">
+                            <p className="text-[10px] font-serif font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight">
                               {story.title}
                             </p>
                             <p className="text-[8px] text-zinc-400 truncate leading-tight mt-0.5">Par {story.authorName}</p>
@@ -2036,7 +2036,7 @@ const user = freshViewedUser || freshCurrentUser;
                       />
 
                       <div className="min-w-0 w-full font-sans">
-                        <p className="text-[11px] font-sans font-black text-zinc-800 dark:text-zinc-150 truncate leading-tight group-hover:text-purple-500 transition">
+                        <p className="text-[11px] font-sans font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight group-hover:text-purple-500 transition">
                           {su.username}
                         </p>
                         <p className="text-[8.5px] text-zinc-400 font-mono truncate leading-tight mt-0.5">
@@ -2056,7 +2056,7 @@ const user = freshViewedUser || freshCurrentUser;
                         }}
                         className={`w-full py-1.5 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center space-x-1 ${
                           followsSu
-                            ? 'bg-zinc-200 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-350 hover:bg-zinc-250'
+                            ? 'bg-zinc-200 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-300 hover:bg-zinc-250'
                             : 'bg-purple-600 hover:bg-purple-750 text-white hover:scale-105'
                         }`}
                       >
@@ -2160,7 +2160,7 @@ const user = freshViewedUser || freshCurrentUser;
                     setReportedStory(null);
                     setCustomReportDetails('');
                   }}
-                  className="py-2.5 px-4 bg-zinc-150 dark:bg-zinc-850 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-650 dark:text-zinc-350 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+                  className="py-2.5 px-4 bg-zinc-150 dark:bg-zinc-850 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-650 dark:text-zinc-300 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
                 >
                   Annuler
                 </button>
@@ -2373,7 +2373,7 @@ const user = freshViewedUser || freshCurrentUser;
                             {idx + 1}
                           </span>
                           <div>
-                            <p className="text-xs font-bold text-gray-800 dark:text-gray-150 line-clamp-1">{ch.title}</p>
+                            <p className="text-xs font-bold text-gray-800 dark:text-gray-100 line-clamp-1">{ch.title}</p>
                             <p className="text-[9px] text-gray-400 mt-0.5">Paru le {new Date(ch.publishDate).toLocaleDateString()} • {Math.round(ch.content.length / 5)} mots</p>
                           </div>
                         </div>
@@ -2616,7 +2616,7 @@ const user = freshViewedUser || freshCurrentUser;
                 <div className="space-y-4">
                   <div className="bg-purple-500/5 p-4 rounded-2xl border border-purple-500/10 space-y-1.5">
                     <span className="font-extrabold text-[12px] uppercase text-purple-605 dark:text-purple-350 block">Console Interactive d'Activités</span>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-405 leading-relaxed">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
                       L'application débloque automatiquement les trophées en arrière-plan suite à vos actions sur le site (lecture, écriture, etc.). Afin de faciliter l'évaluation complète des <strong>225 succès</strong>, utilisez les boutons de simulation ci-dessous pour modifier vos statistiques et observer les déblocages automatiques ainsi que le changement de certification.
                     </p>
                   </div>
@@ -3270,7 +3270,7 @@ const user = freshViewedUser || freshCurrentUser;
                   <button
                     type="button"
                     onClick={() => setEditingStoryMeta(null)}
-                    className="w-full py-2 bg-gray-100 dark:bg-zinc-855 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-250 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
+                    className="w-full py-2 bg-gray-100 dark:bg-zinc-855 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
                   >
                     Annuler
                   </button>
@@ -3305,7 +3305,7 @@ const user = freshViewedUser || freshCurrentUser;
                 <button
                   id="profile-delete-cancel"
                   onClick={() => setStoryToDelete(null)}
-                  className="w-full py-2 bg-gray-100 dark:bg-zinc-850 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-750 dark:text-zinc-250 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
+                  className="w-full py-2 bg-gray-100 dark:bg-zinc-850 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-750 dark:text-zinc-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
                 >
                   Annuler
                 </button>
@@ -3404,7 +3404,7 @@ const user = freshViewedUser || freshCurrentUser;
                     );
                   })}
 
-                  <div className="flex flex-col items-center justify-center pt-6 mt-4 border-t border-gray-150 dark:border-zinc-850/50 text-center text-zinc-400 dark:text-zinc-550 select-none">
+                  <div className="flex flex-col items-center justify-center pt-6 mt-4 border-t border-gray-150 dark:border-zinc-850/50 text-center text-zinc-400 dark:text-zinc-500 select-none">
                     <span className="text-[8px] font-mono tracking-widest uppercase font-black">PLUME MOBILE v1.4.0</span>
                     <span className="text-[8px] font-serif italic mt-1 pb-2">Écritures & Lectures • Violet & Blanc & Noir</span>
                   </div>
@@ -3477,7 +3477,7 @@ const user = freshViewedUser || freshCurrentUser;
 
                     {/* Section: Modifier le profil */}
                     <div className="space-y-4 bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl shadow-sm">
-                      <h4 className="text-[10px] font-black uppercase text-zinc-700 dark:text-zinc-350 tracking-wider">
+                      <h4 className="text-[10px] font-black uppercase text-zinc-700 dark:text-zinc-300 tracking-wider">
                         Modifier le profil
                       </h4>
                       <div className="space-y-3">
@@ -3518,7 +3518,7 @@ const user = freshViewedUser || freshCurrentUser;
 
                     {/* Section: Mail Update */}
                     <div className="space-y-3 bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl">
-                      <h4 className="text-[10px] font-black uppercase text-zinc-700 dark:text-zinc-350 tracking-wider">
+                      <h4 className="text-[10px] font-black uppercase text-zinc-700 dark:text-zinc-300 tracking-wider">
                         Adresse E-mail
                       </h4>
                       <input 
@@ -3544,7 +3544,7 @@ const user = freshViewedUser || freshCurrentUser;
 
                       {currentUser.hasChangedRole ? (
                         <div className="p-3 bg-purple-500/5 dark:bg-[#06060A] border border-purple-500/10 rounded-xl space-y-1">
-                          <p className="text-[11px] text-gray-900 dark:text-zinc-350 font-medium leading-tight">
+                          <p className="text-[11px] text-gray-900 dark:text-zinc-300 font-medium leading-tight">
                             Vous avez déjà utilisé votre unique modification.
                           </p>
                           <p className="text-[9px] text-zinc-400">
@@ -3895,7 +3895,7 @@ const user = freshViewedUser || freshCurrentUser;
                                 className={`py-1.5 px-3 rounded-xl text-[10px] uppercase tracking-wide font-black border transition cursor-pointer ${
                                   isSel 
                                     ? 'bg-purple-600 text-white border-purple-600' 
-                                    : 'bg-white dark:bg-zinc-950 text-gray-700 dark:text-zinc-350 border-gray-150 dark:border-zinc-850 hover:bg-gray-100'
+                                    : 'bg-white dark:bg-zinc-950 text-gray-700 dark:text-zinc-300 border-gray-150 dark:border-zinc-850 hover:bg-gray-100'
                                 }`}
                               >
                                 {themeName}
@@ -4221,7 +4221,7 @@ const user = freshViewedUser || freshCurrentUser;
                                   setConfirmNewPassword('');
                                   setIsChangingPassword(false);
                                 }}
-                                className="py-1 px-3 bg-zinc-150 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-350 rounded-lg text-[9px] font-bold uppercase transition cursor-pointer"
+                                className="py-1 px-3 bg-zinc-150 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-300 rounded-lg text-[9px] font-bold uppercase transition cursor-pointer"
                               >
                                 Annuler
                               </button>

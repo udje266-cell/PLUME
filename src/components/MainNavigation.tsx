@@ -238,7 +238,7 @@ export default function MainNavigation({
                                 </p>
                                 <Icon className={`w-3.5 h-3.5 shrink-0 ${notifColor(notification.type)}`} />
                               </div>
-                              <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-350 leading-snug line-clamp-2">
+                              <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-300 leading-snug line-clamp-2">
                                 {notification.message}
                               </p>
                               {notification.excerpt && (

@@ -440,7 +440,7 @@ export default function HomeView({
               <div className="flex-1 min-w-0 text-left">
                 <h4 
                   onClick={() => onSelectStory(story)}
-                  className="font-bold text-xs text-gray-900 dark:text-gray-150 line-clamp-1 hover:text-purple-600 hover:underline cursor-pointer"
+                  className="font-bold text-xs text-gray-900 dark:text-gray-100 line-clamp-1 hover:text-purple-600 hover:underline cursor-pointer"
                 >
                   {story.title}
                 </h4>
