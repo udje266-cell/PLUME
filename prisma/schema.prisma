@@ -4,7 +4,14 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Runtime : connexion POOLÉE (ex. PgBouncer / pooler managé) pour ne pas
+  // épuiser les connexions Postgres avec plusieurs instances. Ajouter
+  // `?pgbouncer=true&connection_limit=5` à l'URL en mode pooler.
   url      = env("DATABASE_URL")
+  // Migrations / introspection : connexion DIRECTE (un pooler en mode
+  // « transaction » ne supporte pas les migrations). En l'absence de pooler,
+  // le start script fait DIRECT_URL = DATABASE_URL automatiquement.
+  directUrl = env("DIRECT_URL")
 }
 
 

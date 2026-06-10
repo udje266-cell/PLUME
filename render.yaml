@@ -11,7 +11,15 @@ services:
         value: production
       - key: PORT
         value: 3000
+      # Runtime (pooler conseillé en multi-instances : voir SCALING.md).
       - key: DATABASE_URL
+        fromDatabase:
+          name: plume-db
+          property: connectionString
+      # Migrations : connexion directe (un pooler transaction-mode ne migre pas).
+      # En mono-instance c'est la même URL ; en mode pooler, garder celle-ci en
+      # direct et pointer DATABASE_URL vers le pooler.
+      - key: DIRECT_URL
         fromDatabase:
           name: plume-db
           property: connectionString

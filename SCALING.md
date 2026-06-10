@@ -29,18 +29,31 @@ dès que la variable `REDIS_URL` est définie — sinon il garde le mode mémoir
 3. Redémarrer. Le log doit afficher `[REDIS] connecté` et
    `[SOCKET.IO] Adaptateur Redis actif`.
 
-## 3. Base de données : pooling de connexions
+## 3. Base de données : pooling de connexions (déjà câblé)
 
 Prisma ouvre un pool **par instance**. Avec beaucoup d'instances, on épuise vite
-les connexions PostgreSQL. À grande échelle :
+les connexions PostgreSQL. Le schéma utilise désormais le pattern Prisma
+recommandé **deux URLs** :
 
-- Mettre un **pooler** devant Postgres : **PgBouncer**, le **Connection Pooler**
-  de Render/Supabase/Neon, ou **Prisma Accelerate**.
-- Pointer `DATABASE_URL` vers le pooler et limiter le pool par instance, ex. :
+- **`DATABASE_URL`** → connexion **poolée** (runtime). En mode pooler, ajouter
+  les paramètres, ex. :
   `postgresql://…/db?pgbouncer=true&connection_limit=5&pool_timeout=20`
-- Le client Prisma est déjà un **singleton** (`src/server/prisma.ts`) et le
-  serveur se **déconnecte proprement** à l'arrêt (SIGTERM/SIGINT), ce qui évite
-  les fuites de connexions lors des redéploiements/autoscaling.
+- **`DIRECT_URL`** → connexion **directe** (migrations / introspection ; un
+  pooler en mode « transaction » ne peut pas migrer).
+
+> En **mono-instance / sans pooler**, rien à faire : le script `start` fait
+> automatiquement `DIRECT_URL = DATABASE_URL` s'il n'est pas défini. `prisma
+> generate` et le runtime fonctionnent sans `DIRECT_URL` (testé).
+
+### Passer en mode pooler (3 étapes)
+1. Activer un pooler : **PgBouncer**, le **Connection Pooler** de
+   Render/Supabase/Neon, ou **Prisma Accelerate**.
+2. `DATABASE_URL` → l'URL **poolée** (avec `pgbouncer=true&connection_limit=…`).
+3. `DIRECT_URL` → l'URL **directe** de la base (pour les migrations).
+
+Le client Prisma est déjà un **singleton** (`src/server/prisma.ts`) et le serveur
+se **déconnecte proprement** à l'arrêt (SIGTERM/SIGINT) → pas de fuite de
+connexions lors des redéploiements/autoscaling.
 
 ## 4. Autres points pour la grande échelle
 
