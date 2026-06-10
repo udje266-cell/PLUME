@@ -56,6 +56,7 @@ import {
 
 interface ProfileViewProps {
   currentUser: User;
+  authorCertification?: { authorPercent: number; authorUnlocked: number } | null;
   viewedUser?: User | null;
   onBackToMyProfile?: () => void;
   onUpdateProfile: (updatedFields: Partial<User>) => void;
@@ -246,6 +247,7 @@ const getCroppedImageFile = async (
 
 export default function ProfileView({
   currentUser,
+  authorCertification,
   viewedUser,
   onBackToMyProfile,
   onUpdateProfile,
@@ -1599,10 +1601,12 @@ const user = freshViewedUser || freshCurrentUser;
         const aAchievements = generateAuthorAchievements(uStats);
         
         const unlockedR = rAchievements.filter(a => a.isUnlocked).length;
-        const unlockedA = aAchievements.filter(a => a.isUnlocked).length;
-        
+        // La certification d'auteur est calculée par le serveur (source du badge) :
+        // on l'utilise si disponible pour rester cohérent, sinon repli local.
+        const unlockedA = authorCertification ? authorCertification.authorUnlocked : aAchievements.filter(a => a.isUnlocked).length;
+
         const pctR = Math.round((unlockedR / 125) * 100);
-        const pctA = Math.round((unlockedA / 100) * 100);
+        const pctA = authorCertification ? authorCertification.authorPercent : Math.round((unlockedA / 100) * 100);
 
         const isReader = currentUser.role === 'Lecteur';
         const isAuthor = currentUser.role === 'Auteur';
@@ -2827,7 +2831,9 @@ const user = freshViewedUser || freshCurrentUser;
 
                 // Automatic certification threshold checks
                 const requiredToCertify = isReaderMode ? 100 : 80;
-                const isCertified = unlockedList.length >= requiredToCertify;
+                // En mode auteur, le statut « certifié » suit le badge serveur
+                // (source de vérité), pas le seuil calculé localement.
+                const isCertified = isReaderMode ? unlockedList.length >= requiredToCertify : currentUser.isVerified;
 
                 // Calculate rarity distributions
                 const countByRarity = (r: 'commun' | 'rare' | 'epic' | 'mythic') => {

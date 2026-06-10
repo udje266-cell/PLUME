@@ -996,6 +996,28 @@ export async function createServerInstance() {
     res.json(serializeUser(user, true));
   });
 
+  // Progression de certification calculée à partir des données réelles (même
+  // source que le badge serveur), pour que l'UI n'affiche pas un pourcentage
+  // localStorage divergent du badge.
+  app.get('/api/me/certification', requireAuth, async (req: any, res) => {
+    try {
+      const role = roleFromPrisma(req.user.role);
+      const stats = await computeAuthorStats(req.user.id);
+      const evalRes = countAndEvaluateCertification('Auteur', stats, req.user.id);
+      res.json({
+        role,
+        authorPercent: evalRes.authorPercent,
+        authorUnlocked: evalRes.unlockedAuthorCount,
+        authorTotal: 100,
+        shouldCertify: role === 'Auteur' ? evalRes.shouldCertify : false,
+        isVerified: Boolean(req.user.isVerified),
+      });
+    } catch (error) {
+      console.error('[CERT] progression:', error);
+      res.status(500).json({ error: 'Erreur lors du calcul de la certification.' });
+    }
+  });
+
   app.post('/api/auth/logout', (_req, res) => {
     clearAuthCookie(res);
     res.json({ success: true });

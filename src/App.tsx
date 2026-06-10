@@ -313,6 +313,18 @@ export default function App() {
   // n'est jamais écrit dans localStorage (atténuation XSS).
   const authHeaders = (extra: Record<string, string> = {}) => sharedAuthHeaders(extra);
 
+  // Progression de certification d'auteur calculée par le serveur (source de
+  // vérité du badge), pour que ProfileView affiche un pourcentage cohérent.
+  const [authorCertification, setAuthorCertification] = useState<{ authorPercent: number; authorUnlocked: number } | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) { setAuthorCertification(null); return; }
+    fetch('/api/me/certification', { headers: authHeaders() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setAuthorCertification({ authorPercent: data.authorPercent, authorUnlocked: data.authorUnlocked }); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, currentUser?.id, currentUser?.isVerified]);
+
   const fetchConversationsList = React.useCallback(() => {
     fetch('/api/conversations', { headers: authHeaders() })
       .then(res => {
@@ -2409,6 +2421,7 @@ export default function App() {
                   {activeTab === 'profile' && (
                     <ProfileView
                       currentUser={currentUser!}
+                      authorCertification={authorCertification}
                       viewedUser={viewedUser}
                       onBackToMyProfile={() => setViewedUser(null)}
                       onUpdateProfile={handleUpdateProfile}
