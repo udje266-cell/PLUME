@@ -927,6 +927,14 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
           </button>
         </div>
       </div>
+
+      {/* Liens légaux (requis stores) */}
+      <p className="mt-5 text-[9px] text-gray-400 dark:text-zinc-500 text-center">
+        En continuant, vous acceptez nos{' '}
+        <a href="/terms.html" target="_blank" rel="noreferrer" className="underline hover:text-purple-600 dark:hover:text-purple-400">Conditions d'utilisation</a>
+        {' '}et notre{' '}
+        <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline hover:text-purple-600 dark:hover:text-purple-400">Politique de confidentialité</a>.
+      </p>
     </div>
   );
 }

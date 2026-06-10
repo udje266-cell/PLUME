@@ -838,6 +838,20 @@ export default function App() {
     return saved ? JSON.parse(saved) : true; // Default to eye-safe dark theme
   });
 
+  // Gestion du bouton retour physique Android (déclenché depuis utils/native).
+  // On ferme l'élément ouvert le plus prioritaire ; si rien n'est ouvert, on
+  // renvoie false pour laisser l'app se fermer.
+  useEffect(() => {
+    (window as any).__plumeHandleBack = (): boolean => {
+      if (isSidebarOpen) { setIsSidebarOpen(false); return true; }
+      if (selectedStoryForReading) { setSelectedStoryForReading(null); return true; }
+      if (viewedUser) { setViewedUser(null); return true; }
+      if (activeTab !== 'home') { setActiveTab('home'); return true; }
+      return false;
+    };
+    return () => { delete (window as any).__plumeHandleBack; };
+  }, [isSidebarOpen, selectedStoryForReading, viewedUser, activeTab]);
+
   const refreshUsersData = async () => {
     try {
       // Envoi du token : le backend n'inclut les emails que pour un administrateur.

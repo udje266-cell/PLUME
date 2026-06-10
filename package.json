@@ -10,12 +10,18 @@
     "clean": "rm -rf dist server.js server.cjs",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "build:mobile": "vite build",
+    "cap:sync": "npm run build:mobile && cap sync",
+    "cap:assets": "capacitor-assets generate",
+    "cap:android": "npm run build:mobile && cap sync android && cap open android",
+    "cap:ios": "npm run build:mobile && cap sync ios && cap open ios",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/ios": "^8.4.0",

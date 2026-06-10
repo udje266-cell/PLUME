@@ -3779,6 +3779,13 @@ const user = freshViewedUser || freshCurrentUser;
                         Supprimer
                       </button>
                     </div>
+
+                    {/* Liens légaux (requis stores) */}
+                    <div className="flex items-center justify-center gap-3 pt-1 text-[9px] text-zinc-400">
+                      <a href="/privacy.html" target="_blank" rel="noreferrer" className="hover:text-purple-500 underline">Confidentialité</a>
+                      <span>·</span>
+                      <a href="/terms.html" target="_blank" rel="noreferrer" className="hover:text-purple-500 underline">Conditions d'utilisation</a>
+                    </div>
                   </div>
                 )}
 

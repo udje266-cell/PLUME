@@ -31,4 +31,16 @@ export async function initNative(): Promise<void> {
   } catch {
     /* plugin indisponible : on ignore */
   }
+
+  // Bouton retour physique (Android) : on laisse l'app fermer l'overlay/onglet
+  // courant via le handler enregistré ; s'il n'a rien à fermer, on quitte l'app.
+  try {
+    const { App: CapApp } = await import('@capacitor/app');
+    CapApp.addListener('backButton', () => {
+      const handled = (window as any).__plumeHandleBack?.() === true;
+      if (!handled) CapApp.exitApp();
+    });
+  } catch {
+    /* plugin indisponible : on ignore */
+  }
 }
