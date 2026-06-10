@@ -15,6 +15,21 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
 
+// La logique de certification (src/utils/achievements) référence localStorage
+// pour les dates de déblocage. Côté serveur, seul le COMPTAGE des accomplissements
+// nous intéresse : on fournit donc un stub mémoire avant de l'utiliser. Les dates
+// de déblocage absentes n'affectent pas le calcul de `shouldCertify`.
+if (typeof (globalThis as any).localStorage === 'undefined') {
+  const __store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => (__store.has(k) ? __store.get(k)! : null),
+    setItem: (k: string, v: string) => { __store.set(k, String(v)); },
+    removeItem: (k: string) => { __store.delete(k); },
+    clear: () => { __store.clear(); },
+  };
+}
+import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
+
 // Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
 // sans try/catch) ne doit jamais faire planter le process en production.
 process.on('unhandledRejection', (reason) => {
@@ -271,6 +286,79 @@ function filterDraftChapters(story: any, requesterId: string | undefined, isAdmi
   if (!story) return story;
   if (isAdmin || (requesterId && story.authorId === requesterId)) return story;
   return { ...story, chapters: Array.isArray(story.chapters) ? story.chapters.filter((c: any) => c.isPublished) : story.chapters };
+}
+
+function countWords(text: string | null | undefined): number {
+  if (!text) return 0;
+  const t = String(text).trim();
+  if (!t) return 0;
+  return t.split(/\s+/).length;
+}
+
+// Calcule les statistiques d'auteur d'un utilisateur À PARTIR DE LA BASE
+// (sources de vérité), pour évaluer la certification sans faire confiance au
+// client. Les champs lecteur ne sont pas pertinents pour la certification auteur.
+async function computeAuthorStats(userId: string): Promise<UserStats> {
+  const stories = await prisma.story.findMany({
+    where: { authorId: userId },
+    select: { views: true, createdAt: true, _count: { select: { likes: true } } },
+  });
+  const storiesCreated = stories.length;
+  const viewsReceived = stories.reduce((s, st) => s + (st.views || 0), 0);
+  const likesReceived = stories.reduce((s, st) => s + (st._count?.likes || 0), 0);
+
+  const chapters = await prisma.chapter.findMany({
+    where: { story: { authorId: userId }, isPublished: true },
+    select: { content: true, createdAt: true, updatedAt: true },
+  });
+  const chaptersPublished = chapters.length;
+  const wordsWritten = chapters.reduce((s, c) => s + countWords(c.content), 0);
+
+  // activeDays : approximation autoritative = nombre de jours distincts d'activité
+  // d'écriture (création d'histoires + publication/mise à jour de chapitres).
+  const days = new Set<string>();
+  for (const st of stories) days.add(new Date(st.createdAt).toISOString().slice(0, 10));
+  for (const c of chapters) {
+    days.add(new Date(c.createdAt).toISOString().slice(0, 10));
+    days.add(new Date(c.updatedAt).toISOString().slice(0, 10));
+  }
+
+  return {
+    chaptersRead: 0,
+    commentsPosted: 0,
+    likesGiven: 0,
+    favoritesAdded: 0,
+    activeDays: days.size,
+    completedReadCycles: 0,
+    wordsWritten,
+    storiesCreated,
+    chaptersPublished,
+    viewsReceived,
+    likesReceived,
+    decorChanges: 0,
+    genresReadCount: 0,
+    authorsFollowedCount: 0,
+  };
+}
+
+// Recalcule et persiste isVerified depuis des données autoritatives. Seuls les
+// auteurs atteignant le seuil sont certifiés ; tout autre rôle est décertifié.
+// `isVerified` n'est donc jamais piloté par le client.
+async function recomputeCertification(userId: string): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, isVerified: true } });
+    if (!user) return;
+    let shouldBeVerified = false;
+    if (roleFromPrisma(user.role) === 'Auteur') {
+      const stats = await computeAuthorStats(userId);
+      shouldBeVerified = countAndEvaluateCertification('Auteur', stats, userId).shouldCertify;
+    }
+    if (user.isVerified !== shouldBeVerified) {
+      await prisma.user.update({ where: { id: userId }, data: { isVerified: shouldBeVerified } });
+    }
+  } catch (error) {
+    console.error('[CERT] Échec du recalcul de certification:', error);
+  }
 }
 
 export async function createServerInstance() {
@@ -978,9 +1066,17 @@ export async function createServerInstance() {
         readingFullscreen: user.readingFullscreen,
         autoSaveEnabled: user.autoSaveEnabled,
         confirmDeleteStory: user.confirmDeleteStory,
-        isVerified: user.isVerified,
         hasChangedRole: user.hasChangedRole,
       };
+
+      // isVerified n'est JAMAIS piloté par le client : la certification est
+      // recalculée par le serveur depuis des données autoritatives (voir plus
+      // bas). Seul un administrateur peut forcer manuellement le badge.
+      let adminSetVerification = false;
+      if (isAdmin && user.isVerified !== undefined) {
+        data.isVerified = Boolean(user.isVerified);
+        adminSetVerification = true;
+      }
 
       // Changement de rôle : on interdit toute auto-promotion en
       // Administrateur. Seul un admin peut accorder ce rôle.
@@ -1003,6 +1099,15 @@ export async function createServerInstance() {
         data,
         include: { followers: true, following: true, blockedUsers: true },
       });
+
+      // Sauf override admin explicite, on (re)calcule la certification d'après
+      // les données réelles (rôle Auteur + accomplissements DB).
+      if (!adminSetVerification) {
+        const fresh = await prisma.user.findUnique({ where: { id: req.params.id }, include: { followers: true, following: true, blockedUsers: true } });
+        await recomputeCertification(req.params.id);
+        const reloaded = await prisma.user.findUnique({ where: { id: req.params.id }, include: { followers: true, following: true, blockedUsers: true } });
+        return res.json(serializeUser(reloaded || fresh || updatedUser, true));
+      }
       res.json(serializeUser(updatedUser, true));
     } catch (error) {
       console.error(error);
@@ -1144,6 +1249,7 @@ export async function createServerInstance() {
         },
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
+      recomputeCertification(req.user.id).catch(() => {});
       res.status(201).json(serializeStory(newStory));
     } catch (error) {
       console.error(error);
@@ -1185,6 +1291,7 @@ export async function createServerInstance() {
         data,
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
+      recomputeCertification(existing.authorId).catch(() => {});
       res.json(serializeStory(updatedStory));
     } catch (error) {
       console.error(error);
@@ -1198,6 +1305,7 @@ export async function createServerInstance() {
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.story.delete({ where: { id: req.params.id } });
+      recomputeCertification(story.authorId).catch(() => {});
       res.status(204).end();
     } catch (error) {
       console.error(error);
@@ -1239,6 +1347,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
         },
       });
+      recomputeCertification(story.authorId).catch(() => {});
       res.status(201).json(serializeChapter(newChapter));
     } catch (error) {
       console.error(error);
@@ -1263,6 +1372,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
       });
+      recomputeCertification(existingChapter.story.authorId).catch(() => {});
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -1276,6 +1386,7 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.id } });
+      recomputeCertification(existingChapter.story.authorId).catch(() => {});
       res.status(204).end();
     } catch (error) {
       console.error(error);
@@ -1302,6 +1413,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
       });
+      recomputeCertification(existingChapter.story.authorId).catch(() => {});
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -1315,6 +1427,7 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.chapterId } });
+      recomputeCertification(existingChapter.story.authorId).catch(() => {});
       res.status(204).end();
     } catch (error) {
       console.error(error);
@@ -2094,6 +2207,8 @@ export async function createServerInstance() {
         });
         io.to(`user:${story.authorId}`).emit('new_notification', notification);
       }
+      // Le total de likes reçus alimente la certification de l'auteur.
+      if (story) recomputeCertification(story.authorId).catch(() => {});
       res.status(201).json(like);
     } catch (error) {
       console.error(error);
@@ -2103,6 +2218,8 @@ export async function createServerInstance() {
 
   app.delete('/api/stories/:id/like', requireAuth, async (req: any, res) => {
     await prisma.storyLike.delete({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } } }).catch(() => null);
+    const story = await prisma.story.findUnique({ where: { id: req.params.id }, select: { authorId: true } });
+    if (story) recomputeCertification(story.authorId).catch(() => {});
     res.status(204).end();
   });
 

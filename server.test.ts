@@ -327,6 +327,36 @@ describe('API Integration Tests (Express routes)', () => {
     });
   });
 
+  describe('Server-authoritative certification (H1)', () => {
+    const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+
+    it('ignores a client-sent isVerified on profile update for non-admins', async () => {
+      const meUser = {
+        id: 'me',
+        email: 'me@example.com',
+        username: 'me',
+        role: 'Lecteur',
+        isVerified: false,
+        followers: [],
+        following: [],
+        blockedUsers: [],
+      };
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(meUser as any);
+      vi.mocked(prisma.user.update).mockResolvedValue(meUser as any);
+
+      const res = await request(app)
+        .put('/api/users/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ bio: 'hello', isVerified: true })
+        .expect(200);
+
+      // The client cannot grant itself the badge; a reader stays unverified.
+      expect(res.body.isVerified).toBe(false);
+      const updateData = vi.mocked(prisma.user.update).mock.calls[0][0].data as any;
+      expect(updateData.isVerified).toBeUndefined();
+    });
+  });
+
   describe('POST /api/auth/login', () => {
     const mockPassword = 'safe-password-123';
     const mockPasswordHash = bcrypt.hashSync(mockPassword, 10);
