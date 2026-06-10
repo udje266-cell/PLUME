@@ -473,8 +473,12 @@ export default function ReadingView({
   const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
   const [likedPassagesMe, setLikedPassagesMe] = useState<Record<string, boolean>>({});
   const [savedQuotes, setSavedQuotes] = useState<string[]>(() => {
-    const saved = localStorage.getItem('plume_saved_quotes');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('plume_saved_quotes');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
   const emojiIdCounter = useRef<number>(0);

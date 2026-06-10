@@ -70,12 +70,17 @@ export default function ExplorerView({
   const [sortBy, setSortBy] = useState<SortOption>('trending');
   
   // Saved filters state
+  const defaultSavedFilters: SavedFilter[] = [
+    { id: '1', name: 'SF Neuve', query: '', genre: 'Science-Fiction', sortBy: 'newest' },
+    { id: '2', name: 'Populaires', query: '', genre: 'Tous', sortBy: 'reads' }
+  ];
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
-    const saved = localStorage.getItem('plume_saved_explorer_filters');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', name: 'SF Neuve', query: '', genre: 'Science-Fiction', sortBy: 'newest' },
-      { id: '2', name: 'Populaires', query: '', genre: 'Tous', sortBy: 'reads' }
-    ];
+    try {
+      const saved = localStorage.getItem('plume_saved_explorer_filters');
+      return saved ? JSON.parse(saved) : defaultSavedFilters;
+    } catch {
+      return defaultSavedFilters;
+    }
   });
   
   const [filterNameInput, setFilterNameInput] = useState('');

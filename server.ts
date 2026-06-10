@@ -1223,7 +1223,7 @@ export async function createServerInstance() {
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
     const users = await prisma.user.findMany({
-      where: { OR: [{ username: { contains: q } }, { bio: { contains: q } }] },
+      where: { OR: [{ username: { contains: q, mode: 'insensitive' } }, { bio: { contains: q, mode: 'insensitive' } }] },
       include: { followers: true, following: true, blockedUsers: true },
       take: 20,
     });
@@ -1235,7 +1235,7 @@ export async function createServerInstance() {
     if (!q) return res.json([]);
     // La recherche ne révèle jamais les brouillons (seuls les récits publiés).
     const stories = await prisma.story.findMany({
-      where: { status: 'PUBLIE', OR: [{ title: { contains: q } }, { description: { contains: q } }, { genre: { contains: q } }, { tags: { contains: q } }] },
+      where: { status: 'PUBLIE', OR: [{ title: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }, { genre: { contains: q, mode: 'insensitive' } }, { tags: { contains: q, mode: 'insensitive' } }] },
       include: { author: true, chapters: true, likes: true, favorites: true },
       orderBy: { createdAt: 'desc' },
       take: 30,
@@ -1587,10 +1587,12 @@ export async function createServerInstance() {
 
   app.put('/api/comments/:id', requireAuth, async (req: any, res) => {
     try {
+      const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+      if (!content) return res.status(400).json({ error: 'content est requis' });
       const existing = await prisma.comment.findUnique({ where: { id: req.params.id }, include: { story: true } });
       if (!existing) return res.status(404).json({ error: 'Commentaire non trouvé' });
       if (existing.userId !== req.user.id && existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
-      const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content: req.body.content }, include: { user: true, replies: { include: { user: true } } } });
+      const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content }, include: { user: true, replies: { include: { user: true } } } });
       res.json(serializeComment(comment));
     } catch (error) {
       console.error(error);
@@ -1648,9 +1650,14 @@ export async function createServerInstance() {
 
   app.post('/api/comments/:id/replies', requireAuth, async (req: any, res) => {
     try {
-      const reply = await prisma.commentReply.create({ data: { commentId: req.params.id, userId: req.user.id, content: req.body.content }, include: { user: true } });
+      const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+      if (!content) return res.status(400).json({ error: 'content est requis' });
+      // On vérifie que le commentaire parent existe AVANT d'insérer la réponse,
+      // sinon Prisma lève une erreur de clé étrangère renvoyée en 500 opaque.
       const parent = await prisma.comment.findUnique({ where: { id: req.params.id }, select: { userId: true, storyId: true, chapterId: true } });
-      if (parent && parent.userId !== req.user.id) {
+      if (!parent) return res.status(404).json({ error: 'Commentaire non trouvé' });
+      const reply = await prisma.commentReply.create({ data: { commentId: req.params.id, userId: req.user.id, content }, include: { user: true } });
+      if (parent.userId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
             userId: parent.userId,
@@ -1664,7 +1671,7 @@ export async function createServerInstance() {
               storyId: parent.storyId,
               chapterId: parent.chapterId,
               commentId: req.params.id,
-              excerpt: req.body.content.length > 60 ? req.body.content.slice(0, 57) + '...' : req.body.content,
+              excerpt: content.length > 60 ? content.slice(0, 57) + '...' : content,
             } as any
           }
         });
