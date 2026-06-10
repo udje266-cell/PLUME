@@ -711,19 +711,8 @@ export default function App() {
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
-    try {
-      const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
-      if (savedUserFavorites) return JSON.parse(savedUserFavorites);
-    } catch (e) {
-      console.error(e);
-    }
-
-    try {
-      const legacyFavorites = localStorage.getItem('plume_favorites');
-      return legacyFavorites ? JSON.parse(legacyFavorites) : ['story_cosmos_1']; // Initial seeded favorite
-    } catch {
-      return ['story_cosmos_1'];
-    }
+    // Clé par utilisateur, avec migration de l'ancienne clé globale `plume_favorites`.
+    return readUserScopedValue(getFavoritesStorageKey(currentUser.id), 'plume_favorites', ['story_cosmos_1']);
   });
 
   const [likedStories, setLikedStories] = useState<string[]>(() => {
@@ -748,20 +737,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser?.id) return;
-    try {
-      const savedUserFavorites = localStorage.getItem(getFavoritesStorageKey(currentUser.id));
-      const legacyFavorites = localStorage.getItem('plume_favorites');
-
-      setFavorites(
-        savedUserFavorites
-          ? JSON.parse(savedUserFavorites)
-          : legacyFavorites
-            ? JSON.parse(legacyFavorites)
-            : []
-      );
-    } catch (e) {
-      console.error(e);
-    }
+    setFavorites(readUserScopedValue<string[]>(getFavoritesStorageKey(currentUser.id), 'plume_favorites', []));
   }, [currentUser?.id]);
 
   const [currentlyReading, setCurrentlyReading] = useState<string[]>(() => {
@@ -1011,8 +987,9 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    localStorage.setItem('plume_favorites', JSON.stringify(favorites));
-  }, [favorites]);
+    if (!currentUser?.id) return;
+    localStorage.setItem(getFavoritesStorageKey(currentUser.id), JSON.stringify(favorites));
+  }, [favorites, currentUser?.id]);
 
   useEffect(() => {
     localStorage.setItem('plume_reading_groups', JSON.stringify(groups));
@@ -2172,13 +2149,12 @@ export default function App() {
     localStorage.removeItem('plume_current_user');
     // Purge les caches encore stockés sous des clés GLOBALES (non scopées par
     // utilisateur) pour éviter qu'ils ne fuitent vers le compte suivant connecté
-    // sur le même navigateur. Les listes de lecture sont désormais scopées par
-    // utilisateur (clés `*_${userId}`) et n'ont donc plus besoin d'être purgées.
+    // sur le même navigateur. Les favoris et les listes de lecture sont désormais
+    // scopés par utilisateur (clés `*_${userId}`) et n'ont plus besoin d'y figurer.
     [
       'plume_notifications',
       'plume_reading_groups',
       'plume_group_messages',
-      'plume_favorites',
     ].forEach((key) => localStorage.removeItem(key));
   };
 
