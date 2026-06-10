@@ -14,6 +14,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
+import { redis } from './src/server/redis';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { recommendStories, weightsForDiscovery, explorationRatioForDiscovery } from './src/utils/recommendation';
 
 // La logique de certification (src/utils/achievements) référence localStorage
@@ -426,6 +428,15 @@ export async function createServerInstance() {
   const io = new Server(httpServer, {
     cors: { origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE'] },
   });
+
+  // Multi-instances : sans cet adaptateur, une notification temps réel émise par
+  // l'instance A n'atteint pas un client connecté à l'instance B. Avec Redis,
+  // la diffusion Socket.io est partagée entre toutes les instances.
+  if (redis) {
+    io.adapter(createAdapter(redis, redis.duplicate()));
+    console.log('[SOCKET.IO] Adaptateur Redis actif (diffusion multi-instances).');
+  }
+
   const PORT = Number(process.env.PORT || 3000);
   const JWT_SECRET = process.env.JWT_SECRET || 'plume_secret_dev_change_later';
 
@@ -548,7 +559,12 @@ export async function createServerInstance() {
   // ── Rate limiting simple en mémoire (par IP) ───────────────────────────────
   // Protège les routes sensibles (login, OTP, reset) contre le brute-force et le
   // spam. Note : en mémoire uniquement — pour du multi-instance, utiliser Redis.
+  // Compteur d'instanciation : donne à chaque limiteur un espace de clés Redis
+  // distinct et STABLE (les limiteurs sont créés dans le même ordre au démarrage
+  // de chaque instance), pour que le comptage soit partagé et cohérent.
+  let rateLimiterSeq = 0;
   function createRateLimiter(opts: { windowMs: number; max: number; message?: string }) {
+    const namespace = `rl:${rateLimiterSeq++}`;
     const hits = new Map<string, { count: number; resetAt: number }>();
     const cleanup = setInterval(() => {
       const now = Date.now();
@@ -558,23 +574,44 @@ export async function createServerInstance() {
     }, opts.windowMs);
     if (typeof cleanup.unref === 'function') cleanup.unref();
 
-    return (req: any, res: any, next: any) => {
+    const tooMany = (res: any, retryAfterSec: number) => {
+      res.setHeader('Retry-After', String(Math.max(1, retryAfterSec)));
+      return res.status(429).json({
+        error: opts.message || 'Trop de requêtes, veuillez réessayer plus tard.',
+      });
+    };
+
+    return async (req: any, res: any, next: any) => {
       // Désactivé en test pour ne pas rendre les tests flaky.
       if (process.env.NODE_ENV === 'test') return next();
-      const key = req.ip || req.connection?.remoteAddress || 'unknown';
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
+      // Chemin Redis (multi-instances) : compteur partagé via INCR + expiration.
+      if (redis) {
+        try {
+          const key = `${namespace}:${ip}`;
+          const count = await redis.incr(key);
+          if (count === 1) await redis.pexpire(key, opts.windowMs);
+          if (count > opts.max) {
+            const ttl = await redis.pttl(key);
+            return tooMany(res, Math.ceil((ttl > 0 ? ttl : opts.windowMs) / 1000));
+          }
+          return next();
+        } catch (e) {
+          // Redis indisponible : on retombe sur le compteur mémoire ci-dessous.
+        }
+      }
+
+      // Repli en mémoire (mono-instance / Redis absent).
       const now = Date.now();
-      const entry = hits.get(key);
+      const entry = hits.get(ip);
       if (!entry || entry.resetAt <= now) {
-        hits.set(key, { count: 1, resetAt: now + opts.windowMs });
+        hits.set(ip, { count: 1, resetAt: now + opts.windowMs });
         return next();
       }
       entry.count += 1;
       if (entry.count > opts.max) {
-        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-        res.setHeader('Retry-After', String(retryAfter));
-        return res.status(429).json({
-          error: opts.message || 'Trop de requêtes, veuillez réessayer plus tard.',
-        });
+        return tooMany(res, Math.ceil((entry.resetAt - now) / 1000));
       }
       return next();
     };
@@ -2085,14 +2122,27 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Le contenu du message ne doit pas dépasser 2000 caractères' });
       }
 
-      // In-memory anti-spam check (300ms limit)
-      const now = Date.now();
-      const lastTime = lastMessageTimes.get(req.user.id) || 0;
-      if (now - lastTime < 300) {
+      // Anti-spam : 1 message / 300ms par utilisateur. Cohérent multi-instances
+      // via Redis (SET NX PX) ; repli en mémoire si Redis absent.
+      let spamBlocked = false;
+      if (redis) {
+        try {
+          const ok = await redis.set(`spam:msg:${req.user.id}`, '1', 'PX', 300, 'NX');
+          spamBlocked = ok !== 'OK';
+        } catch {
+          const now = Date.now();
+          spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 300;
+          if (!spamBlocked) lastMessageTimes.set(req.user.id, now);
+        }
+      } else {
+        const now = Date.now();
+        spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 300;
+        if (!spamBlocked) lastMessageTimes.set(req.user.id, now);
+      }
+      if (spamBlocked) {
         console.warn(`[MESSAGE] Bloqué par l’anti-spam - utilisateur: ${req.user.id}`);
         return res.status(429).json({ error: 'Veuillez patienter avant d’envoyer un autre message (anti-spam)' });
       }
-      lastMessageTimes.set(req.user.id, now);
 
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
@@ -2755,6 +2805,25 @@ if (process.env.NODE_ENV !== 'test') {
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[PLUME App] Backend + Socket.io en écoute sur http://0.0.0.0:${PORT}`);
     });
+
+    // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
+    // nouvelles connexions puis on libère Prisma et Redis pour ne pas fuiter de
+    // connexions à la base — critique en multi-instances.
+    let shuttingDown = false;
+    const shutdown = (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`[PLUME App] Arrêt (${signal})…`);
+      httpServer.close(async () => {
+        try { await prisma.$disconnect(); } catch { /* ignore */ }
+        try { await redis?.quit(); } catch { /* ignore */ }
+        process.exit(0);
+      });
+      // Filet de sécurité si la fermeture traîne.
+      setTimeout(() => process.exit(0), 10000).unref();
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   }).catch((err) => {
     console.error('Erreur au démarrage du serveur principal :', err);
   });
