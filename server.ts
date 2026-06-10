@@ -1259,7 +1259,7 @@ export async function createServerInstance() {
         },
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
-      recomputeCertification(req.user.id).catch(() => {});
+      await recomputeCertification(req.user.id);
       res.status(201).json(serializeStory(newStory));
     } catch (error) {
       console.error(error);
@@ -1301,7 +1301,7 @@ export async function createServerInstance() {
         data,
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
-      recomputeCertification(existing.authorId).catch(() => {});
+      await recomputeCertification(existing.authorId);
       res.json(serializeStory(updatedStory));
     } catch (error) {
       console.error(error);
@@ -1315,7 +1315,7 @@ export async function createServerInstance() {
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.story.delete({ where: { id: req.params.id } });
-      recomputeCertification(story.authorId).catch(() => {});
+      await recomputeCertification(story.authorId);
       res.status(204).end();
     } catch (error) {
       console.error(error);
@@ -1357,7 +1357,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
         },
       });
-      recomputeCertification(story.authorId).catch(() => {});
+      await recomputeCertification(story.authorId);
       res.status(201).json(serializeChapter(newChapter));
     } catch (error) {
       console.error(error);
@@ -1382,7 +1382,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
       });
-      recomputeCertification(existingChapter.story.authorId).catch(() => {});
+      await recomputeCertification(existingChapter.story.authorId);
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -1396,7 +1396,7 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.id } });
-      recomputeCertification(existingChapter.story.authorId).catch(() => {});
+      await recomputeCertification(existingChapter.story.authorId);
       res.status(204).end();
     } catch (error) {
       console.error(error);
@@ -1423,7 +1423,7 @@ export async function createServerInstance() {
           publishedAt: chapter.isPublished ? new Date() : undefined,
         },
       });
-      recomputeCertification(existingChapter.story.authorId).catch(() => {});
+      await recomputeCertification(existingChapter.story.authorId);
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -1437,7 +1437,7 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       await prisma.chapter.delete({ where: { id: req.params.chapterId } });
-      recomputeCertification(existingChapter.story.authorId).catch(() => {});
+      await recomputeCertification(existingChapter.story.authorId);
       res.status(204).end();
     } catch (error) {
       console.error(error);

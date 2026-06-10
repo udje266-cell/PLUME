@@ -1615,6 +1615,22 @@ export default function App() {
   };
 
   // Stories creations (for Authors)
+  // Recharge l'utilisateur courant depuis le serveur, source de vérité du badge
+  // de certification (recalculé côté serveur après les actions d'écriture). On ne
+  // synchronise que isVerified pour ne pas écraser d'éventuelles éditions locales.
+  const refreshCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me', { headers: authHeaders() });
+      if (!res.ok) return;
+      const me = await res.json();
+      setCurrentUser(prev => (prev ? { ...prev, isVerified: me.isVerified } : prev));
+      setAllUsers(prev => prev.map(u => (u.id === me.id ? { ...u, isVerified: me.isVerified } : u)));
+      setStories(prev => prev.map(s => (s.authorId === me.id ? { ...s, authorVerified: me.isVerified } : s)));
+    } catch (e) {
+      console.error('[PLUME] Erreur de rafraîchissement du profil :', e);
+    }
+  };
+
   const handleCreateStory = (storyData: Partial<Story>) => {
     // Increment stats for achievements
     handleUpdateAndVerifyUserStats(st => {
@@ -1658,7 +1674,7 @@ export default function App() {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(newStory)
-    }).catch(e => console.error('[PLUME] Erreur de création de récit sur le serveur :', e));
+    }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur de création de récit sur le serveur :', e));
   };
 
   const handleUpdateStory = (storyId: string, updatedStory: Partial<Story>) => {
@@ -1675,7 +1691,7 @@ export default function App() {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(nextStoryObj)
-      }).catch(e => console.error('[PLUME] Erreur de mise à jour du récit sur le serveur :', e));
+      }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur de mise à jour du récit sur le serveur :', e));
     }
   };
 
@@ -1710,7 +1726,7 @@ export default function App() {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(newChapter)
-        }).catch(e => console.error('[PLUME] Erreur ajout de chapitre :', e));
+        }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur ajout de chapitre :', e));
 
         return updatedStory;
       }
@@ -1730,7 +1746,7 @@ export default function App() {
             method: 'PUT',
             headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(matchChapter)
-          }).catch(e => console.error('[PLUME] Erreur édition chapitre :', e));
+          }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur édition chapitre :', e));
         }
 
         return {
@@ -1749,7 +1765,7 @@ export default function App() {
         fetch(`/api/stories/${storyId}/chapters/${chapterId}`, {
           method: 'DELETE',
           headers: authHeaders()
-        }).catch(e => console.error('[PLUME] Erreur d’effacement chapitre :', e));
+        }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur d’effacement chapitre :', e));
 
         return {
           ...s,
@@ -1966,7 +1982,7 @@ export default function App() {
 
     // DELETE request to remove story
     fetch(`/api/stories/${storyId}`, { method: 'DELETE', headers: authHeaders() })
-      .then(() => alert("L'histoire signalée a été retirée définitivement de la plateforme."))
+      .then(() => { alert("L'histoire signalée a été retirée définitivement de la plateforme."); refreshCurrentUser(); })
       .catch(e => console.error('[PLUME] Erreur de suppression permanente du récit :', e));
   };
 
