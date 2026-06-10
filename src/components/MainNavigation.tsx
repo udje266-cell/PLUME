@@ -50,7 +50,7 @@ export default function MainNavigation({
   unreadMessagesCount = 0,
 }: MainNavigationProps) {
 
-  const canWrite = currentUser.role === 'Auteur' || currentUser.role === 'Utilisateur Mixte';
+  const canWrite = currentUser.role === 'Auteur';
   const isAdmin = currentUser.role === 'Administrateur';
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [activeNotificationTab, setActiveNotificationTab] = useState<'all' | 'follow' | 'comment' | 'like'>('all');

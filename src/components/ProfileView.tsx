@@ -1444,7 +1444,8 @@ const user = freshViewedUser || freshCurrentUser;
 
           const isLecteurAccount = user.role === 'Lecteur';
           const isAuteurAccount = user.role === 'Auteur';
-          const isMixedAccount = user.role === 'Utilisateur Mixte' || user.role === 'Administrateur';
+          // Les administrateurs affichent à la fois lectures et écritures.
+          const isMixedAccount = user.role === 'Administrateur';
 
           const displaysRead = (isLecteurAccount || isMixedAccount) && (user.showBooksRead ?? false);
           const displaysWritten = (isAuteurAccount || isMixedAccount) && (user.showBooksWritten ?? false);
@@ -1680,13 +1681,13 @@ const user = freshViewedUser || freshCurrentUser;
                     <span className="text-blue-500 font-bold bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/15 flex items-center gap-1.5">
                       <VerifiedBadge size="xs" /> Verified (Authenticité littéraire de l'archipel)
                     </span>
-                  ) : (currentUser.role === 'Utilisateur Mixte' || currentUser.role === 'Administrateur') ? (
+                  ) : currentUser.role === 'Auteur' ? (
                     <span className="text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
-                      Progression mixte ({pctR}% L. / 60% et {pctA}% É. / 60%)
+                      Progression vers la certification ({pctA}% / 80%)
                     </span>
                   ) : (
                     <span className="text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
-                      Progéniture littéraire en cours de création ({currentUser.role === 'Lecteur' ? `${pctR}% / 80%` : `${pctA}% / 80%`})
+                      Accomplissements actifs · certification réservée aux auteurs
                     </span>
                   )}
                 </span>
@@ -2879,15 +2880,22 @@ const user = freshViewedUser || freshCurrentUser;
 
                       {/* Certification and Badge style */}
                       <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-3xl border border-zinc-200/50 dark:border-zinc-800 flex flex-col justify-center">
-                        {isCertified ? (
+                        {isReaderMode ? (
                           <div className="space-y-1">
                             <span className="text-xs font-serif font-black text-purple-600 dark:text-purple-400 flex items-center">
-                              ✓ {isReaderMode ? 'Lecteur' : 'Auteur'} Certifié
+                              📚 Accomplissements de lecture
                             </span>
                             <p className="text-[10px] text-zinc-500 leading-snug">
-                              {isReaderMode 
-                                ? 'Cet utilisateur a débloqué au moins 80% des accomplissements lecteur.'
-                                : 'Cet auteur a débloqué au moins 80% des accomplissements auteur.'}
+                              La certification d'authenticité est réservée aux auteurs ; vos trophées de lecture restent suivis ici.
+                            </p>
+                          </div>
+                        ) : isCertified ? (
+                          <div className="space-y-1">
+                            <span className="text-xs font-serif font-black text-purple-600 dark:text-purple-400 flex items-center">
+                              ✓ Auteur Certifié
+                            </span>
+                            <p className="text-[10px] text-zinc-500 leading-snug">
+                              Cet auteur a débloqué au moins 80% des accomplissements auteur.
                             </p>
                           </div>
                         ) : (
@@ -2896,7 +2904,7 @@ const user = freshViewedUser || freshCurrentUser;
                               🔒 Non certifié
                             </span>
                             <p className="text-[10px] text-zinc-500 leading-snug">
-                              Requis : {requiredToCertify} accomplissements ({isReaderMode ? '80/125' : '80/100'}). Encore {Math.max(0, requiredToCertify - unlockedList.length)} à débloquer.
+                              Requis : {requiredToCertify} accomplissements (80/100). Encore {Math.max(0, requiredToCertify - unlockedList.length)} à débloquer.
                             </p>
                           </div>
                         )}
@@ -3135,15 +3143,19 @@ const user = freshViewedUser || freshCurrentUser;
                         <span className="text-purple-400 font-bold bg-[#A78BFA]/10 px-2 py-0.5 rounded-full text-[9px] uppercase border border-purple-500/20">
                           ✓ CERTIFIÉ AUTOMATIQUEMENT
                         </span>
+                      ) : currentUser.role === 'Auteur' ? (
+                        <span className="text-gray-400 font-bold bg-black/40 px-2 py-0.5 rounded-full text-[9px] uppercase border border-purple-900/20">
+                          NON CERTIFIÉ (seuil de 80% des accomplissements auteur non atteint)
+                        </span>
                       ) : (
                         <span className="text-gray-400 font-bold bg-black/40 px-2 py-0.5 rounded-full text-[9px] uppercase border border-purple-900/20">
-                          NON CERTIFIÉ (Condition d'accomplissement de {(currentUser.role === 'Utilisateur Mixte' || currentUser.role === 'Administrateur') ? "60% en Lecture ET Écriture" : "80%"} non satisfaite)
+                          NON APPLICABLE (certification réservée aux auteurs)
                         </span>
                       )}
                     </p>
-                    {(currentUser.role === 'Utilisateur Mixte' || currentUser.role === 'Administrateur') && (
+                    {currentUser.role === 'Auteur' && (
                       <p className="text-purple-400 text-[10px] bg-purple-950/20 p-2 rounded-lg border border-purple-900/25 mt-1">
-                        ✓ Les comptes de type « Mixte » bénéficient du système de certification automatique dès le franchissement du seuil de 60% des trophées de Lecture ET d'Écriture.
+                        ✓ Les comptes Auteur bénéficient de la certification automatique dès le franchissement du seuil de 80% des trophées d'Écriture.
                       </p>
                     )}
                   </div>
@@ -3530,13 +3542,13 @@ const user = freshViewedUser || freshCurrentUser;
                             Vous avez déjà utilisé votre unique modification.
                           </p>
                           <p className="text-[9px] text-zinc-400">
-                            Chaque compte Plume est verrouillé sur son type définitif (actuellement : {currentUser.role === 'Utilisateur Mixte' ? 'Mixte' : currentUser.role}) pour préserver l'équilibre de sa bibliographie.
+                            Chaque compte Plume est verrouillé sur son type définitif (actuellement : {currentUser.role}) pour préserver l'équilibre de sa bibliographie.
                           </p>
                         </div>
                       ) : currentUser.role === 'Administrateur' ? (
                         <div className="p-3 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 rounded-xl">
                           <p className="text-[10px] text-zinc-400">
-                            En tant qu'Administrateur, votre statut mixte global est obligatoire.
+                            En tant qu'Administrateur, votre statut global est obligatoire.
                           </p>
                         </div>
                       ) : (
@@ -3548,8 +3560,7 @@ const user = freshViewedUser || freshCurrentUser;
                           <div className="space-y-2">
                             {[
                               { id: 'Lecteur', name: 'Lecteur', desc: 'Découvrir en lecture et rédiger des commentaires.' },
-                              { id: 'Auteur', name: 'Auteur', desc: 'Composer et publier des récits officiels.' },
-                              { id: 'Utilisateur Mixte', name: 'Compte Mixte (Lecteur & Auteur)', desc: 'Le meilleur des deux mondes.' }
+                              { id: 'Auteur', name: 'Auteur', desc: 'Composer et publier des récits officiels.' }
                             ].map((item) => {
                               const isSelected = selectedRoleType === item.id;
                               return (
@@ -4325,7 +4336,7 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         {expandedLegalSection === 'help' && (
                           <div className="space-y-2 pt-1 font-serif text-[9px] text-zinc-550 bg-white dark:bg-zinc-950 p-2.5 rounded-lg border border-purple-550/10">
-                            <p><strong>Q : Comment puis-je ajouter un livre ?</strong><br/>R : Accédez à l'onglet "Écriture" (si votre compte est Auteur ou Mixte) et cliquez sur l'icône de plume.</p>
+                            <p><strong>Q : Comment puis-je ajouter un livre ?</strong><br/>R : Accédez à l'onglet "Écriture" (si votre compte est Auteur) et cliquez sur l'icône de plume.</p>
                             <p><strong>Q : Les lecteurs voient-ils qui je suis ?</strong><br/>R : Oui, mais vous pouvez rendre votre profil privé ou masquer vos abonnés dans l'onglet "Confidentialité".</p>
                           </div>
                         )}
@@ -4374,7 +4385,7 @@ const user = freshViewedUser || freshCurrentUser;
               <p className="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed font-sans">
                 Cette modification ne pourra être faite qu'une <span className="font-extrabold text-purple-600 dark:text-purple-400">seule et unique fois</span> par compte. 
                 Une fois confirmé, votre type de compte sera définitivement réglé sur <span className="font-bold underline text-gray-900 dark:text-white">
-                  {selectedRoleType === 'Utilisateur Mixte' ? 'Mixte' : selectedRoleType}
+                  {selectedRoleType}
                 </span>.
               </p>
               <div className="grid grid-cols-2 gap-3 pt-2 font-sans text-[10px]">

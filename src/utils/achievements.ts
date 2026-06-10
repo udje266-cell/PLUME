@@ -741,18 +741,12 @@ export function countAndEvaluateCertification(
   const readerPercent = Math.round((rUnlocked / 125) * 100);
   const authorPercent = Math.round((aUnlocked / 100) * 100);
 
+  // Seule la spécialité Auteur peut être certifiée, en débloquant au moins 80 %
+  // de ses accomplissements. Les lecteurs conservent leurs accomplissements mais
+  // ne sont jamais certifiés ; le rôle « Utilisateur Mixte » n'existe plus.
   let shouldCertify = false;
-  
-  if (role === 'Utilisateur Mixte' || role === 'Administrateur') {
-    if (readerPercent >= 60 && authorPercent >= 60) {
-      shouldCertify = true;
-    }
-  } else {
-    if (role === 'Lecteur' && readerPercent >= 80) {
-      shouldCertify = true;
-    } else if (role === 'Auteur' && authorPercent >= 80) {
-      shouldCertify = true;
-    }
+  if (role === 'Auteur' && authorPercent >= 80) {
+    shouldCertify = true;
   }
 
   return {

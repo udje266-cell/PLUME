@@ -82,7 +82,7 @@ export const USERS: User[] = [
     id: 'user_mixed',
     username: 'Sophie_L',
     email: 'sophie.lefevre@plume.fr',
-    role: 'Utilisateur Mixte',
+    role: 'Auteur',
     avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150',
     bio: 'J’écris de tendres poésies le soir et je dévore d’intenses thrillers le matin. Bienvenue dans mon cocon créatif ✨',
     followers: ['user_reader'],

@@ -25,7 +25,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
   const [username, setUsername] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'Homme' | 'Femme'>('Homme');
-  const [role, setRole] = useState<'Lecteur' | 'Auteur' | 'Utilisateur Mixte'>('Lecteur');
+  const [role, setRole] = useState<'Lecteur' | 'Auteur'>('Lecteur');
   const [favoriteGenres, setFavoriteGenres] = useState<string[]>([]);
   
   // OTP related states
@@ -608,8 +608,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
 
               <div className="space-y-1">
                 <label className="text-[9px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Type d'affinité</label>
-                <div className="grid grid-cols-3 gap-1.5 text-center">
-                  {(['Lecteur', 'Auteur', 'Utilisateur Mixte'] as const).map((r) => (
+                <div className="grid grid-cols-2 gap-1.5 text-center">
+                  {(['Lecteur', 'Auteur'] as const).map((r) => (
                     <button
                       type="button"
                       key={r}
@@ -620,7 +620,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                           : 'bg-gray-50 dark:bg-zinc-900 text-gray-500 border border-gray-200 dark:border-zinc-800'
                       }`}
                     >
-                      {r === 'Lecteur' ? 'Lecteur' : r === 'Auteur' ? 'Auteur' : 'Mixte'}
+                      {r}
                     </button>
                   ))}
                 </div>

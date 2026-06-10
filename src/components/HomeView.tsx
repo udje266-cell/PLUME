@@ -113,8 +113,8 @@ export default function HomeView({
   const newsStories = publishedStories.slice()
     .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 
-  // 5. "Nouveaux auteurs" (rôles Auteur or Utilisateur Mixte récemment actifs)
-  const authorsList = allUsers.filter(u => (u.role === 'Auteur' || u.role === 'Utilisateur Mixte') && u.id !== currentUser.id);
+  // 5. "Nouveaux auteurs" (comptes de rôle Auteur récemment actifs)
+  const authorsList = allUsers.filter(u => u.role === 'Auteur' && u.id !== currentUser.id);
 
   // Header quick share links
   const handleCopyLink = (story: Story) => {

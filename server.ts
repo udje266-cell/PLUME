@@ -44,7 +44,8 @@ function roleToPrisma(role: string | undefined | null) {
   if (!role) return 'Lecteur';
   const r = role.toUpperCase();
   if (r === 'AUTEUR' || role === 'Auteur') return 'Auteur';
-  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Utilisateur Mixte';
+  // Le rôle « Utilisateur Mixte » a été supprimé : tout résidu est rattaché à Auteur.
+  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Auteur';
   if (r === 'ADMINISTRATEUR' || role === 'Administrateur') return 'Administrateur';
   return 'Lecteur';
 }
@@ -53,7 +54,8 @@ function roleFromPrisma(role: string | undefined | null) {
   if (!role) return 'Lecteur';
   const r = role.toUpperCase();
   if (r === 'AUTEUR' || role === 'Auteur') return 'Auteur';
-  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Utilisateur Mixte';
+  // Compatibilité ascendante : un ancien compte « Mixte » est présenté comme Auteur.
+  if (r === 'UTILISATEUR_MIXTE' || role === 'Utilisateur Mixte') return 'Auteur';
   if (r === 'ADMINISTRATEUR' || role === 'Administrateur') return 'Administrateur';
   return 'Lecteur';
 }

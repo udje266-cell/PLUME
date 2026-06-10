@@ -952,14 +952,15 @@ export default function App() {
     
     let nextUser = { ...currentUser, ...updatedFields } as User;
     
-    // Evaluate stats for isVerified when changing role/type of account
-    let certifiedUser: User | null = null;
+    // Recalcule la certification lors d'un changement de rôle : seul un Auteur
+    // peut être certifié, donc passer à un autre rôle (ex. Lecteur) retire le badge.
     if (updatedFields.role) {
       const stats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
       const evalResult = countAndEvaluateCertification(updatedFields.role, stats);
       if (evalResult.shouldCertify && !nextUser.isVerified) {
-        certifiedUser = { ...nextUser, isVerified: true };
-        nextUser = certifiedUser;
+        nextUser = { ...nextUser, isVerified: true };
+      } else if (!evalResult.shouldCertify && nextUser.isVerified) {
+        nextUser = { ...nextUser, isVerified: false };
       }
     }
 

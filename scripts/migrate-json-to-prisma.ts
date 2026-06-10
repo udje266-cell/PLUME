@@ -11,7 +11,7 @@ const DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 // majuscules.
 function roleToPrisma(role: string | undefined) {
   if (role === 'Auteur') return 'Auteur';
-  if (role === 'Utilisateur Mixte') return 'Utilisateur Mixte';
+  if (role === 'Utilisateur Mixte') return 'Auteur'; // rôle supprimé, rattaché à Auteur
   if (role === 'Administrateur') return 'Administrateur';
   return 'Lecteur';
 }

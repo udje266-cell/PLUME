@@ -341,18 +341,22 @@ export default function AdminDashboard({
                   {/* Operational controls */}
                   <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
                     
-                    <button
-                      id={`toggle-verification-${user.id}`}
-                      onClick={() => onToggleUserVerification(user.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
-                        user.isVerified 
-                          ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-750' 
-                          : 'bg-purple-500/10 dark:bg-purple-950/40 border-purple-500/20 text-purple-600 hover:bg-purple-500/20'
-                      }`}
-                    >
-                      <Award className="w-3.5 h-3.5" />
-                      <span>{user.isVerified ? 'Retirer certification' : `Certifier (${user.role === 'Lecteur' ? 'Lecteur' : 'Auteur'})`}</span>
-                    </button>
+                    {(user.role === 'Auteur' || user.isVerified) ? (
+                      <button
+                        id={`toggle-verification-${user.id}`}
+                        onClick={() => onToggleUserVerification(user.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
+                          user.isVerified
+                            ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-750'
+                            : 'bg-purple-500/10 dark:bg-purple-950/40 border-purple-500/20 text-purple-600 hover:bg-purple-500/20'
+                        }`}
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>{user.isVerified ? 'Retirer certification' : 'Certifier (Auteur)'}</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 italic px-2">Certification réservée aux auteurs</span>
+                    )}
 
                     {/* Ban user button if it isn't myself or another admin */}
                     {user.id !== currentUser.id && user.role !== 'Administrateur' && (

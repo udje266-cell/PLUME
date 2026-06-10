@@ -193,66 +193,58 @@ describe('achievements and certifications utility', () => {
       expect(result.readerPercent).toBeLessThan(80);
     });
 
-    it('should certify a reader with >= 80% achievements', () => {
-      // We need to unlock 80% of 125 reader achievements = 100 achievements.
-      // Let's create stats high enough to unlock 100 reader achievements.
-      // - reader_1 to reader_25: chaptersRead >= 25
-      // - reader_26 to reader_45: commentsPosted >= 20
-      // - reader_46 to reader_65: likesGiven >= 40
-      // - reader_66 to reader_75: favoritesAdded >= 10
-      // - reader_76 to reader_90: chaptersRead >= 175
-      // - reader_91 to reader_100: commentsPosted >= 42
-      // - level-based 101-125: activeDays, completedReadCycles, etc.
-      // Total 100 can be reached easily by maximizing chaptersRead, commentsPosted, likesGiven, favoritesAdded.
+    it('never certifies a reader, even with maxed-out reader achievements', () => {
       const stats: UserStats = {
-        chaptersRead: 200, // Unlocks 1-25 (25), 76-90 (15), lvl-based 101-105 (5) = 45 achievements
-        commentsPosted: 50, // Unlocks 26-45 (20), 91-100 (10) = 30 achievements
-        likesGiven: 50, // Unlocks 46-65 (20) = 20 achievements
-        favoritesAdded: 10, // Unlocks 66-75 (10) = 10 achievements
-        activeDays: 30, // Unlocks lvl-based 106-110 (5) = 5 achievements
-        completedReadCycles: 8, // Unlocks lvl-based 111-115 (5) = 5 achievements
+        chaptersRead: 100000,
+        commentsPosted: 100000,
+        likesGiven: 100000,
+        favoritesAdded: 100000,
+        activeDays: 100000,
+        completedReadCycles: 100000,
         wordsWritten: 0,
         storiesCreated: 0,
         chaptersPublished: 0,
         viewsReceived: 0,
         likesReceived: 0,
-        decorChanges: 0,
-        genresReadCount: 5, // Unlocks lvl-based 116-120 (5) = 5 achievements
-        authorsFollowedCount: 10 // Unlocks lvl-based 121-125 (5) = 5 achievements
+        decorChanges: 100000,
+        genresReadCount: 100000,
+        authorsFollowedCount: 100000,
       };
 
       const result = countAndEvaluateCertification('Lecteur', stats, 'user_cert_2');
-      expect(result.unlockedReaderCount).toBeGreaterThanOrEqual(100);
       expect(result.readerPercent).toBeGreaterThanOrEqual(80);
+      // Les lecteurs conservent leurs accomplissements mais ne sont jamais certifiés.
+      expect(result.shouldCertify).toBe(false);
+    });
+
+    it('certifies an author with >= 80% author achievements', () => {
+      const stats: UserStats = {
+        chaptersRead: 100000,
+        commentsPosted: 100000,
+        likesGiven: 100000,
+        favoritesAdded: 100000,
+        activeDays: 100000,
+        completedReadCycles: 100000,
+        wordsWritten: 1000000,
+        storiesCreated: 100000,
+        chaptersPublished: 100000,
+        viewsReceived: 1000000,
+        likesReceived: 1000000,
+        decorChanges: 100000,
+        genresReadCount: 100000,
+        authorsFollowedCount: 100000,
+      };
+
+      const result = countAndEvaluateCertification('Auteur', stats, 'user_cert_3');
+      expect(result.authorPercent).toBeGreaterThanOrEqual(80);
       expect(result.shouldCertify).toBe(true);
     });
 
-    it('should certify a mixed user with >= 60% reader AND >= 60% author achievements', () => {
-      // 60% reader = 75 achievements
-      // 60% author = 60 achievements
-      const stats: UserStats = {
-        // Reader unlocks (need 75):
-        chaptersRead: 30, // Unlocks 1-25 (25)
-        commentsPosted: 25, // Unlocks 26-45 (20)
-        likesGiven: 40, // Unlocks 46-65 (20)
-        favoritesAdded: 10, // Unlocks 66-75 (10)
-        // Total so far = 75 reader achievements
-        activeDays: 45, // Unlocks author_18,19,21,22,24,25,41,42,52,53,58,59,61 (13 achievements)
-        completedReadCycles: 1,
-
-        // Author unlocks (need 60):
-        wordsWritten: 60000, // Unlocks author_8,9,10,23,29,35,43,44,45,50,51,55,56,60,68 (15 achievements)
-        storiesCreated: 6, // Unlocks author_2,3,4,5,26,27,28,38,39,46 (10 achievements)
-        chaptersPublished: 12, // Unlocks author_1,6,7,36,37,40,47 (7 achievements)
-        viewsReceived: 250, // Unlocks author_11,13,14,15,16,17,20,54,64 (9 achievements)
-        likesReceived: 25, // Unlocks author_12,30,31,32,33,34,62 (7 achievements)
-        decorChanges: 0,
-      };
-
-      const result = countAndEvaluateCertification('Utilisateur Mixte', stats, 'user_cert_3');
-      expect(result.readerPercent).toBeGreaterThanOrEqual(60);
-      expect(result.authorPercent).toBeGreaterThanOrEqual(60);
-      expect(result.shouldCertify).toBe(true);
+    it('does not certify an author below 80%', () => {
+      const stats: UserStats = { ...INITIAL_STATS, storiesCreated: 1 };
+      const result = countAndEvaluateCertification('Auteur', stats, 'user_cert_4');
+      expect(result.authorPercent).toBeLessThan(80);
+      expect(result.shouldCertify).toBe(false);
     });
   });
 });
