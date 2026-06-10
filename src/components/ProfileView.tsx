@@ -38,20 +38,23 @@ import {
   MoreVertical,
   ChevronRight,
   FileText,
-  Lock
+  Lock,
+  KeyRound,
+  X
 } from 'lucide-react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { User, UserRole, Story, Chapter } from '../types';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { authHeaders } from '../utils/auth';
-import { 
-  getUserStats, 
-  generateReaderAchievements, 
-  generateAuthorAchievements, 
-  countAndEvaluateCertification, 
-  UserStats, 
-  Achievement 
+import {
+  getUserStats,
+  generateReaderAchievements,
+  generateAuthorAchievements,
+  countAndEvaluateCertification,
+  getAchievementEnigma,
+  UserStats,
+  Achievement
 } from '../utils/achievements';
 
 interface ProfileViewProps {
@@ -471,6 +474,9 @@ const user = freshViewedUser || freshCurrentUser;
   const [showAllAchievements, setShowAllAchievements] = useState(false);
   const [achievementsTab, setAchievementsTab] = useState<'reader' | 'author' | 'simulator'>('reader');
   const [achievementsSearch, setAchievementsSearch] = useState('');
+  // Badge sélectionné pour afficher son énigme (clic sur n'importe quel trophée,
+  // y compris les badges cachés qui conservent leur apparence « ??? »).
+  const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
   const [simulateAdminView, setSimulateAdminView] = useState(false);
 
   // Settings Panel States
@@ -3008,11 +3014,15 @@ const user = freshViewedUser || freshCurrentUser;
                         const isSimple = ach.difficulty === 'facile';
                         
                         // If easy & Locked: it is a hidden/mysterious achievement!
+                        // Reste caché (« ??? ») mais devient cliquable pour révéler son énigme.
                         if (isSimple && !isUnlocked) {
                           return (
-                            <div 
+                            <button
+                              type="button"
                               key={ach.id}
-                              className="p-3 rounded-2xl bg-zinc-50/70 dark:bg-[#0E0E14] border border-dashed border-zinc-200 dark:border-purple-900/15 opacity-60 flex items-center space-x-3 text-left font-sans transition-all duration-300"
+                              onClick={() => setSelectedAchievement(ach)}
+                              title="Cliquer pour révéler l'énigme"
+                              className="p-3 rounded-2xl bg-zinc-50/70 dark:bg-[#0E0E14] border border-dashed border-zinc-200 dark:border-purple-900/15 opacity-70 hover:opacity-100 hover:border-purple-400/40 flex items-center space-x-3 text-left font-sans transition-all duration-300 cursor-pointer w-full"
                             >
                               <div className="p-2.5 bg-zinc-150 dark:bg-black text-zinc-450 dark:text-zinc-500 rounded-2xl shrink-0 border border-zinc-200/20">
                                 <Lock className="w-4 h-4 text-zinc-400" />
@@ -3022,11 +3032,12 @@ const user = freshViewedUser || freshCurrentUser;
                                   <span className="text-xs font-serif font-black text-zinc-400 tracking-wide">???</span>
                                   <span className="text-[7.5px] bg-zinc-100 dark:bg-zinc-850 text-zinc-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">Commun</span>
                                 </div>
-                                <p className="text-[9.5px] text-zinc-400 leading-normal mt-0.5">
-                                  Accomplissement inconnu
+                                <p className="text-[9.5px] text-purple-500 dark:text-purple-400 leading-normal mt-0.5 flex items-center gap-1">
+                                  <KeyRound className="w-2.5 h-2.5 shrink-0" />
+                                  Énigme à découvrir
                                 </p>
                               </div>
-                            </div>
+                            </button>
                           );
                         }
 
@@ -3043,9 +3054,12 @@ const user = freshViewedUser || freshCurrentUser;
                           }
 
                           return (
-                            <div 
+                            <button
+                              type="button"
                               key={ach.id}
-                              className={`p-3 rounded-2xl border flex items-center space-x-3 text-left font-sans transition-all duration-300 ${colorStyle}`}
+                              onClick={() => setSelectedAchievement(ach)}
+                              title="Cliquer pour révéler l'énigme"
+                              className={`p-3 rounded-2xl border flex items-center space-x-3 text-left font-sans transition-all duration-300 hover:scale-[1.01] cursor-pointer w-full ${colorStyle}`}
                             >
                               <div className="p-2.5 bg-purple-500/10 rounded-2xl shrink-0">
                                 <Lock className="w-4 h-4" />
@@ -3055,11 +3069,12 @@ const user = freshViewedUser || freshCurrentUser;
                                   <span className="text-xs font-serif font-black tracking-wide line-clamp-1">{ach.title}</span>
                                   <span className="text-[7.5px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">{rarityBadge}</span>
                                 </div>
-                                <p className="text-[9.5px] leading-normal mt-0.5 opacity-80 italic pr-2">
-                                  Objectif encore à découvrir.
+                                <p className="text-[9.5px] leading-normal mt-0.5 opacity-90 italic pr-2 flex items-center gap-1">
+                                  <KeyRound className="w-2.5 h-2.5 shrink-0" />
+                                  Énigme à découvrir
                                 </p>
                               </div>
-                            </div>
+                            </button>
                           );
                         }
 
@@ -3086,9 +3101,12 @@ const user = freshViewedUser || freshCurrentUser;
                         }
 
                         return (
-                          <div 
-                            key={ach.id} 
-                            className={`p-3 rounded-2xl border flex items-center space-x-3 text-left font-sans transition hover:scale-[1.01] duration-150 ${cardStyle} ${glowClass}`}
+                          <button
+                            type="button"
+                            key={ach.id}
+                            onClick={() => setSelectedAchievement(ach)}
+                            title="Cliquer pour revoir le détail"
+                            className={`p-3 rounded-2xl border flex items-center space-x-3 text-left font-sans transition hover:scale-[1.01] duration-150 cursor-pointer w-full ${cardStyle} ${glowClass}`}
                           >
                             <div className={`p-2.5 rounded-2xl shrink-0 shadow-xs ${iconClass}`}>
                               {achievementsTab === 'author' ? <PenTool className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
@@ -3107,7 +3125,7 @@ const user = freshViewedUser || freshCurrentUser;
                                 </p>
                               )}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
 
@@ -3184,6 +3202,87 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         </div>
       )}
+
+      {/* 9bis. ÉNIGME D'UN BADGE (clic sur n'importe quel trophée) */}
+      {selectedAchievement && (() => {
+        const ach = selectedAchievement;
+        const enigma = getAchievementEnigma(ach);
+        const isUnlocked = ach.isUnlocked;
+        const isHidden = ach.difficulty === 'facile' && !isUnlocked; // badge caché
+        const rarityLabel = ach.rarity === 'mythic' ? 'Mythique'
+          : ach.rarity === 'epic' ? 'Épique'
+          : ach.rarity === 'rare' ? 'Rare' : 'Commun';
+        // Pour un badge caché, on n'affiche jamais son vrai titre.
+        const displayTitle = isUnlocked || ach.difficulty === 'difficile' ? ach.title : '??? — Badge mystère';
+
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in font-sans"
+            onClick={() => setSelectedAchievement(null)}
+          >
+            <div
+              className="bg-white dark:bg-[#15151F] border border-gray-150 dark:border-zinc-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedAchievement(null)}
+                className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-zinc-400 hover:text-purple-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                title="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className={`p-2.5 rounded-2xl shrink-0 ${isUnlocked ? 'bg-purple-600 text-white' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'}`}>
+                  {isUnlocked ? <Trophy className="w-5 h-5" /> : <KeyRound className="w-5 h-5" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-purple-500">
+                    {isUnlocked ? 'Trophée débloqué' : 'Énigme'}
+                  </p>
+                  <h3 className="text-sm font-serif font-black text-zinc-900 dark:text-white leading-tight line-clamp-2">
+                    {displayTitle}
+                  </h3>
+                </div>
+              </div>
+
+              <span className="inline-block text-[8px] bg-purple-500/10 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded-full font-black uppercase tracking-wider mb-3">
+                {rarityLabel}{isHidden ? ' • Caché' : ''}
+              </span>
+
+              {isUnlocked ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-700 dark:text-zinc-200 leading-relaxed">{ach.realDesc}</p>
+                  {ach.unlockedDate && (
+                    <p className="text-[10px] text-zinc-400 font-mono">Obtenu le {ach.unlockedDate}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* L'énigme : citation poétique */}
+                  <blockquote className="text-[13px] font-serif italic text-zinc-800 dark:text-zinc-100 leading-relaxed border-l-2 border-purple-500/50 pl-3">
+                    {enigma.riddle}
+                  </blockquote>
+                  {/* L'indice d'action qui aide à progresser */}
+                  <div className="flex items-start gap-2 bg-purple-500/5 border border-purple-500/15 rounded-xl p-3">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider font-black text-purple-500 mb-0.5">Indice</p>
+                      <p className="text-[11px] text-zinc-700 dark:text-zinc-200 leading-snug">{enigma.hint}</p>
+                    </div>
+                  </div>
+                  {isHidden && (
+                    <p className="text-[9.5px] text-zinc-400 italic leading-snug">
+                      Ce badge reste secret : sa nature exacte ne se révélera qu'une fois débloqué.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 10. EDIT STORY METADATA OVERLAY MODAL */}
       {editingStoryMeta && (

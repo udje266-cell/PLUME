@@ -757,3 +757,112 @@ export function countAndEvaluateCertification(
     shouldCertify
   };
 }
+
+export interface AchievementEnigma {
+  /** L'énigme poétique (toujours montrée, y compris pour les badges cachés). */
+  riddle: string;
+  /** L'indice d'action concret qui aide à progresser, sans révéler le seuil
+   *  exact d'un badge caché. */
+  hint: string;
+}
+
+/**
+ * Construit une « énigme » d'aide pour n'importe quel badge, dérivée du domaine
+ * d'accomplissement (lecture, écriture, social…). Conçue pour AIDER le joueur à
+ * comprendre comment progresser, tout en préservant le mystère : on ne révèle
+ * jamais ici la description réelle ni le seuil chiffré d'un badge verrouillé.
+ */
+export function getAchievementEnigma(ach: Achievement): AchievementEnigma {
+  // Détection sur la description réelle uniquement (le titre est trop bruité :
+  // « Bibliothèque », « Archiviste »… induisent en erreur). L'ordre des règles
+  // est important : on teste les domaines les plus spécifiques d'abord.
+  const text = (ach.realDesc || '').toLowerCase();
+  const has = (...words: string[]) => words.some((w) => text.includes(w));
+  const isAuthor = ach.category === 'author';
+
+  // 1) Favoris (avant « vues » : le libellé contient « lectures favorites »).
+  if (has('favori', 'archivist', 'conserv')) {
+    return {
+      riddle: '« Ce que l’on chérit vraiment, on le garde toujours près de soi. »',
+      hint: 'Ajoute des œuvres à tes favoris.',
+    };
+  }
+  // 2) Assiduité (avant « vues » : « ...lecture durant X jours »).
+  if (has('jour', 'journée', 'semaine', 'assidu', 'présent', 'habitude', 'régul', 'rituel', 'consécut')) {
+    return {
+      riddle: '« La constance, jour après jour, forge les légendes. »',
+      hint: 'Reviens régulièrement sur l’archipel, jour après jour.',
+    };
+  }
+  // 3) Genres / exploration (lecteur : « genres » est aussi un mot de saveur des
+  //    récits d'auteur, on réserve donc cette piste à la lecture).
+  if (!isAuthor && has('genre', 'horizon', 'thème')) {
+    return {
+      riddle: '« L’explorateur de mille horizons découvre les trésors cachés. »',
+      hint: 'Lis des œuvres de genres littéraires variés.',
+    };
+  }
+  // 4) Mots écrits.
+  if (has('mot')) {
+    return {
+      riddle: '« Mille mots après mille mots, la légende prend forme. »',
+      hint: 'Écris et accumule davantage de mots dans tes œuvres.',
+    };
+  }
+  // 5) Commentaires.
+  if (has('commentaire', 'avis', 'critique', 'encourag', 'débat')) {
+    return {
+      riddle: '« La voix qui éclaire les récits d’autrui ouvre cette porte. »',
+      hint: 'Publie des commentaires constructifs sous les chapitres.',
+    };
+  }
+  // 6) J'aime / appréciation.
+  if (has('aime', 'cœur', 'coeur', 'appréci', 'étoile')) {
+    return {
+      riddle: '« L’admiration partagée illumine ce qui était caché. »',
+      hint: isAuthor ? 'Obtiens des j’aime sur tes chapitres.' : 'Offre des cœurs aux œuvres que tu apprécies.',
+    };
+  }
+  // 7) Abonnés / suivis.
+  if (has('abonné', 'suiv', 'communauté', 'admirateur')) {
+    return {
+      riddle: '« Une communauté se rassemble autour des grandes plumes. »',
+      hint: isAuthor ? 'Gagne des abonnés à ta page d’auteur.' : 'Abonne-toi à davantage d’auteurs de l’archipel.',
+    };
+  }
+  // 8) Publication de chapitres (auteur) — avant « création » car « Publier un
+  //    chapitre de récit » contient « récit ».
+  if (isAuthor && has('publi', 'chapitre')) {
+    return {
+      riddle: '« Ce que l’on couche sur le papier doit un jour rejoindre les lecteurs. »',
+      hint: 'Publie davantage de chapitres de tes récits.',
+    };
+  }
+  // 9) Création d'histoires (auteur).
+  if (isAuthor && has('créer', 'histoire', 'récit', 'roman', 'univers', 'monde', 'série', 'brouillon', 'couverture', 'résumé', 'projet')) {
+    return {
+      riddle: '« Celui qui donne naissance à des mondes ne s’arrête jamais à un seul. »',
+      hint: 'Crée et étoffe de nouvelles histoires (couverture, résumé, chapitres).',
+    };
+  }
+  // 10) Vues / lectures reçues (surtout côté auteur).
+  if (has('vue', 'visite', 'repéré', 'catalogue', 'observé', 'lecteur', 'lecture')) {
+    return {
+      riddle: '« Quand les regards affluent vers ta plume, le sceau s’éveille. »',
+      hint: isAuthor ? 'Fais découvrir tes récits pour accumuler des vues.' : 'Explore et fais vivre les récits de l’archipel.',
+    };
+  }
+  // 11) Lecture de chapitres (lecteur).
+  if (has('chapitre', 'page', 'lire', 'dévoré', 'tome', 'liseur', 'terminé', 'achevé', 'volume')) {
+    return {
+      riddle: '« Celui qui tourne sans relâche les pages verra ce sceau s’illuminer. »',
+      hint: 'Continue de lire — et de terminer — des chapitres et des récits.',
+    };
+  }
+  return {
+    riddle: '« Un secret de l’archipel attend l’explorateur patient. »',
+    hint: isAuthor
+      ? 'Continue de créer et de partager tes œuvres sur PLUME.'
+      : 'Continue d’explorer, de lire et d’interagir sur PLUME.',
+  };
+}
