@@ -288,6 +288,16 @@ function filterDraftChapters(story: any, requesterId: string | undefined, isAdmi
   return { ...story, chapters: Array.isArray(story.chapters) ? story.chapters.filter((c: any) => c.isPublished) : story.chapters };
 }
 
+// Pagination opt-in : sans paramètre `limit`, le comportement reste inchangé
+// (liste complète). Avec `?limit=N&page=P`, on renvoie la tranche correspondante.
+function parsePagination(req: any): { take?: number; skip?: number } {
+  if (req.query.limit === undefined) return {};
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 0));
+  if (!limit) return {};
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+  return { take: limit, skip: (page - 1) * limit };
+}
+
 function countWords(text: string | null | undefined): number {
   if (!text) return 0;
   const t = String(text).trim();
@@ -967,7 +977,7 @@ export async function createServerInstance() {
       // Les emails ne sont exposés qu'aux administrateurs.
       const requester = await getUserFromAuthorizationHeader(req);
       const includePrivate = requester?.role === 'Administrateur';
-      const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' } });
+      const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
       res.json(users.map((u) => serializeUser(u, includePrivate)));
     } catch (error) {
       console.error('[PLUME] Erreur lors du chargement des utilisateurs, retour d\'un tableau vide par sécurité:', error);
@@ -1194,7 +1204,7 @@ export async function createServerInstance() {
         : requester
           ? { OR: [{ status: 'PUBLIE' }, { authorId: requester.id }] }
           : { status: 'PUBLIE' };
-      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' } });
+      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
       res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin))));
     } catch (error) {
       console.error(error);

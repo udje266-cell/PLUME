@@ -188,6 +188,23 @@ describe('API Integration Tests (Express routes)', () => {
     });
   });
 
+  describe('Opt-in pagination (LOW)', () => {
+    it('applies take/skip only when a limit is provided', async () => {
+      vi.mocked(prisma.story.findMany).mockResolvedValue([] as any);
+
+      await request(app).get('/api/stories').expect(200);
+      const noPage = vi.mocked(prisma.story.findMany).mock.calls[0][0] as any;
+      expect(noPage.take).toBeUndefined();
+      expect(noPage.skip).toBeUndefined();
+
+      vi.mocked(prisma.story.findMany).mockClear();
+      await request(app).get('/api/stories?limit=2&page=3').expect(200);
+      const paged = vi.mocked(prisma.story.findMany).mock.calls[0][0] as any;
+      expect(paged.take).toBe(2);
+      expect(paged.skip).toBe(4); // (page 3 - 1) * limit 2
+    });
+  });
+
   describe('OTP enumeration & brute-force protection (M5/M6)', () => {
     beforeEach(() => {
       // Les helpers OTP appellent .catch() sur ces promesses : les mocks
