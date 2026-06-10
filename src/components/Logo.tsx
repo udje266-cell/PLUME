@@ -5,27 +5,39 @@
 
 import React from 'react';
 import logoPlume from '../../assets/logo-plume.png';
+import logoPlumeDark from '../../assets/logo-plume-dark.png';
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   showText?: boolean;
 }
 
 export default function Logo({ className = '', size = 'xl' }: LogoProps) {
   const sizeClass = {
-  sm: 'h-[39px]',
-  md: 'h-[45px]',
-  lg: 'h-[53px]',
-  xl: 'h-[61px]'
-}[size];
+    sm: 'h-[48px]',
+    md: 'h-[56px]',
+    lg: 'h-[72px]',
+    xl: 'h-[88px]',
+    '2xl': 'h-[116px]',
+  }[size];
 
   return (
     <div className={`flex items-center select-none ${className}`}>
+      {/* Le wordmark « PLUME » du logo est en navy foncé : invisible en mode
+          sombre. On bascule donc sur une variante au texte clair via la classe
+          `dark` (la plume colorée reste identique dans les deux variantes). */}
       <img
         src={logoPlume}
         alt="PLUME"
-        className={`${sizeClass} w-auto object-contain`}
+        className={`${sizeClass} w-auto object-contain block dark:hidden`}
+        draggable={false}
+      />
+      <img
+        src={logoPlumeDark}
+        alt="PLUME"
+        aria-hidden="true"
+        className={`${sizeClass} w-auto object-contain hidden dark:block`}
         draggable={false}
       />
     </div>

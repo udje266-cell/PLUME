@@ -134,7 +134,7 @@ export default function MainNavigation({
 
           {/* Center Brand */}
           <div className="cursor-pointer" onClick={() => onChangeTab('home')}>
-            <Logo size="sm" showText={true} />
+            <Logo size="md" showText={true} />
           </div>
 
           {/* Right: Theme Toggle or Mini Avatar */}
