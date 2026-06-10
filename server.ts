@@ -1219,28 +1219,65 @@ export async function createServerInstance() {
   });
 
   // Search
+  // Échappe les métacaractères LIKE (\ % _) saisis par l'utilisateur pour qu'ils
+  // soient traités littéralement (le caractère d'échappement est le backslash).
+  const escapeLike = (value: string) => value.replace(/[\\%_]/g, (c) => '\\' + c);
+
+  // La recherche utilise unaccent(lower(...)) pour être insensible à la casse ET
+  // aux accents (« eveil » trouve « Éveil »). On récupère d'abord les IDs en SQL
+  // brut, puis on recharge via Prisma pour conserver les includes/sérialisation.
   app.get('/api/search/users', async (req, res) => {
-    const q = String(req.query.q || '').trim();
-    if (!q) return res.json([]);
-    const users = await prisma.user.findMany({
-      where: { OR: [{ username: { contains: q, mode: 'insensitive' } }, { bio: { contains: q, mode: 'insensitive' } }] },
-      include: { followers: true, following: true, blockedUsers: true },
-      take: 20,
-    });
-    res.json(users.map((u) => serializeUser(u)));
+    try {
+      const q = String(req.query.q || '').trim();
+      if (!q) return res.json([]);
+      const pattern = `%${escapeLike(q)}%`;
+      const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "User"
+        WHERE unaccent(lower("username")) LIKE unaccent(lower(${pattern})) ESCAPE '\\'
+           OR unaccent(lower("bio")) LIKE unaccent(lower(${pattern})) ESCAPE '\\'
+        LIMIT 20`;
+      const ids = rows.map((r) => r.id);
+      if (ids.length === 0) return res.json([]);
+      const users = await prisma.user.findMany({
+        where: { id: { in: ids } },
+        include: { followers: true, following: true, blockedUsers: true },
+      });
+      res.json(users.map((u) => serializeUser(u)));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la recherche.' });
+    }
   });
 
   app.get('/api/search/stories', async (req, res) => {
-    const q = String(req.query.q || '').trim();
-    if (!q) return res.json([]);
-    // La recherche ne révèle jamais les brouillons (seuls les récits publiés).
-    const stories = await prisma.story.findMany({
-      where: { status: 'PUBLIE', OR: [{ title: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }, { genre: { contains: q, mode: 'insensitive' } }, { tags: { contains: q, mode: 'insensitive' } }] },
-      include: { author: true, chapters: true, likes: true, favorites: true },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    });
-    res.json(stories.map((s) => serializeStory(filterDraftChapters(s, undefined, false))));
+    try {
+      const q = String(req.query.q || '').trim();
+      if (!q) return res.json([]);
+      const pattern = `%${escapeLike(q)}%`;
+      // La recherche ne révèle jamais les brouillons (seuls les récits publiés).
+      const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Story"
+        WHERE "status" = 'PUBLIE' AND (
+              unaccent(lower("title")) LIKE unaccent(lower(${pattern})) ESCAPE '\\'
+           OR unaccent(lower("description")) LIKE unaccent(lower(${pattern})) ESCAPE '\\'
+           OR unaccent(lower("genre")) LIKE unaccent(lower(${pattern})) ESCAPE '\\'
+           OR unaccent(lower("tags")) LIKE unaccent(lower(${pattern})) ESCAPE '\\')
+        ORDER BY "createdAt" DESC
+        LIMIT 30`;
+      const ids = rows.map((r) => r.id);
+      if (ids.length === 0) return res.json([]);
+      const stories = await prisma.story.findMany({
+        where: { id: { in: ids } },
+        include: { author: true, chapters: true, likes: true, favorites: true },
+      });
+      // On restaure l'ordre du tri SQL (createdAt DESC), perdu par le `in`.
+      const order = new Map(ids.map((id, i) => [id, i]));
+      stories.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+      res.json(stories.map((s) => serializeStory(filterDraftChapters(s, undefined, false))));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la recherche.' });
+    }
   });
 
   // Stories
