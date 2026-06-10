@@ -419,6 +419,34 @@ export default function App() {
   const getLikedStoriesStorageKey = (userId: string) => `plume_liked_stories_${userId}`;
   const getFavoritesStorageKey = (userId: string) => `plume_favorites_${userId}`;
 
+  // Listes de lecture : autrefois stockées sous des clés localStorage GLOBALES,
+  // ce qui les faisait fuiter d'un compte à l'autre sur un même navigateur. On
+  // les scope désormais par utilisateur, comme les favoris/likes.
+  const getCurrentlyReadingStorageKey = (userId: string) => `plume_currently_reading_${userId}`;
+  const getCompletedStorageKey = (userId: string) => `plume_completed_${userId}`;
+  const getReadLaterStorageKey = (userId: string) => `plume_read_later_${userId}`;
+  const getReadChaptersStorageKey = (userId: string) => `plume_read_chapters_${userId}`;
+  const getLastReadProgressStorageKey = (userId: string) => `plume_last_read_progress_${userId}`;
+  const getActiveInterlocutorStorageKey = (userId: string) => `plume_active_interlocutor_id_${userId}`;
+
+  // Lit une valeur scopée par utilisateur. Si elle est absente mais qu'une
+  // ancienne clé globale existe, on migre sa valeur vers la clé par utilisateur
+  // puis on supprime la clé globale (évite toute fuite vers un autre compte).
+  const readUserScopedValue = <T,>(perUserKey: string, legacyGlobalKey: string, fallback: T): T => {
+    try {
+      const scoped = localStorage.getItem(perUserKey);
+      if (scoped !== null) return JSON.parse(scoped);
+      const legacy = localStorage.getItem(legacyGlobalKey);
+      if (legacy !== null) {
+        localStorage.removeItem(legacyGlobalKey);
+        return JSON.parse(legacy);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return fallback;
+  };
+
   const STORY_LIKERS_STORAGE_KEY = 'plume_story_likers_by_story';
   const COMMENT_LIKERS_STORAGE_KEY = 'plume_comment_likers_by_comment';
   const STORY_FAVORITERS_STORAGE_KEY = 'plume_story_favoriters_by_story';
@@ -737,36 +765,56 @@ export default function App() {
   }, [currentUser?.id]);
 
   const [currentlyReading, setCurrentlyReading] = useState<string[]>(() => {
-    const saved = localStorage.getItem('plume_currently_reading');
-    return saved ? JSON.parse(saved) : ['story_cosmos_1']; // Seeded first book
+    if (!currentUser?.id) return ['story_cosmos_1']; // Seeded first book
+    return readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', ['story_cosmos_1']);
   });
 
   const [completedStories, setCompletedStories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('plume_completed');
-    return saved ? JSON.parse(saved) : [];
+    if (!currentUser?.id) return [];
+    return readUserScopedValue<string[]>(getCompletedStorageKey(currentUser.id), 'plume_completed', []);
   });
 
   const [readLater, setReadLater] = useState<string[]>(() => {
-    const saved = localStorage.getItem('plume_read_later');
-    return saved ? JSON.parse(saved) : [];
+    if (!currentUser?.id) return [];
+    return readUserScopedValue<string[]>(getReadLaterStorageKey(currentUser.id), 'plume_read_later', []);
   });
 
   const [readChapters, setReadChapters] = useState<string[]>(() => {
-    const saved = localStorage.getItem('plume_read_chapters');
-    return saved ? JSON.parse(saved) : [];
+    if (!currentUser?.id) return [];
+    return readUserScopedValue<string[]>(getReadChaptersStorageKey(currentUser.id), 'plume_read_chapters', []);
   });
 
   const [lastReadProgress, setLastReadProgress] = useState<{ storyId: string; chapterId: string } | null>(() => {
-    const saved = localStorage.getItem('plume_last_read_progress');
-    return saved ? JSON.parse(saved) : null;
+    if (!currentUser?.id) return null;
+    return readUserScopedValue<{ storyId: string; chapterId: string } | null>(getLastReadProgressStorageKey(currentUser.id), 'plume_last_read_progress', null);
   });
 
   // UI state variables
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin'>('home');
   const [activeInterlocutorId, setActiveInterlocutorId] = useState<string>(() => {
-    const saved = localStorage.getItem('plume_active_interlocutor_id');
-    return saved ? saved : 'user_author';
+    if (!currentUser?.id) return 'user_author';
+    const scopedKey = getActiveInterlocutorStorageKey(currentUser.id);
+    const scoped = localStorage.getItem(scopedKey);
+    if (scoped !== null) return scoped;
+    // Migration de l'ancienne clé globale (valeur brute, pas du JSON).
+    const legacy = localStorage.getItem('plume_active_interlocutor_id');
+    if (legacy !== null) {
+      localStorage.removeItem('plume_active_interlocutor_id');
+      return legacy;
+    }
+    return 'user_author';
   });
+
+  // Recharge les listes de lecture propres à l'utilisateur lors d'un changement
+  // de compte (connexion/déconnexion sur le même navigateur).
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    setCurrentlyReading(readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', ['story_cosmos_1']));
+    setCompletedStories(readUserScopedValue<string[]>(getCompletedStorageKey(currentUser.id), 'plume_completed', []));
+    setReadLater(readUserScopedValue<string[]>(getReadLaterStorageKey(currentUser.id), 'plume_read_later', []));
+    setReadChapters(readUserScopedValue<string[]>(getReadChaptersStorageKey(currentUser.id), 'plume_read_chapters', []));
+    setLastReadProgress(readUserScopedValue<{ storyId: string; chapterId: string } | null>(getLastReadProgressStorageKey(currentUser.id), 'plume_last_read_progress', null));
+  }, [currentUser?.id]);
 
   const handleOpenDiscussion = async (userId: string) => {
     if (!currentUser?.id || userId === currentUser.id) return;
@@ -981,26 +1029,31 @@ export default function App() {
 
 
   useEffect(() => {
-    localStorage.setItem('plume_currently_reading', JSON.stringify(currentlyReading));
-  }, [currentlyReading]);
+    if (!currentUser?.id) return;
+    localStorage.setItem(getCurrentlyReadingStorageKey(currentUser.id), JSON.stringify(currentlyReading));
+  }, [currentlyReading, currentUser?.id]);
 
   useEffect(() => {
-    localStorage.setItem('plume_completed', JSON.stringify(completedStories));
-  }, [completedStories]);
+    if (!currentUser?.id) return;
+    localStorage.setItem(getCompletedStorageKey(currentUser.id), JSON.stringify(completedStories));
+  }, [completedStories, currentUser?.id]);
 
   useEffect(() => {
-    localStorage.setItem('plume_read_later', JSON.stringify(readLater));
-  }, [readLater]);
+    if (!currentUser?.id) return;
+    localStorage.setItem(getReadLaterStorageKey(currentUser.id), JSON.stringify(readLater));
+  }, [readLater, currentUser?.id]);
 
   useEffect(() => {
-    localStorage.setItem('plume_read_chapters', JSON.stringify(readChapters));
-  }, [readChapters]);
+    if (!currentUser?.id) return;
+    localStorage.setItem(getReadChaptersStorageKey(currentUser.id), JSON.stringify(readChapters));
+  }, [readChapters, currentUser?.id]);
 
   useEffect(() => {
+    if (!currentUser?.id) return;
     if (lastReadProgress) {
-      localStorage.setItem('plume_last_read_progress', JSON.stringify(lastReadProgress));
+      localStorage.setItem(getLastReadProgressStorageKey(currentUser.id), JSON.stringify(lastReadProgress));
     }
-  }, [lastReadProgress]);
+  }, [lastReadProgress, currentUser?.id]);
 
   useEffect(() => {
     localStorage.setItem('plume_dark_mode', JSON.stringify(darkMode));
@@ -2117,19 +2170,15 @@ export default function App() {
     localStorage.removeItem('plume_is_logged_in');
     localStorage.removeItem('plume_auth_token');
     localStorage.removeItem('plume_current_user');
-    // Purge les caches de données propres au compte (clés globales) pour éviter
-    // qu'elles ne fuitent vers le compte suivant connecté sur le même navigateur.
+    // Purge les caches encore stockés sous des clés GLOBALES (non scopées par
+    // utilisateur) pour éviter qu'ils ne fuitent vers le compte suivant connecté
+    // sur le même navigateur. Les listes de lecture sont désormais scopées par
+    // utilisateur (clés `*_${userId}`) et n'ont donc plus besoin d'être purgées.
     [
       'plume_notifications',
       'plume_reading_groups',
       'plume_group_messages',
       'plume_favorites',
-      'plume_currently_reading',
-      'plume_completed',
-      'plume_read_later',
-      'plume_read_chapters',
-      'plume_last_read_progress',
-      'plume_active_interlocutor_id',
     ].forEach((key) => localStorage.removeItem(key));
   };
 
