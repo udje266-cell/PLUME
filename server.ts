@@ -1307,6 +1307,18 @@ export async function createServerInstance() {
     }
   });
 
+  // Configuration publique côté client, lue au RUNTIME. Permet à l'app native
+  // (APK) d'obtenir la config Cloudinary sans qu'elle soit figée au build :
+  // le serveur, lui, a les variables d'environnement.
+  app.get('/api/config', (_req, res) => {
+    res.json({
+      cloudinary: {
+        cloudName: process.env.VITE_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME || '',
+        uploadPreset: process.env.VITE_CLOUDINARY_UPLOAD_PRESET || process.env.CLOUDINARY_UPLOAD_PRESET || '',
+      },
+    });
+  });
+
   // Search
   // Échappe les métacaractères LIKE (\ % _) saisis par l'utilisateur pour qu'ils
   // soient traités littéralement (le caractère d'échappement est le backslash).

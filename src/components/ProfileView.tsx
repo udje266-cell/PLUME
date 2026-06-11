@@ -62,7 +62,7 @@ interface ProfileViewProps {
   authorCertification?: { authorPercent: number; authorUnlocked: number } | null;
   viewedUser?: User | null;
   onBackToMyProfile?: () => void;
-  onUpdateProfile: (updatedFields: Partial<User>) => void;
+  onUpdateProfile: (updatedFields: Partial<User>) => void | Promise<boolean>;
   onUpdateAndVerifyUserStats?: (updateFn: (stats: UserStats) => void) => void;
   stories: Story[];
   favorites: string[]; // List of story IDs
@@ -340,6 +340,40 @@ const user = freshViewedUser || freshCurrentUser;
   const [localEmail, setLocalEmail] = useState(currentUser.email);
   const [localUsername, setLocalUsername] = useState(currentUser.username);
   const [localBio, setLocalBio] = useState(currentUser.bio || '');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Détection de modifications sur les champs d'identité (pseudo, bio, e-mail).
+  const usernameChanged = localUsername.trim() !== currentUser.username && localUsername.trim().length > 0;
+  const bioChanged = localBio !== (currentUser.bio || '');
+  const emailChanged = localEmail.trim().toLowerCase() !== (currentUser.email || '').toLowerCase();
+  const profileDirty = usernameChanged || bioChanged || emailChanged;
+
+  const handleSaveProfile = async () => {
+    if (isSavingProfile || !profileDirty) return; // anti double-clic + rien à sauver
+    const fields: Partial<User> = {};
+    if (usernameChanged) fields.username = localUsername.trim();
+    if (bioChanged) fields.bio = localBio;
+    if (emailChanged) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localEmail.trim())) {
+        setShowStatusToast('Adresse e-mail invalide.');
+        setTimeout(() => setShowStatusToast(null), 3000);
+        return;
+      }
+      fields.email = localEmail.trim();
+    }
+    setIsSavingProfile(true);
+    try {
+      const ok = await onUpdateProfile(fields);
+      // onUpdateProfile (App) gère déjà l'alerte d'erreur réseau ; succès → toast.
+      if (ok !== false) {
+        setShowStatusToast('Modifications enregistrées !');
+        setTimeout(() => setShowStatusToast(null), 3000);
+      }
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const [localPassword, setLocalPassword] = useState('********');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -632,9 +666,9 @@ const user = freshViewedUser || freshCurrentUser;
       setShowStatusToast('Bannière mise à jour avec succès !');
       setTimeout(() => setShowStatusToast(null), 3000);
       handleCancelBannerCrop();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[PLUME] Erreur upload bannière Cloudinary:', error);
-      alert("Impossible d'envoyer la bannière. Vérifiez Cloudinary ou la taille du fichier.");
+      alert(error?.message || "Impossible d'envoyer la bannière. Réessayez.");
     } finally {
       setIsUploadingBanner(false);
     }
@@ -698,9 +732,9 @@ const user = freshViewedUser || freshCurrentUser;
       setShowStatusToast('Avatar mis à jour avec succès !');
       setTimeout(() => setShowStatusToast(null), 3000);
       handleCancelAvatarCrop();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[PLUME] Erreur upload avatar Cloudinary:', error);
-      alert("Impossible d'envoyer l'image. Vérifiez Cloudinary ou la taille du fichier.");
+      alert(error?.message || "Impossible d'envoyer l'image. Réessayez.");
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -3590,32 +3624,18 @@ const user = freshViewedUser || freshCurrentUser;
                       <div className="space-y-3">
                         <div className="space-y-1">
                           <label className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Nom d'utilisateur</label>
-                          <input 
+                          <input
                             type="text"
                             value={localUsername}
                             onChange={(e) => setLocalUsername(e.target.value)}
-                            onBlur={() => {
-                              if (localUsername.trim() !== currentUser.username) {
-                                onUpdateProfile({ username: localUsername });
-                                setShowStatusToast("Nom d'utilisateur mis à jour !");
-                                setTimeout(() => setShowStatusToast(null), 3500);
-                              }
-                            }}
                             className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Biographie (Présentation)</label>
-                          <textarea 
+                          <textarea
                             value={localBio}
                             onChange={(e) => setLocalBio(e.target.value)}
-                            onBlur={() => {
-                              if (localBio !== (currentUser.bio || '')) {
-                                onUpdateProfile({ bio: localBio });
-                                setShowStatusToast("Biographie mise à jour !");
-                                setTimeout(() => setShowStatusToast(null), 3500);
-                              }
-                            }}
                             rows={3}
                             className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium leading-relaxed"
                           />
@@ -3628,20 +3648,39 @@ const user = freshViewedUser || freshCurrentUser;
                       <h4 className="text-[10px] font-black uppercase text-zinc-700 dark:text-zinc-300 tracking-wider">
                         Adresse E-mail
                       </h4>
-                      <input 
+                      <input
                         type="email"
                         value={localEmail}
                         onChange={(e) => setLocalEmail(e.target.value)}
-                        onBlur={() => {
-                          if (localEmail.trim() !== currentUser.email && localEmail.includes('@')) {
-                            onUpdateProfile({ email: localEmail });
-                            setShowStatusToast("E-mail enregistré avec succès !");
-                            setTimeout(() => setShowStatusToast(null), 3500);
-                          }
-                        }}
                         className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                       />
                     </div>
+
+                    {/* Bouton de sauvegarde — apparaît dès qu'un champ d'identité change */}
+                    {profileDirty && (
+                      <button
+                        id="save-profile-btn"
+                        onClick={handleSaveProfile}
+                        disabled={isSavingProfile}
+                        className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-md ${
+                          isSavingProfile
+                            ? 'bg-purple-400 text-white cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer active:scale-[0.99]'
+                        }`}
+                      >
+                        {isSavingProfile ? (
+                          <>
+                            <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                            <span>Enregistrement…</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4" />
+                            <span>Enregistrer les modifications</span>
+                          </>
+                        )}
+                      </button>
+                    )}
 
                     {/* Section: Type de compte */}
                     <div className="space-y-3 bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl">

@@ -1055,13 +1055,13 @@ export default function App() {
   };
 
   // Update profile attributes (bio, preferences)
-  const handleUpdateProfile = (updatedFields: Partial<User>) => {
-    if (!currentUser) return;
+  const handleUpdateProfile = async (updatedFields: Partial<User>): Promise<boolean> => {
+    if (!currentUser) return false;
     const originalCurrentUser = currentUser;
     const originalAllUsers = allUsers;
-    
+
     let nextUser = { ...currentUser, ...updatedFields } as User;
-    
+
     // La certification (isVerified) est calculée et persistée par le serveur
     // (rôle Auteur + accomplissements réels). On ne la devine plus côté client :
     // la réponse du PUT /api/users renvoie la valeur autoritative, appliquée plus bas.
@@ -1083,44 +1083,44 @@ export default function App() {
       }
     }
 
-    if (isAuthenticated) {
-      // Sync profile modification to the backend server
-      fetch(`/api/users/${currentUser.id}`, {
+    if (!isAuthenticated) return true;
+
+    // Sync profile modification to the backend server
+    try {
+      const res = await fetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(nextUser)
-      })
-      .then(async (res) => {
-        if (res.ok) {
-          const syncedUser = await res.json();
-          // Remove local edits to avoid stale override
-          const edits = getLocalUserEdits();
-          delete edits[currentUser.id];
-          localStorage.setItem('plume_user_edits_by_id', JSON.stringify(edits));
-
-          setCurrentUser(syncedUser);
-          localStorage.setItem('plume_current_user', JSON.stringify(syncedUser));
-          setAllUsers(prev => prev.map(u => u.id === syncedUser.id ? syncedUser : u));
-        } else {
-          let errorMsg = "Impossible de mettre à jour le profil sur le serveur.";
-          try {
-            const errData = await res.json();
-            if (errData.error) errorMsg += ` (${errData.error})`;
-          } catch {}
-          alert(errorMsg);
-          
-          // Revert state
-          setCurrentUser(originalCurrentUser);
-          setAllUsers(originalAllUsers);
-        }
-      })
-      .catch(e => {
-        console.error('[PLUME] Erreur de mise à jour du profil backend :', e);
-        alert("Erreur de connexion. Le profil n'a pas pu être enregistré.");
-        // Revert state
-        setCurrentUser(originalCurrentUser);
-        setAllUsers(originalAllUsers);
       });
+      if (res.ok) {
+        const syncedUser = await res.json();
+        // Remove local edits to avoid stale override
+        const edits = getLocalUserEdits();
+        delete edits[currentUser.id];
+        localStorage.setItem('plume_user_edits_by_id', JSON.stringify(edits));
+
+        setCurrentUser(syncedUser);
+        localStorage.setItem('plume_current_user', JSON.stringify(syncedUser));
+        setAllUsers(prev => prev.map(u => u.id === syncedUser.id ? syncedUser : u));
+        return true;
+      }
+      let errorMsg = "Impossible de mettre à jour le profil sur le serveur.";
+      try {
+        const errData = await res.json();
+        if (errData.error) errorMsg += ` (${errData.error})`;
+      } catch {}
+      alert(errorMsg);
+      // Revert state
+      setCurrentUser(originalCurrentUser);
+      setAllUsers(originalAllUsers);
+      return false;
+    } catch (e) {
+      console.error('[PLUME] Erreur de mise à jour du profil backend :', e);
+      alert("Erreur de connexion. Le profil n'a pas pu être enregistré.");
+      // Revert state
+      setCurrentUser(originalCurrentUser);
+      setAllUsers(originalAllUsers);
+      return false;
     }
   };
 

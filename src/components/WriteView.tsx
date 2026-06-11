@@ -222,9 +222,9 @@ export default function WriteView({
       const imageUrl = await uploadImageToCloudinary(croppedFile);
       setCoverImage(imageUrl);
       handleCancelCoverCrop();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[PLUME] Erreur upload couverture Cloudinary:', error);
-      alert("Impossible d'envoyer la couverture. Vérifiez Cloudinary ou la taille du fichier.");
+      alert(error?.message || "Impossible d'envoyer la couverture. Réessayez.");
     } finally {
       setIsUploadingCover(false);
     }
