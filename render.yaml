@@ -26,7 +26,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: APP_URL
-        value: https://plume-app.onrender.com # À modifier avec votre URL finale si besoin
+        value: https://plume-app-fudd.onrender.com # À modifier avec votre URL finale si besoin
       - key: BREVO_API_KEY
         sync: false
       - key: SMTP_FROM

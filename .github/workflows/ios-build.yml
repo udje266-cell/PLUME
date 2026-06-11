@@ -35,7 +35,7 @@ jobs:
       - name: Build du bundle web (vers le backend)
         run: npm run build:mobile
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://plume-app.onrender.com' }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://plume-app-fudd.onrender.com' }}
 
       - name: Ajouter la plateforme iOS si absente
         run: |

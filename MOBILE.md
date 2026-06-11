@@ -19,14 +19,14 @@ vers `VITE_API_URL`. **Définissez-la au build** (sinon les appels restent
 relatifs et échouent) :
 
 ```bash
-export VITE_API_URL="https://plume-app.onrender.com"   # votre backend déployé
+export VITE_API_URL="https://plume-app-fudd.onrender.com"   # votre backend déployé
 ```
 
 ## 3. Build du bundle web + synchronisation
 
 ```bash
 npm install
-VITE_API_URL="https://plume-app.onrender.com" npm run cap:sync
+VITE_API_URL="https://plume-app-fudd.onrender.com" npm run cap:sync
 ```
 
 `cap:sync` lance `vite build` puis copie `dist/` dans les projets natifs.

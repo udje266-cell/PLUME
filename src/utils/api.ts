@@ -10,7 +10,7 @@
  * suffit. Dans le build natif (Capacitor), l'app tourne sur une origine locale
  * (capacitor://localhost) sans serveur : les appels relatifs `/api` échouent.
  * On préfixe donc tous les appels `/api` par l'URL absolue du backend, fournie
- * au build via `VITE_API_URL` (ex. https://plume-app.onrender.com).
+ * au build via `VITE_API_URL` (ex. https://plume-app-fudd.onrender.com).
  *
  * Ce module patche `window.fetch` UNE fois, au plus tôt (importé en tête de
  * main.tsx), afin de :
