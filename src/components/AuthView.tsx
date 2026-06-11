@@ -281,7 +281,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
           <Logo size="2xl" showText={true} />
         </div>
         <p className="text-xs text-paragraph-muted text-gray-500 dark:text-zinc-400 font-sans tracking-wide">
-          Découvrez, écrivez et épanouissez votre imaginaire francophone.
+          Lisez, écrivez, partagez — votre imaginaire prend vie.
         </p>
       </div>
 

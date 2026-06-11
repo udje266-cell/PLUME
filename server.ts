@@ -2800,10 +2800,46 @@ export async function createServerInstance() {
 }
 
 if (process.env.NODE_ENV !== 'test') {
+  // Garantit le compte ADMINISTRATEUR du propriétaire (gated par ADMIN_PASSWORD).
+  // Exécuté DANS le process serveur au démarrage → fiable quelles que soient les
+  // commandes de build / start de l'hébergeur (ne dépend ni du seed ni de tsx).
+  const ensureAdminAccount = async () => {
+    const password = process.env.ADMIN_PASSWORD;
+    if (!password) return;
+    const email = (process.env.ADMIN_EMAIL || 'udje266@gmail.com').toLowerCase();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const profile = {
+      username: process.env.ADMIN_USERNAME || 'hyde.._',
+      role: 'Administrateur',
+      gender: 'Homme',
+      birthDate: new Date('2002-09-18'),
+      emailVerified: true,
+      isVerified: true,
+    };
+    try {
+      await prisma.user.upsert({
+        where: { email },
+        update: { ...profile, passwordHash },
+        create: { ...profile, email, passwordHash, favoriteGenres: '[]', bio: '' },
+      });
+      console.log(`[ADMIN] ✅ Compte administrateur garanti : ${email}`);
+    } catch (e: any) {
+      // Collision (ex. username déjà pris) : on garantit au moins l'accès (mot de
+      // passe + rôle Administrateur) par e-mail pour que la connexion fonctionne.
+      try {
+        await prisma.user.updateMany({ where: { email }, data: { passwordHash, role: 'Administrateur', emailVerified: true } });
+        console.log(`[ADMIN] ✅ Accès administrateur garanti (fallback) : ${email}`);
+      } catch (e2: any) {
+        console.error('[ADMIN] échec de la garantie du compte admin :', e2?.message || e?.message || e);
+      }
+    }
+  };
+
   createServerInstance().then(({ httpServer }) => {
     const PORT = Number(process.env.PORT || 3000);
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[PLUME App] Backend + Socket.io en écoute sur http://0.0.0.0:${PORT}`);
+      ensureAdminAccount().catch((e) => console.error('[ADMIN] erreur :', e));
     });
 
     // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
