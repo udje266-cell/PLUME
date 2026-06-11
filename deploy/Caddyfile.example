@@ -1,0 +1,16 @@
+# Caddy = reverse proxy + HTTPS automatique (Let's Encrypt) GRATUIT.
+# Remplace `ton-sous-domaine.duckdns.org` par ton domaine (DuckDNS gratuit, ou
+# un vrai domaine). Caddy obtient et renouvelle le certificat TLS tout seul.
+#
+# Installation :
+#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   (édite le domaine)
+#   sudo systemctl restart caddy
+#
+# L'app Express écoute en local sur le PORT (défaut 3000) ; Caddy expose
+# 443 (HTTPS) et redirige 80 -> 443 automatiquement.
+
+ton-sous-domaine.duckdns.org {
+    reverse_proxy localhost:3000
+    encode gzip
+}

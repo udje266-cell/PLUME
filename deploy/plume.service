@@ -1,0 +1,29 @@
+# Service systemd pour PLUME (backend + frontend servi par Express).
+# Démarre l'app, applique les migrations + le seed (via npm start), redémarre
+# automatiquement en cas de crash, et démarre au boot de la VM.
+#
+# Installation :
+#   sudo cp deploy/plume.service /etc/systemd/system/plume.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now plume
+#   sudo systemctl status plume        # vérifier
+#   sudo journalctl -u plume -f         # logs en direct
+
+[Unit]
+Description=PLUME (Node/Express)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/PLUME
+EnvironmentFile=/etc/plume.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+# Laisse le temps aux migrations/seed au démarrage.
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

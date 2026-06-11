@@ -11,6 +11,10 @@ réveil. Pour de vrais utilisateurs : passer en plan **payant always-on**
 (Render Starter ~7 $/mois), ou un hébergeur always-on (Railway, Fly.io, VPS,
 AWS/GCP). Aucun changement de code nécessaire.
 
+> 💡 **Option 100 % gratuite et always-on** : héberger sur une VM **Oracle Cloud
+> Always Free** (gratuite à vie, jamais en veille) — guide pas-à-pas dans
+> [ORACLE_DEPLOY.md](./ORACLE_DEPLOY.md).
+
 ## 2. Multi-instances : Redis (déjà intégré, optionnel)
 
 Quand on lance **plusieurs instances** du backend (autoscaling), les états en
