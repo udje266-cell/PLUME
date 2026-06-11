@@ -895,6 +895,8 @@ export async function createServerInstance() {
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
+      // Compte suspendu par un administrateur : connexion refusée.
+      if (user.isBanned) return res.status(403).json({ error: 'Votre compte a été suspendu par un administrateur.' });
       const token = createToken(user.id);
       setAuthCookie(res, token);
       res.json({ token, user: serializeUser(user, true) });
@@ -1321,6 +1323,39 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
+    }
+  });
+
+  // Suspension / réactivation d'un compte (modération). RÉSERVÉ aux admins.
+  // Bannir = bloquer la connexion + dépublier les récits (données préservées,
+  // donc réversible). `{ banned: false }` réactive le compte.
+  app.post('/api/users/:id/ban', requireAuth, async (req: any, res) => {
+    try {
+      if (req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+      }
+      if (req.user.id === req.params.id) {
+        return res.status(400).json({ error: 'Un administrateur ne peut pas se suspendre lui-même.' });
+      }
+      const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true } });
+      if (!target) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+      if (target.role === 'Administrateur') {
+        return res.status(403).json({ error: 'Impossible de suspendre un autre administrateur.' });
+      }
+
+      const banned = req.body?.banned !== false; // défaut = suspendre
+      await prisma.user.update({ where: { id: req.params.id }, data: { isBanned: banned } });
+
+      // À la suspension, on dépublie ses récits (retirés du public, données
+      // conservées) ; à la réactivation, on ne re-publie pas automatiquement.
+      if (banned) {
+        await prisma.story.updateMany({ where: { authorId: req.params.id, status: 'PUBLIE' }, data: { status: 'BROUILLON' } });
+      }
+
+      res.json({ success: true, banned });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suspension du compte.' });
     }
   });
 

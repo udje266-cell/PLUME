@@ -24,6 +24,7 @@ export interface User {
   emailChangedAt?: string | null;
   isFlagged?: boolean;
   flagReason?: string;
+  isBanned?: boolean;
   showFollowers?: boolean;
   showFollowing?: boolean;
   showFriends?: boolean;

@@ -33,6 +33,8 @@ model User {
   emailChangedAt    DateTime?
   isFlagged         Boolean  @default(false)
   flagReason        String?
+  // Compte suspendu par un administrateur : bloque la connexion (réversible).
+  isBanned          Boolean  @default(false)
   favoriteGenres String  @default("[]")
 
   showFollowers     Boolean  @default(true)

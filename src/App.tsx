@@ -2083,17 +2083,29 @@ export default function App() {
     }
   };
 
-  const handleBanUser = (userId: string) => {
-    const targetStories = stories.filter(s => s.authorId === userId);
-
-    setAllUsers(allUsers.filter(u => u.id !== userId));
-    setStories(stories.filter(s => s.authorId !== userId));
-
-    // Clear banned users works on backend
-    targetStories.forEach(s => {
-       fetch(`/api/stories/${s.id}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {});
-    });
-    alert("Compte suspendu avec succès. Ses œuvres ont été dépubliées.");
+  const handleBanUser = async (userId: string) => {
+    // Suspension RÉELLE côté serveur : bloque la connexion et dépublie les
+    // récits (réversible). Sans cet appel, un compte « banni » réapparaîtrait
+    // au rechargement et pourrait toujours se reconnecter.
+    try {
+      const res = await fetch(`/api/users/${userId}/ban`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ banned: true }),
+      });
+      if (!res.ok) {
+        let msg = 'La suspension a échoué.';
+        try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+        alert(msg);
+        return;
+      }
+      // Reflète l'état serveur : compte retiré des listes, récits dépubliés.
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isBanned: true } : u).filter(u => u.id !== userId));
+      setStories(prev => prev.filter(s => s.authorId !== userId));
+      alert("Compte suspendu. La connexion est bloquée et ses œuvres ont été dépubliées.");
+    } catch {
+      alert("Erreur de connexion : la suspension n'a pas pu être appliquée.");
+    }
   };
 
   const handleDeleteStory = (storyId: string) => {
