@@ -1110,14 +1110,18 @@ export default function App() {
         if (errData.error) errorMsg += ` (${errData.error})`;
       } catch {}
       alert(errorMsg);
-      // Revert state
+      // Revert state ET l'édition locale persistée (sinon la modif ratée
+      // réapparaît au prochain chargement via mergeLocalUserEdit).
+      saveLocalUserEdit(originalCurrentUser);
       setCurrentUser(originalCurrentUser);
       setAllUsers(originalAllUsers);
       return false;
     } catch (e) {
       console.error('[PLUME] Erreur de mise à jour du profil backend :', e);
       alert("Erreur de connexion. Le profil n'a pas pu être enregistré.");
-      // Revert state
+      // Revert state ET l'édition locale persistée (sinon la modif ratée
+      // réapparaît au prochain chargement via mergeLocalUserEdit).
+      saveLocalUserEdit(originalCurrentUser);
       setCurrentUser(originalCurrentUser);
       setAllUsers(originalAllUsers);
       return false;
