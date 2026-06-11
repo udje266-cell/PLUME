@@ -349,8 +349,10 @@ const user = freshViewedUser || freshCurrentUser;
   const profileDirty = usernameChanged || bioChanged || emailChanged;
 
   // Délais de modification (mêmes valeurs que le serveur — source de vérité).
+  // Les administrateurs en sont exemptés, comme côté backend (!isAdmin).
+  const isAdmin = currentUser.role === 'Administrateur';
   const lockedUntil = (changedAt: string | null | undefined, days: number): Date | null => {
-    if (!changedAt) return null;
+    if (isAdmin || !changedAt) return null;
     const next = new Date(new Date(changedAt).getTime() + days * 86_400_000);
     return next > new Date() ? next : null;
   };
@@ -3652,9 +3654,11 @@ const user = freshViewedUser || freshCurrentUser;
                             className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                           />
                           <p className="text-[8.5px] text-zinc-400 leading-snug">
-                            {usernameLockedUntil
-                              ? `🔒 Modifiable à partir du ${fmtDate(usernameLockedUntil)} (1 fois / 30 jours).`
-                              : 'Modifiable une seule fois tous les 30 jours.'}
+                            {isAdmin
+                              ? 'Administrateur : modification sans restriction.'
+                              : usernameLockedUntil
+                                ? `🔒 Modifiable à partir du ${fmtDate(usernameLockedUntil)} (1 fois / 30 jours).`
+                                : 'Modifiable une seule fois tous les 30 jours.'}
                           </p>
                         </div>
                         <div className="space-y-1">
@@ -3681,9 +3685,11 @@ const user = freshViewedUser || freshCurrentUser;
                         className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                       />
                       <p className="text-[8.5px] text-zinc-400 leading-snug">
-                        {emailLockedUntil
-                          ? `🔒 Modifiable à partir du ${fmtDate(emailLockedUntil)} (1 fois / 90 jours).`
-                          : 'Modifiable une seule fois tous les 90 jours.'}
+                        {isAdmin
+                          ? 'Administrateur : modification sans restriction.'
+                          : emailLockedUntil
+                            ? `🔒 Modifiable à partir du ${fmtDate(emailLockedUntil)} (1 fois / 90 jours).`
+                            : 'Modifiable une seule fois tous les 90 jours.'}
                       </p>
                     </div>
 
