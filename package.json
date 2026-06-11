@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "DIRECT_URL=\"${DIRECT_URL:-$DATABASE_URL}\" prisma migrate deploy && (npm run db:seed || echo '[seed] ignoré') && node dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild prisma/seed.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/seed.cjs",
+    "start": "DIRECT_URL=\"${DIRECT_URL:-$DATABASE_URL}\" prisma migrate deploy && (node dist/seed.cjs || echo '[seed] ignoré') && node dist/server.cjs",
     "clean": "rm -rf dist server.js server.cjs",
     "lint": "tsc --noEmit",
     "test": "vitest run",
