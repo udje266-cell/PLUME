@@ -1166,10 +1166,56 @@ export async function createServerInstance() {
 
       const user = req.body;
 
+      // État actuel : nécessaire pour détecter un VRAI changement de pseudo/e-mail
+      // et appliquer les délais (anti-abus).
+      const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+
+      const now = new Date();
+      const DAY = 86_400_000;
+      const USERNAME_COOLDOWN_DAYS = 30;
+      const EMAIL_COOLDOWN_DAYS = 90;
+      const fmt = (d: Date) => d.toLocaleDateString('fr-FR');
+
+      const newUsername = typeof user.username === 'string' ? user.username.trim() : undefined;
+      const newEmail = typeof user.email === 'string' ? user.email.toLowerCase().trim() : undefined;
+      const usernameChanging = newUsername !== undefined && newUsername.length > 0 && newUsername !== existing.username;
+      const emailChanging = newEmail !== undefined && newEmail.length > 0 && newEmail !== (existing.email || '').toLowerCase();
+
+      // Délais de modification — appliqués côté SERVEUR (source de vérité), pas
+      // seulement côté client. Les administrateurs en sont exemptés.
+      if (!isAdmin) {
+        if (usernameChanging && existing.usernameChangedAt) {
+          const nextAllowed = new Date(existing.usernameChangedAt.getTime() + USERNAME_COOLDOWN_DAYS * DAY);
+          if (now < nextAllowed) {
+            return res.status(429).json({
+              error: `Le nom d'utilisateur n'est modifiable qu'une fois tous les 30 jours. Prochaine modification possible le ${fmt(nextAllowed)}.`,
+              field: 'username',
+              nextChangeAt: nextAllowed.toISOString(),
+            });
+          }
+        }
+        if (emailChanging && existing.emailChangedAt) {
+          const nextAllowed = new Date(existing.emailChangedAt.getTime() + EMAIL_COOLDOWN_DAYS * DAY);
+          if (now < nextAllowed) {
+            return res.status(429).json({
+              error: `L'adresse e-mail n'est modifiable qu'une fois tous les 90 jours. Prochaine modification possible le ${fmt(nextAllowed)}.`,
+              field: 'email',
+              nextChangeAt: nextAllowed.toISOString(),
+            });
+          }
+        }
+      }
+
+      // Unicité de l'e-mail s'il change (message clair plutôt qu'erreur Prisma opaque).
+      if (emailChanging) {
+        const taken = await prisma.user.findFirst({ where: { email: newEmail, id: { not: req.params.id } }, select: { id: true } });
+        if (taken) return res.status(409).json({ error: 'Cet e-mail est déjà utilisé par un autre compte.' });
+      }
+
       // Champs librement modifiables par le propriétaire du compte.
+      // (pseudo/e-mail ajoutés conditionnellement plus bas, avec horodatage.)
       const data: any = {
-        username: user.username,
-        email: typeof user.email === 'string' ? user.email.toLowerCase() : undefined,
         bio: user.bio ?? undefined,
         avatar: user.avatar ?? undefined,
         gender: user.gender ? genderToPrisma(user.gender) : undefined,
@@ -1193,6 +1239,18 @@ export async function createServerInstance() {
         confirmDeleteStory: user.confirmDeleteStory,
         hasChangedRole: user.hasChangedRole,
       };
+
+      // Pseudo / e-mail : appliqués SEULEMENT s'ils changent réellement, avec
+      // horodatage du changement (sert au calcul des délais). Un changement par
+      // un admin n'enclenche pas de cooldown pour l'utilisateur.
+      if (usernameChanging) {
+        data.username = newUsername;
+        if (!isAdmin) data.usernameChangedAt = now;
+      }
+      if (emailChanging) {
+        data.email = newEmail;
+        if (!isAdmin) data.emailChangedAt = now;
+      }
 
       // isVerified n'est JAMAIS piloté par le client : la certification est
       // recalculée par le serveur depuis des données autoritatives (voir plus

@@ -28,6 +28,9 @@ model User {
   birthDate         DateTime?
   gender            String?
   hasChangedRole    Boolean  @default(false)
+  // Dates des dernières modifications soumises à délai (pseudo: 30j, e-mail: 90j).
+  usernameChangedAt DateTime?
+  emailChangedAt    DateTime?
   isFlagged         Boolean  @default(false)
   flagReason        String?
   favoriteGenres String  @default("[]")

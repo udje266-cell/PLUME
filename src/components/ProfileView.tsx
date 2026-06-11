@@ -348,8 +348,29 @@ const user = freshViewedUser || freshCurrentUser;
   const emailChanged = localEmail.trim().toLowerCase() !== (currentUser.email || '').toLowerCase();
   const profileDirty = usernameChanged || bioChanged || emailChanged;
 
+  // Délais de modification (mêmes valeurs que le serveur — source de vérité).
+  const lockedUntil = (changedAt: string | null | undefined, days: number): Date | null => {
+    if (!changedAt) return null;
+    const next = new Date(new Date(changedAt).getTime() + days * 86_400_000);
+    return next > new Date() ? next : null;
+  };
+  const usernameLockedUntil = lockedUntil(currentUser.usernameChangedAt, 30);
+  const emailLockedUntil = lockedUntil(currentUser.emailChangedAt, 90);
+  const fmtDate = (d: Date) => d.toLocaleDateString('fr-FR');
+
   const handleSaveProfile = async () => {
     if (isSavingProfile || !profileDirty) return; // anti double-clic + rien à sauver
+    // Pré-vérification des délais (le serveur revalide de toute façon).
+    if (usernameChanged && usernameLockedUntil) {
+      setShowStatusToast(`Pseudo modifiable à partir du ${fmtDate(usernameLockedUntil)}.`);
+      setTimeout(() => setShowStatusToast(null), 4000);
+      return;
+    }
+    if (emailChanged && emailLockedUntil) {
+      setShowStatusToast(`E-mail modifiable à partir du ${fmtDate(emailLockedUntil)}.`);
+      setTimeout(() => setShowStatusToast(null), 4000);
+      return;
+    }
     const fields: Partial<User> = {};
     if (usernameChanged) fields.username = localUsername.trim();
     if (bioChanged) fields.bio = localBio;
@@ -3630,6 +3651,11 @@ const user = freshViewedUser || freshCurrentUser;
                             onChange={(e) => setLocalUsername(e.target.value)}
                             className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                           />
+                          <p className="text-[8.5px] text-zinc-400 leading-snug">
+                            {usernameLockedUntil
+                              ? `🔒 Modifiable à partir du ${fmtDate(usernameLockedUntil)} (1 fois / 30 jours).`
+                              : 'Modifiable une seule fois tous les 30 jours.'}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Biographie (Présentation)</label>
@@ -3654,6 +3680,11 @@ const user = freshViewedUser || freshCurrentUser;
                         onChange={(e) => setLocalEmail(e.target.value)}
                         className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                       />
+                      <p className="text-[8.5px] text-zinc-400 leading-snug">
+                        {emailLockedUntil
+                          ? `🔒 Modifiable à partir du ${fmtDate(emailLockedUntil)} (1 fois / 90 jours).`
+                          : 'Modifiable une seule fois tous les 90 jours.'}
+                      </p>
                     </div>
 
                     {/* Bouton de sauvegarde — apparaît dès qu'un champ d'identité change */}

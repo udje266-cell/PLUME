@@ -20,6 +20,8 @@ export interface User {
   birthDate?: string;
   gender?: 'Homme' | 'Femme';
   hasChangedRole?: boolean;
+  usernameChangedAt?: string | null;
+  emailChangedAt?: string | null;
   isFlagged?: boolean;
   flagReason?: string;
   showFollowers?: boolean;
