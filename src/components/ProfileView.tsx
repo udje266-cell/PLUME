@@ -1669,11 +1669,16 @@ const user = freshViewedUser || freshCurrentUser;
         
         const unlockedR = rAchievements.filter(a => a.isUnlocked).length;
         // La certification d'auteur est calculée par le serveur (source du badge) :
-        // on l'utilise si disponible pour rester cohérent, sinon repli local.
-        const unlockedA = authorCertification ? authorCertification.authorUnlocked : aAchievements.filter(a => a.isUnlocked).length;
+        // on l'utilise si disponible pour rester cohérent, sinon repli local. Le
+        // propriétaire/administrateur affiche toujours 100 % (statut plein).
+        const unlockedA = ownerAllUnlocked
+          ? aAchievements.filter(a => a.isUnlocked).length
+          : (authorCertification ? authorCertification.authorUnlocked : aAchievements.filter(a => a.isUnlocked).length);
 
         const pctR = Math.round((unlockedR / 125) * 100);
-        const pctA = authorCertification ? authorCertification.authorPercent : Math.round((unlockedA / 100) * 100);
+        const pctA = ownerAllUnlocked
+          ? 100
+          : (authorCertification ? authorCertification.authorPercent : Math.round((unlockedA / 100) * 100));
 
         const isReader = currentUser.role === 'Lecteur';
         const isAuthor = currentUser.role === 'Auteur';
