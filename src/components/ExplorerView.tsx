@@ -22,6 +22,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { Story, User } from '../types';
+import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface ExplorerViewProps {
@@ -387,7 +388,7 @@ export default function ExplorerView({
                     <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{u.username}</span>
                     {u.isVerified && <VerifiedBadge size="xs" className="flex-shrink-0" />}
                   </div>
-                  <p className="text-[11px] text-gray-400 truncate">{u.bio || u.role}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{u.bio || displayRole(u.role)}</p>
                 </div>
                 <button
                   type="button"

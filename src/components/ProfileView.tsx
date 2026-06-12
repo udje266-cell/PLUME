@@ -46,6 +46,7 @@ import {
 import { VerifiedBadge } from './VerifiedBadge';
 import { levelProgress } from '../utils/leveling';
 import { User, UserRole, Story, Chapter } from '../types';
+import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { authHeaders } from '../utils/auth';
@@ -2157,7 +2158,7 @@ const user = freshViewedUser || freshCurrentUser;
                       </div>
 
                       <div className="text-[8px] font-mono font-bold tracking-wider text-purple-750 dark:text-purple-400 bg-purple-500/5 dark:bg-purple-950/10 border border-purple-500/10 px-2 py-0.5 rounded uppercase">
-                        {su.role || 'Auteur'}
+                        {displayRole(su.role) || 'Auteur'}
                       </div>
 
                       <button
@@ -3047,7 +3048,7 @@ const user = freshViewedUser || freshCurrentUser;
                   </div>
                   <div className="text-[10.5px] text-zinc-300 space-y-1 leading-normal">
                     <p>
-                      Auteur de lecture analysé : <strong className="text-white font-black">{currentUser.username}</strong> ({currentUser.role})
+                      Auteur de lecture analysé : <strong className="text-white font-black">{currentUser.username}</strong> ({displayRole(currentUser.role)})
                     </p>
                     <p>
                       Conformité de certification automatique :{' '}
@@ -3478,7 +3479,7 @@ const user = freshViewedUser || freshCurrentUser;
                           />
                           <p className="text-[8.5px] text-zinc-400 leading-snug">
                             {isAdmin
-                              ? 'Administrateur : modification sans restriction.'
+                              ? 'Modification sans restriction.'
                               : usernameLockedUntil
                                 ? `🔒 Modifiable à partir du ${fmtDate(usernameLockedUntil)} (1 fois / 30 jours).`
                                 : 'Modifiable une seule fois tous les 30 jours.'}
@@ -3554,13 +3555,13 @@ const user = freshViewedUser || freshCurrentUser;
                             Vous avez déjà utilisé votre unique modification.
                           </p>
                           <p className="text-[9px] text-zinc-400">
-                            Chaque compte Plume est verrouillé sur son type définitif (actuellement : {currentUser.role}) pour préserver l'équilibre de sa bibliographie.
+                            Chaque compte Plume est verrouillé sur son type définitif (actuellement : {displayRole(currentUser.role)}) pour préserver l'équilibre de sa bibliographie.
                           </p>
                         </div>
                       ) : currentUser.role === 'Administrateur' ? (
                         <div className="p-3 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 rounded-xl">
                           <p className="text-[10px] text-zinc-400">
-                            En tant qu'Administrateur, votre statut global est obligatoire.
+                            Votre statut global est obligatoire pour ce compte.
                           </p>
                         </div>
                       ) : (
@@ -4562,7 +4563,7 @@ const user = freshViewedUser || freshCurrentUser;
                                 {foundUser.isVerified && <VerifiedBadge size="xs" />}
                               </div>
                               <span className="block text-[8.5px] font-mono text-zinc-450 truncate">
-                                {foundUser.role}
+                                {displayRole(foundUser.role)}
                               </span>
                             </div>
                           </div>

@@ -25,6 +25,7 @@ import {
   Check
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
+import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
@@ -228,7 +229,7 @@ export default function HomeView({
 
         {/* Mini stats pill */}
         <div className="bg-purple-500/10 text-purple-600 dark:text-purple-400 px-3 py-1.5 rounded-xl border border-purple-500/15 text-[10px] font-black uppercase tracking-wider">
-          {currentUser.role}
+          {displayRole(currentUser.role)}
         </div>
       </header>
 

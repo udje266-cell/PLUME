@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
+import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 
 /**
@@ -738,7 +739,7 @@ export default function MessagesView({
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
                     <p className="text-[10px] text-white/90 font-bold mt-1.5">
-                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'} • {interlocutor.role}
+                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'} • {displayRole(interlocutor.role)}
                     </p>
                   </div>
                 </>
@@ -1058,7 +1059,7 @@ export default function MessagesView({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{userObj.username}</span>
-                        <span className="text-[9px] font-mono text-purple-600 font-extrabold uppercase bg-purple-50 dark:bg-purple-950/20 px-1 rounded">{userObj.role}</span>
+                        <span className="text-[9px] font-mono text-purple-600 font-extrabold uppercase bg-purple-50 dark:bg-purple-950/20 px-1 rounded">{displayRole(userObj.role)}</span>
                       </div>
                       <p className="text-[10px] text-gray-400 truncate mt-0.5">{userObj.bio || "Aucune biographie"}</p>
                     </div>

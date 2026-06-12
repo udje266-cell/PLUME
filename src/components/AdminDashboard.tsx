@@ -20,6 +20,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { User, Story } from '../types';
+import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface AdminDashboardProps {
@@ -276,7 +277,7 @@ export default function AdminDashboard({
                             <span>{user.username}</span>
                             {user.isVerified && <VerifiedBadge size="sm" />}
                           </h4>
-                          <span className="text-[10px] text-zinc-400">{user.email} • Rôle : {user.role}</span>
+                          <span className="text-[10px] text-zinc-400">{user.email} • Rôle : {displayRole(user.role)}</span>
                         </div>
                       </div>
 
@@ -360,7 +361,7 @@ export default function AdminDashboard({
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-gray-400">{user.email} • Rôle : {user.role}</p>
+                      <p className="text-[10px] text-gray-400">{user.email} • Rôle : {displayRole(user.role)}</p>
                     </div>
                   </div>
 

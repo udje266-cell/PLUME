@@ -141,6 +141,11 @@ function serializeUser(user: any, includePrivate = false) {
     result.email = email;
     result.birthDate = birthDate ? new Date(birthDate).toISOString().split('T')[0] : undefined;
     result.flagReason = flagReason ?? null;
+  } else if (result.role === 'Administrateur') {
+    // Statut administrateur masqué aux tiers : exposé comme « Auteur ». Le rôle
+    // réel n'est renvoyé qu'en mode privé (l'admin lui-même / endpoints admin),
+    // ce qui préserve l'accès au panneau d'administration.
+    result.role = 'Auteur';
   }
   return result;
 }
