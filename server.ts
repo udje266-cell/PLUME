@@ -11,7 +11,6 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
 import { redis } from './src/server/redis';
@@ -43,14 +42,6 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (error) => {
   console.error('[PLUME] Uncaught exception:', error);
 });
-
-const _filename = typeof import.meta !== 'undefined' && import.meta.url
-  ? fileURLToPath(import.meta.url) 
-  : (typeof __filename !== 'undefined' ? __filename : '');
-
-const _dirname = typeof import.meta !== 'undefined' && import.meta.url 
-  ? path.dirname(fileURLToPath(import.meta.url)) 
-  : (typeof __dirname !== 'undefined' ? __dirname : '');
 
 function parseJsonArray(value: string | null | undefined) {
   try {

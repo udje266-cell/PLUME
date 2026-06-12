@@ -6,6 +6,11 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    build: {
+      // L'app est une SPA chargée d'un bloc (pas de routing par pages) : un
+      // bundle un peu volumineux est attendu. On relève le seuil d'alerte.
+      chunkSizeWarningLimit: 2000,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
