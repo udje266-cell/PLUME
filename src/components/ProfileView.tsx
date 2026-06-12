@@ -529,12 +529,15 @@ const user = freshViewedUser || freshCurrentUser;
 
   const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
-  const [achievementsTab, setAchievementsTab] = useState<'reader' | 'author' | 'simulator'>('reader');
+  // Onglet par défaut selon le rôle : un Auteur ne voit que ses défis d'auteur,
+  // un Lecteur que ses défis de lecteur (les onglets sont aussi gatés par rôle).
+  const [achievementsTab, setAchievementsTab] = useState<'reader' | 'author'>(
+    currentUser.role === 'Auteur' ? 'author' : 'reader'
+  );
   const [achievementsSearch, setAchievementsSearch] = useState('');
   // Badge sélectionné pour afficher son énigme (clic sur n'importe quel trophée,
   // y compris les badges cachés qui conservent leur apparence « ??? »).
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
-  const [simulateAdminView, setSimulateAdminView] = useState(false);
 
   // Settings Panel States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -2652,24 +2655,10 @@ const user = freshViewedUser || freshCurrentUser;
                     Auteur (100)
                   </button>
                 )}
-                <button
-                  onClick={() => {
-                    setAchievementsTab('simulator');
-                    setAchievementsSearch('');
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all focus:outline-none cursor-pointer flex items-center gap-1 ${
-                    achievementsTab === 'simulator'
-                      ? 'bg-purple-605 text-white shadow-xs'
-                      : 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/5'
-                  }`}
-                >
-                  <Sliders className="w-3 h-3" />
-                  <span>Simulateur d'activité</span>
-                </button>
               </div>
 
               {/* Simple search bar (only for search filters on list tabs) */}
-              {achievementsTab !== 'simulator' && (
+              {(
                 <div className="relative w-full sm:w-48">
                   <input
                     type="text"
@@ -2690,214 +2679,8 @@ const user = freshViewedUser || freshCurrentUser;
             {/* Main Interactive Content container */}
             <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 min-h-[250px]">
               
-              {achievementsTab === 'simulator' && (
-                <div className="space-y-4">
-                  <div className="bg-purple-500/5 p-4 rounded-2xl border border-purple-500/10 space-y-1.5">
-                    <span className="font-extrabold text-[12px] uppercase text-purple-605 dark:text-purple-350 block">Console Interactive d'Activités</span>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                      L'application débloque automatiquement les trophées en arrière-plan suite à vos actions sur le site (lecture, écriture, etc.). Afin de faciliter l'évaluation complète des <strong>225 succès</strong>, utilisez les boutons de simulation ci-dessous pour modifier vos statistiques et observer les déblocages automatiques ainsi que le changement de certification.
-                    </p>
-                  </div>
 
-                  {/* Simulator buttons categoried */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Reader simulators */}
-                    <div className="p-3 bg-zinc-50 dark:bg-zinc-900/45 rounded-xl border border-zinc-100 dark:border-zinc-850 space-y-2 text-left">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-200 dark:border-zinc-800 pb-1">Lecteur</span>
-                      <div className="grid grid-cols-2 gap-1.5 pt-1">
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.chaptersRead += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1 Chapitre lu
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.chaptersRead += 10; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +10 Chapitres lus
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.commentsPosted += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1 Commentaire
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.favoritesAdded += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1 Favori
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.completedReadCycles += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer col-span-2"
-                        >
-                          +1 Cycle de lecture complet
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Author simulators */}
-                    <div className="p-3 bg-zinc-50 dark:bg-zinc-900/45 rounded-xl border border-zinc-100 dark:border-zinc-850 space-y-2 text-left">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-200 dark:border-zinc-800 pb-1">Écrivain & Auteur</span>
-                      <div className="grid grid-cols-2 gap-1.5 pt-1">
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.storiesCreated += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1 Récit créé
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.chaptersPublished += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1 Chapitre publié
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.wordsWritten += 1000; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +1000 Mots rédigés
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.wordsWritten += 50000; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer"
-                        >
-                          +50 000 Mots (Roman)
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onUpdateAndVerifyUserStats) {
-                              onUpdateAndVerifyUserStats(st => { st.decorChanges += 1; });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white dark:bg-zinc-850 hover:bg-purple-500/10 dark:hover:bg-purple-950/20 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold border border-zinc-200 dark:border-zinc-800 transition cursor-pointer col-span-2"
-                        >
-                          +1 Personnalisation décors (Bannière)
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bypasses & Quick achievements triggers */}
-                  <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800/80 space-y-3">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-200 dark:border-zinc-800 pb-1 text-left">Déblocage express & Utilitaires</span>
-                    
-                    <div className="flex flex-wrap gap-2 text-left">
-                      <button
-                        onClick={() => {
-                          if (onUpdateAndVerifyUserStats) {
-                            // Set stats that bypass 80% of reader (100 unlocked minimum)
-                            onUpdateAndVerifyUserStats(st => {
-                              st.chaptersRead = 120; // unlocks multiple read counts
-                              st.commentsPosted = 100; // comments
-                              st.favoritesAdded = 55; // favorites
-                              st.completedReadCycles = 50; // cycles
-                              st.decorChanges = 25; // customizations
-                              // Bypasses immediately!
-                            });
-                          }
-                        }}
-                        className="px-3 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 text-white rounded-xl text-[10.5px] font-bold hover:opacity-90 shadow-sm cursor-pointer transition"
-                      >
-                        ⚡ Débloquer Lecteur à 85% (Certifiable)
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (onUpdateAndVerifyUserStats) {
-                            // Set stats that bypass 80% of authors (80 unlocked minimum)
-                            onUpdateAndVerifyUserStats(st => {
-                              st.storiesCreated = 40; // stories
-                              st.chaptersPublished = 85; // chapters
-                              st.wordsWritten = 280000; // words count
-                              st.decorChanges = 25; // customizations
-                              // Bypasses immediately!
-                            });
-                          }
-                        }}
-                        className="px-3 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 text-white rounded-xl text-[10.5px] font-bold hover:opacity-90 shadow-sm cursor-pointer transition"
-                      >
-                        ⚡ Débloquer Auteur à 85% (Certifiable)
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (onUpdateAndVerifyUserStats) {
-                            // Sets all stats to zero
-                            onUpdateAndVerifyUserStats(st => {
-                              st.chaptersRead = 0;
-                              st.commentsPosted = 0;
-                              st.favoritesAdded = 0;
-                              st.completedReadCycles = 0;
-                              st.storiesCreated = 0;
-                              st.chaptersPublished = 0;
-                              st.wordsWritten = 0;
-                              st.decorChanges = 0;
-                            });
-                          }
-                        }}
-                        className="px-3 py-2 bg-zinc-200 hover:bg-purple-600 hover:text-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-[10.5px] font-bold cursor-pointer transition"
-                      >
-                        Réinitialiser à zéro
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Simulation of parameters display */}
-                  <div className="flex items-center space-x-2 bg-zinc-50 dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200/40 dark:border-zinc-800/20">
-                    <input
-                      type="checkbox"
-                      id="simulate-admin"
-                      checked={simulateAdminView}
-                      onChange={(e) => setSimulateAdminView(e.target.checked)}
-                      className="w-4 h-4 rounded text-purple-600 border-zinc-300 focus:ring-purple-500"
-                    />
-                    <label htmlFor="simulate-admin" className="text-xs text-zinc-650 dark:text-zinc-300 font-bold cursor-pointer select-none">
-                      Simuler la Vue Administrateur (pour révéler la section confidentielle de certification)
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {achievementsTab !== 'simulator' && (() => {
+              {(() => {
                 const isReaderMode = achievementsTab === 'reader';
                 const ownerAllUnlocked = currentUser.role === 'Administrateur';
                 const list = isReaderMode
@@ -3216,7 +2999,7 @@ const user = freshViewedUser || freshCurrentUser;
 
             {/* CONFIDENTIAL ADMINISTRATOR FLAG SECTION */}
             {(() => {
-              const isAdminView = currentUser.role === 'Administrateur' || simulateAdminView;
+              const isAdminView = currentUser.role === 'Administrateur';
               if (!isAdminView) return null;
 
               return (
@@ -3224,11 +3007,6 @@ const user = freshViewedUser || freshCurrentUser;
                   <div className="flex items-center space-x-1.5 text-purple-305 dark:text-purple-300 font-bold text-xs uppercase tracking-wider">
                     <Award className="w-4 h-4 text-purple-400" />
                     <span>Statut de Certification (Réservé à l'Administration)</span>
-                    {simulateAdminView && ! (currentUser.role === 'Administrateur') && (
-                      <span className="text-[8px] bg-amber-500/10 text-amber-500 font-mono px-1.5 py-0.5 rounded-full border border-amber-500/20 uppercase font-black">
-                        Simulé
-                      </span>
-                    )}
                   </div>
                   <div className="text-[10.5px] text-zinc-300 space-y-1 leading-normal">
                     <p>
