@@ -2099,12 +2099,35 @@ export default function App() {
         alert(msg);
         return;
       }
-      // Reflète l'état serveur : compte retiré des listes, récits dépubliés.
-      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isBanned: true } : u).filter(u => u.id !== userId));
+      // Reflète l'état serveur : compte marqué suspendu (conservé dans la liste
+      // admin pour permettre la réactivation), récits dépubliés.
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isBanned: true } : u));
       setStories(prev => prev.filter(s => s.authorId !== userId));
       alert("Compte suspendu. La connexion est bloquée et ses œuvres ont été dépubliées.");
     } catch {
       alert("Erreur de connexion : la suspension n'a pas pu être appliquée.");
+    }
+  };
+
+  const handleUnbanUser = async (userId: string) => {
+    // Réactivation : lève la suspension côté serveur (login de nouveau possible).
+    // Les récits restent en brouillon — à l'auteur de les republier.
+    try {
+      const res = await fetch(`/api/users/${userId}/ban`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ banned: false }),
+      });
+      if (!res.ok) {
+        let msg = 'La réactivation a échoué.';
+        try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+        alert(msg);
+        return;
+      }
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isBanned: false } : u));
+      alert("Compte réactivé. L'utilisateur peut de nouveau se connecter.");
+    } catch {
+      alert("Erreur de connexion : la réactivation n'a pas pu être appliquée.");
     }
   };
 
@@ -2512,6 +2535,7 @@ export default function App() {
                       stories={stories}
                       onToggleUserVerification={handleToggleUserVerification}
                       onBanUser={handleBanUser}
+                      onUnbanUser={handleUnbanUser}
                       onDeleteStory={handleDeleteStory}
                       onDismissFlag={handleDismissFlag}
                       onDismissUserFlag={handleDismissUserFlag}

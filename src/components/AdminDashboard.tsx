@@ -16,7 +16,8 @@ import {
   Check, 
   Award,
   SlidersHorizontal,
-  FolderLock
+  FolderLock,
+  RotateCcw
 } from 'lucide-react';
 import { User, Story } from '../types';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -27,6 +28,7 @@ interface AdminDashboardProps {
   stories: Story[];
   onToggleUserVerification: (userId: string) => void;
   onBanUser: (userId: string) => void;
+  onUnbanUser: (userId: string) => void;
   onDeleteStory: (storyId: string) => void;
   onDismissFlag: (storyId: string) => void;
   onDismissUserFlag: (userId: string) => void;
@@ -38,6 +40,7 @@ export default function AdminDashboard({
   stories,
   onToggleUserVerification,
   onBanUser,
+  onUnbanUser,
   onDeleteStory,
   onDismissFlag,
   onDismissUserFlag
@@ -333,6 +336,11 @@ export default function AdminDashboard({
                           {user.username}
                         </span>
                         {user.isVerified && <VerifiedBadge size="sm" />}
+                        {user.isBanned && (
+                          <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide bg-red-500/10 px-1.5 py-0.5 rounded">
+                            Suspendu
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-gray-400">{user.email} • Rôle : {user.role}</p>
                     </div>
@@ -358,19 +366,30 @@ export default function AdminDashboard({
                       <span className="text-[10px] text-gray-400 italic px-2">Certification réservée aux auteurs</span>
                     )}
 
-                    {/* Ban user button if it isn't myself or another admin */}
+                    {/* Suspension / réactivation (jamais soi-même ni un autre admin) */}
                     {user.id !== currentUser.id && user.role !== 'Administrateur' && (
-                      <button
-                        id={`ban-user-btn-${user.id}`}
-                        onClick={() => {
-                          if (confirm(`Voulez-vous suspendre définitivement l’utilisateur @${user.username} de PLUME ?`)) {
-                            onBanUser(user.id);
-                          }
-                        }}
-                        className="p-1.5 px-3 text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-950/20 hover:bg-purple-500/20 rounded-lg transition cursor-pointer"
-                      >
-                        Bannir
-                      </button>
+                      user.isBanned ? (
+                        <button
+                          id={`unban-user-btn-${user.id}`}
+                          onClick={() => onUnbanUser(user.id)}
+                          className="p-1.5 px-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/20 hover:bg-emerald-500/20 rounded-lg transition cursor-pointer flex items-center space-x-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Réactiver</span>
+                        </button>
+                      ) : (
+                        <button
+                          id={`ban-user-btn-${user.id}`}
+                          onClick={() => {
+                            if (confirm(`Voulez-vous suspendre l’utilisateur @${user.username} de PLUME ? (Réversible)`)) {
+                              onBanUser(user.id);
+                            }
+                          }}
+                          className="p-1.5 px-3 text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-950/20 hover:bg-purple-500/20 rounded-lg transition cursor-pointer"
+                        >
+                          Bannir
+                        </button>
+                      )
                     )}
 
                   </div>
