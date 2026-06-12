@@ -77,6 +77,7 @@ interface MessagesViewProps {
   onSendMessage: (conversationId: string, content: string) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
+  onViewProfile?: (userId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -173,6 +174,7 @@ export default function MessagesView({
   onSendMessage,
   onStartCall,
   onlineUserIds,
+  onViewProfile,
   onDeleteConversation,
   onStartConversation,
   activeConversationId,
@@ -541,7 +543,8 @@ export default function MessagesView({
                     <img
                       src={partner.avatar}
                       alt={partner.username}
-                      className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100 dark:ring-zinc-800"
+                      onClick={(e) => { e.stopPropagation(); onViewProfile?.(partner.id); }}
+                      className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100 dark:ring-zinc-800 cursor-pointer hover:ring-purple-500/50"
                       referrerPolicy="no-referrer"
                     />
                     {onlineUserIds.has(partner.id) && (
@@ -717,7 +720,8 @@ export default function MessagesView({
                     <img
                       src={interlocutor.avatar}
                       alt={interlocutor.username}
-                      className="w-10 h-10 rounded-full object-cover border border-zinc-800 shrink-0"
+                      onClick={() => onViewProfile?.(interlocutor.id)}
+                      className="w-10 h-10 rounded-full object-cover border border-zinc-800 shrink-0 cursor-pointer hover:border-purple-500"
                       referrerPolicy="no-referrer"
                     />
                     {onlineUserIds.has(interlocutor.id) && (
@@ -726,7 +730,10 @@ export default function MessagesView({
                   </div>
 
                   <div className="text-left min-w-0">
-                    <h4 className="text-xs font-serif font-black text-white leading-none flex items-center">
+                    <h4
+                      onClick={() => onViewProfile?.(interlocutor.id)}
+                      className="text-xs font-serif font-black text-white leading-none flex items-center cursor-pointer hover:text-purple-300 transition"
+                    >
                       <span>{interlocutor.username}</span>
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>

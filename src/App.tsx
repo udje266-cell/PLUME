@@ -33,6 +33,7 @@ import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
 import { initPushNotifications } from './utils/push';
+import { Capacitor } from '@capacitor/core';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
@@ -106,6 +107,9 @@ export default function App() {
 
   // Présence en ligne (style WhatsApp) : IDs des utilisateurs réellement connectés.
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  // Passe à true une fois le token restauré (natif) → évite d'ouvrir le socket
+  // temps réel sans authentification au démarrage de l'app.
+  const [tokenRestored, setTokenRestored] = useState(false);
   const [realtimeToasts, setRealtimeToasts] = useState<RealtimeNotificationToast[]>([]);
 
   // Notifications : chargées depuis l'API, mises en cache localStorage, enrichies via Socket.io.
@@ -565,6 +569,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthenticated || !currentUser?.id) return;
+    // Sur natif (APK), l'auth socket repose UNIQUEMENT sur le token (pas de
+    // cookie cross-origin). On attend donc que le token soit restauré avant
+    // d'ouvrir le socket, sinon il se connecte sans token, est rejeté, et ne
+    // se reconnecte jamais → ni présence, ni messages, ni abonnements en direct.
+    if (Capacitor.isNativePlatform() && !getAuthToken()) return;
 
     const socket = io(API_BASE || window.location.origin, {
       transports: ['websocket', 'polling'],
@@ -743,7 +752,7 @@ export default function App() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [isAuthenticated, currentUser?.id]);
+  }, [isAuthenticated, currentUser?.id, tokenRestored]);
 
   // Démarre un appel audio sortant vers un utilisateur.
   const handleStartCall = React.useCallback((peer: { id: string; username?: string; avatar?: string }) => {
@@ -943,6 +952,9 @@ export default function App() {
         // 0. Natif : réhydrate le token persistant avant tout appel authentifié
         //    (le cookie httpOnly n'existe pas hors web same-origin).
         await restoreAuthToken();
+        // Le token mémoire est prêt → débloque la (re)connexion du socket temps
+        // réel, qui sinon démarrerait sans token et resterait non authentifié.
+        setTokenRestored(true);
 
         // 1. Fetch Users & Me
         const me = await refreshUsersData();
@@ -2580,6 +2592,7 @@ export default function App() {
                       setConversations={setConversations}
                       onStartCall={handleStartCall}
                       onlineUserIds={onlineUserIds}
+                      onViewProfile={handleViewUserProfile}
                       onSendMessage={handleSendMessage}
                       onDeleteConversation={handleDeleteConversation}
                       onStartConversation={handleStartConversation}
