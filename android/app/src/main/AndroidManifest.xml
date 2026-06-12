@@ -37,4 +37,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Notifications push (Android 13+ exige une permission runtime). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

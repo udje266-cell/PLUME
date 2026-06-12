@@ -32,6 +32,7 @@ import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
+import { initPushNotifications } from './utils/push';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
@@ -1049,6 +1050,8 @@ export default function App() {
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
     localStorage.setItem('plume_is_logged_in', isAuthenticated ? 'true' : 'false');
+    // Enregistre l'appareil pour les notifications push (natif uniquement).
+    if (isAuthenticated) initPushNotifications().catch(() => {});
   }, [isAuthenticated]);
 
   useEffect(() => {

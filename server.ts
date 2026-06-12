@@ -33,6 +33,7 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
 }
 import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
 import { levelFromXp } from './src/utils/leveling';
+import { sendPushToUser } from './src/server/push';
 
 // Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
 // sans try/catch) ne doit jamais faire planter le process en production.
@@ -483,6 +484,22 @@ export async function createServerInstance() {
     console.log('[SOCKET.IO] Adaptateur Redis actif (diffusion multi-instances).');
   }
 
+  // Notifie un utilisateur en TEMPS RÉEL (socket, app ouverte) ET en PUSH (FCM,
+  // app fermée). Best-effort : le push est un no-op si FCM n'est pas configuré.
+  const notifyUser = (userId: string, notification: any) => {
+    io.to(`user:${userId}`).emit('new_notification', notification);
+    const data: Record<string, string> = { type: String(notification?.type || '') };
+    const nd = notification?.data || {};
+    if (nd.conversationId) data.conversationId = String(nd.conversationId);
+    if (nd.storyId) data.storyId = String(nd.storyId);
+    if (nd.actorId) data.actorId = String(nd.actorId);
+    sendPushToUser(userId, {
+      title: notification?.title || 'PLUME',
+      body: notification?.message || '',
+      data,
+    }).catch(() => {});
+  };
+
   const PORT = Number(process.env.PORT || 3000);
   const JWT_SECRET = process.env.JWT_SECRET || 'plume_secret_dev_change_later';
 
@@ -861,6 +878,36 @@ export async function createServerInstance() {
       console.log(`[SOCKET] utilisateur déconnecté - socketId: ${socket.id}`);
       if (authUserId) markOffline(authUserId);
     });
+  });
+
+  // ----- Notifications push (FCM) : enregistrement des appareils -----
+  app.post('/api/devices/register', requireAuth, async (req: any, res) => {
+    try {
+      const token = String(req.body?.token || '').trim();
+      const platform = String(req.body?.platform || 'android').slice(0, 20);
+      if (!token) return res.status(400).json({ error: 'token requis' });
+      // Un jeton est unique : on le (ré)affecte à l'utilisateur courant.
+      await prisma.deviceToken.upsert({
+        where: { token },
+        update: { userId: req.user.id, platform },
+        create: { token, platform, userId: req.user.id },
+      });
+      res.status(201).json({ success: true });
+    } catch (error) {
+      console.error('[PUSH] register:', error);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de l’appareil.' });
+    }
+  });
+
+  app.post('/api/devices/unregister', requireAuth, async (req: any, res) => {
+    try {
+      const token = String(req.body?.token || '').trim();
+      if (token) await prisma.deviceToken.deleteMany({ where: { token, userId: req.user.id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[PUSH] unregister:', error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
   });
 
   // Health
@@ -2037,7 +2084,7 @@ export async function createServerInstance() {
             } as any
           }
         });
-        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+        notifyUser(story.authorId, notification);
       }
       res.status(201).json(serializeComment(comment));
     } catch (error) {
@@ -2078,7 +2125,7 @@ export async function createServerInstance() {
             } as any
           }
         });
-        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+        notifyUser(story.authorId, notification);
       }
       res.status(201).json(serializeComment(comment));
     } catch (error) {
@@ -2182,7 +2229,7 @@ export async function createServerInstance() {
             } as any
           }
         });
-        io.to(`user:${parent.userId}`).emit('new_notification', notification);
+        notifyUser(parent.userId, notification);
       }
       res.status(201).json(serializeComment({ ...reply, replies: [] }));
     } catch (error) {
@@ -2540,7 +2587,7 @@ export async function createServerInstance() {
                 } as any
               }
             });
-            io.to(`user:${p.id}`).emit('new_notification', notification);
+            notifyUser(p.id, notification);
           })
       );
 
@@ -2737,7 +2784,7 @@ export async function createServerInstance() {
         },
       });
 
-      io.to(`user:${followingId}`).emit('new_notification', notification);
+      notifyUser(followingId, notification);
       
       // Real-time synchronization socket events for follow
       io.to(`user:${followingId}`).emit('user_followed', { followerId: req.user.id, followingId });
@@ -2838,7 +2885,7 @@ export async function createServerInstance() {
           } as any
         }
       });
-      io.to(`user:${receiverId}`).emit('new_notification', notification);
+      notifyUser(receiverId, notification);
       res.status(201).json(friendship);
     } catch (error) {
       console.error(error);
@@ -2869,7 +2916,7 @@ export async function createServerInstance() {
           } as any
         }
       });
-      io.to(`user:${friendship.requesterId}`).emit('new_notification', notification);
+      notifyUser(friendship.requesterId, notification);
       res.json(friendship);
     } catch (error) {
       console.error(error);
@@ -2936,7 +2983,7 @@ export async function createServerInstance() {
             } as any
           }
         });
-        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+        notifyUser(story.authorId, notification);
       }
       // Le total de likes reçus alimente la certification de l'auteur.
       if (story) recomputeCertification(story.authorId).catch(() => {});
@@ -3021,7 +3068,7 @@ export async function createServerInstance() {
             } as any
           }
         });
-        io.to(`user:${story.authorId}`).emit('new_notification', notification);
+        notifyUser(story.authorId, notification);
       }
       res.status(201).json(favorite);
     } catch (error) {

@@ -390,3 +390,16 @@ model Otp {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+// Jetons d'appareils pour les notifications push (FCM). Un utilisateur peut
+// avoir plusieurs appareils ; un même jeton est unique.
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   @default("android")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
