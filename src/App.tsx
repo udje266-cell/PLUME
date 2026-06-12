@@ -93,6 +93,9 @@ export default function App() {
 
   // Real-time notification toasts received through Socket.io
   const socketRef = useRef<Socket | null>(null);
+  // Reflète isAuthenticated pour l'intercepteur 401 (évite la fausse alerte
+  // « session expirée » pendant l'initialisation / hors session active).
+  const isAuthenticatedRef = useRef<boolean>(false);
 
   // ----- Appels audio (WebRTC) -----
   const callManagerRef = useRef<CallManager | null>(null);
@@ -1006,6 +1009,7 @@ export default function App() {
   }, [currentUser]);
 
   useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
     localStorage.setItem('plume_is_logged_in', isAuthenticated ? 'true' : 'false');
   }, [isAuthenticated]);
 
@@ -2228,13 +2232,26 @@ export default function App() {
   // Wrap fetch globally to catch 401 errors
   useEffect(() => {
     const originalFetch = window.fetch;
+    // Routes pour lesquelles un 401 est NORMAL et ne doit JAMAIS déclencher le
+    // message « session expirée » : connexion/OTP (échec de saisie) et la sonde
+    // de session /api/auth/me (un 401 y signifie simplement « pas connecté »,
+    // déjà géré silencieusement par refreshUsersData au démarrage).
+    const ignore401 = (url: string) =>
+      url.includes('/api/auth/login') ||
+      url.includes('/api/auth/verify-otp') ||
+      url.includes('/api/auth/otp/request') ||
+      url.includes('/api/auth/me');
+
     window.fetch = async (input, init) => {
       try {
         const response = await originalFetch(input, init);
         if (response.status === 401) {
           const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-          if (!urlStr.includes('/api/auth/login') && !urlStr.includes('/api/auth/verify-otp') && !urlStr.includes('/api/auth/otp/request')) {
-            console.warn('[AUTH] Intercepted 401 Unauthorized response, logging out user.');
+          // On ne déconnecte/alerte QUE si l'utilisateur était réellement
+          // authentifié (vraie expiration en cours d'usage), pas pendant la
+          // phase d'initialisation ni sur les routes d'auth ci-dessus.
+          if (!ignore401(urlStr) && isAuthenticatedRef.current) {
+            console.warn('[AUTH] 401 en session active → déconnexion.');
             handleLogout();
             alert("Votre session a expiré. Veuillez vous reconnecter.");
           }

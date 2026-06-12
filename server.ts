@@ -633,11 +633,11 @@ export async function createServerInstance() {
   });
 
   function createToken(userId: string) {
-    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
   }
 
   const AUTH_COOKIE = 'plume_token';
-  const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 jours
+  const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
   // Pose le JWT dans un cookie httpOnly : inaccessible au JavaScript (donc non
   // volable via XSS), contrairement à un stockage localStorage.
