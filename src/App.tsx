@@ -672,6 +672,11 @@ export default function App() {
       refreshUsersData();
     });
 
+    socket.on('conversation_deleted', ({ conversationId }: { conversationId: string }) => {
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      setActiveConversationId((prev) => (prev === conversationId ? '' : prev));
+    });
+
     socket.on('group_created', (group: ReadingGroup) => {
       setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
     });
@@ -697,6 +702,7 @@ export default function App() {
       socket.off('messages_read');
       socket.off('user_followed');
       socket.off('user_unfollowed');
+      socket.off('conversation_deleted');
       socket.off('group_created');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();
@@ -2021,16 +2027,27 @@ export default function App() {
     });
   };
 
-  const handleSimulateReceiveMessage = (conversationId: string, senderId: string, content: string) => {
-    if (!currentUser) return;
-    const sender = allUsers.find(u => u.id === senderId) || allUsers[0];
-    
-    // Simulate incoming message creation on backend
-    fetch('/api/messages', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ conversationId, senderId: sender.id, content })
-    }).catch(e => console.error('[PLUME] Erreur réception message simulé backend :', e));
+  const handleDeleteConversation = async (conversationId: string) => {
+    // Retrait optimiste de l'UI, puis suppression serveur (cascade des messages).
+    const removeLocally = () => {
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setActiveConversationId(prev => (prev === conversationId ? '' : prev));
+    };
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      if (res.ok || res.status === 404) {
+        removeLocally();
+      } else {
+        let msg = 'La conversation n’a pas pu être supprimée.';
+        try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+        alert(msg);
+      }
+    } catch {
+      alert("Erreur de connexion : la conversation n’a pas pu être supprimée.");
+    }
   };
 
   const handleStartConversation = async (participantIds: string[]): Promise<Conversation> => {
@@ -2528,7 +2545,7 @@ export default function App() {
                       setConversations={setConversations}
                       onStartCall={handleStartCall}
                       onSendMessage={handleSendMessage}
-                      onSimulateReceiveMessage={handleSimulateReceiveMessage}
+                      onDeleteConversation={handleDeleteConversation}
                       onStartConversation={handleStartConversation}
                       activeConversationId={activeConversationId}
                       setActiveConversationId={setActiveConversationId}

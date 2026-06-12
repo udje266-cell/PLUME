@@ -2204,6 +2204,36 @@ export async function createServerInstance() {
     }
   });
 
+  // Suppression d'une conversation : réservée à un participant (ou admin). Les
+  // messages liés partent en cascade (onDelete: Cascade). L'autre participant
+  // est notifié en temps réel pour rafraîchir sa liste.
+  app.delete('/api/conversations/:id', requireAuth, async (req: any, res) => {
+    try {
+      const conv = await prisma.conversation.findUnique({
+        where: { id: req.params.id },
+        include: { participants: { select: { id: true } } },
+      });
+      if (!conv) return res.status(404).json({ error: 'Conversation introuvable.' });
+
+      const isParticipant = conv.participants.some((p) => p.id === req.user.id);
+      if (!isParticipant && req.user.role !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action interdite.' });
+      }
+
+      await prisma.conversation.delete({ where: { id: req.params.id } });
+
+      // Notifie les autres participants (suppression côté leur app aussi).
+      conv.participants
+        .filter((p) => p.id !== req.user.id)
+        .forEach((p) => io.to(`user:${p.id}`).emit('conversation_deleted', { conversationId: req.params.id }));
+
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suppression de la conversation.' });
+    }
+  });
+
   app.get('/api/conversations/:id/messages', requireAuth, async (req: any, res) => {
     try {
       console.log(`[CONVERSATION] accès aux messages - conversationId: ${req.params.id}, userId: ${req.user.id}`);

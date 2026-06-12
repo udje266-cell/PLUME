@@ -35,6 +35,15 @@ import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '
 import { authHeaders } from '../utils/auth';
 import { VerifiedBadge } from './VerifiedBadge';
 
+// Jeu d'émojis rapides (rendus avec la police native de l'appareil). Le clavier
+// natif du téléphone reste utilisable en plus, directement dans le champ texte.
+const EMOJIS = [
+  '😀','😁','😂','🤣','😊','😍','🥰','😘','😎','🤩','😅','😉','🙂','🙃','😇','🤗',
+  '🤔','😴','😭','😢','😡','🥵','🥶','😱','🤯','🤫','😏','😬','🙄','😈','💀','👻',
+  '👍','👎','👌','🙏','👏','🙌','💪','✌️','🤝','✍️','❤️','🧡','💛','💚','💙','💜',
+  '🔥','✨','⭐','🌟','💫','🎉','🎊','📚','📖','✒️','🖋️','🌹','🌸','☕','🌙','🪶',
+];
+
 interface MessagesViewProps {
   currentUser: User;
   allUsers: User[];
@@ -42,7 +51,7 @@ interface MessagesViewProps {
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   onSendMessage: (conversationId: string, content: string) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
-  onSimulateReceiveMessage: (conversationId: string, senderId: string, content: string) => void;
+  onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
   setActiveConversationId: (id: string) => void;
@@ -137,7 +146,7 @@ export default function MessagesView({
   setConversations,
   onSendMessage,
   onStartCall,
-  onSimulateReceiveMessage,
+  onDeleteConversation,
   onStartConversation,
   activeConversationId,
   setActiveConversationId,
@@ -155,8 +164,7 @@ export default function MessagesView({
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
 
   const [messageText, setMessageText] = useState('');
-  const [simulationText, setSimulationText] = useState('');
-  const [showSimPanel, setShowSimPanel] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [mobileShowThread, setMobileShowThread] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -340,19 +348,6 @@ export default function MessagesView({
 
     setIsRecording(false);
     setRecordingSeconds(0);
-  };
-
-  // Submit simulated response
-  const handleSimulatedReceive = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!simulationText.trim()) return;
-
-    // La simulation ne concerne que les conversations privées (outil de test) ;
-    // les groupes sont réels et persistés, on n'y injecte pas de faux messages.
-    if (activeConversationId && interlocutor) {
-      onSimulateReceiveMessage(activeConversationId, interlocutor.id, simulationText.trim());
-    }
-    setSimulationText('');
   };
 
   // Custom formatted dynamic timing helper for recorder
@@ -722,12 +717,21 @@ export default function MessagesView({
               >
                 <Phone className="w-4 h-4 scale-105" />
               </button>
-              <button 
-                type="button"
-                className="p-2 hover:bg-zinc-800 rounded-full transition"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
+              {!activeGroupId && activeConversationId && (
+                <button
+                  type="button"
+                  id="delete-conversation-btn"
+                  className="p-2 hover:bg-red-500/10 rounded-full transition text-gray-400 hover:text-red-500"
+                  title="Supprimer la conversation"
+                  onClick={() => {
+                    if (confirm(`Supprimer la conversation avec ${interlocutor.username} ? Cette action est définitive.`)) {
+                      onDeleteConversation(activeConversationId);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -910,13 +914,29 @@ export default function MessagesView({
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER */}
             <div className="z-10 bg-gray-100/75 dark:bg-zinc-900/60 border-t border-gray-200/50 dark:border-zinc-800 p-2.5 shrink-0 space-y-2">
             
+              {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
+              {showEmojiPicker && (
+                <div className="mb-2 p-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-lg grid grid-cols-8 gap-1 max-h-40 overflow-y-auto animate-fade-in">
+                  {EMOJIS.map((emo) => (
+                    <button
+                      key={emo}
+                      type="button"
+                      onClick={() => setMessageText((prev) => prev + emo)}
+                      className="text-xl leading-none p-1 rounded-lg hover:bg-purple-500/10 active:scale-90 transition"
+                    >
+                      {emo}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Standard message input bar */}
               <form onSubmit={handleSend} className="flex items-center space-x-1.5">
-                <button 
-                  type="button" 
-                  className="p-1.5 text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850 rounded-full transition-all shrink-0" 
-                  title="Insérer plume"
-                  onClick={() => setMessageText(prev => prev + ' ✒️')}
+                <button
+                  type="button"
+                  className={`p-1.5 rounded-full transition-all shrink-0 ${showEmojiPicker ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
+                  title="Émojis"
+                  onClick={() => setShowEmojiPicker((v) => !v)}
                 >
                   <Smile className="w-5 h-5 shrink-0" />
                 </button>
@@ -928,6 +948,7 @@ export default function MessagesView({
                   className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
+                  onFocus={() => setShowEmojiPicker(false)}
                 />
 
                 <button
@@ -942,53 +963,6 @@ export default function MessagesView({
                   <Send className="w-4 h-4 transform rotate-0 shrink-0" />
                 </button>
               </form>
-
-            {/* SIMULATION PANEL DRAWER (Immersive interactive testing experience) */}
-            <div className="bg-white/80 dark:bg-zinc-950/45 border border-purple-500/10 dark:border-purple-500/5 rounded-xl overflow-hidden shadow-xs">
-              <button
-                type="button"
-                id="toggle-simulator-drawer"
-                onClick={() => setShowSimPanel(!showSimPanel)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] uppercase font-mono font-bold text-gray-400 dark:text-zinc-400 hover:text-[#7C3AED] transition-colors"
-              >
-                <span className="flex items-center space-x-1.5 text-purple-600 dark:text-purple-400 select-none">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Atelier d’émulation de réponses</span>
-                </span>
-                {showSimPanel ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {showSimPanel && (
-                <div className="p-2.5 border-t border-gray-100 dark:border-zinc-850 bg-purple-550/5 dark:bg-purple-950/5 select-none text-left">
-                  <form onSubmit={handleSimulatedReceive} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <span className="text-[9.5px] uppercase font-mono font-bold text-gray-400 truncate max-w-[200px] shrink-0">
-                      En tant que {activeGroupId ? 'un membre du groupe' : interlocutor.username.split(' ')[0]} :
-                    </span>
-                    
-                    <div className="flex-1 flex gap-2">
-                      <input
-                        id="simulation-respond-input"
-                        type="text"
-                        placeholder={activeGroupId ? "Réponse d'un membre du groupe..." : `Réponse d'auteur simulée de ${interlocutor.username}...`}
-                        value={simulationText}
-                        onChange={(e) => setSimulationText(e.target.value)}
-                        className="flex-1 bg-white/95 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 text-[10px] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-500 italic text-gray-80/90 dark:text-gray-100"
-                      />
-                      <button
-                        id="simulate-msg-btn"
-                        type="submit"
-                        disabled={!simulationText.trim()}
-                        className={`bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg px-3 py-1.5 text-[9px] uppercase tracking-wider transition shrink-0 ${
-                          !simulationText.trim() ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'
-                        }`}
-                      >
-                        Simuler
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-            </div>
 
           </div>
 
