@@ -34,7 +34,6 @@ import {
 } from 'lucide-react';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
-import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 
 /**
@@ -625,14 +624,6 @@ export default function MessagesView({
               );
             })}
           </div>
-
-          {/* SIMULATION SUMMARY FOOTER */}
-          <div className="p-3 bg-purple-50/40 dark:bg-zinc-900/40 border-t border-gray-150 dark:border-zinc-850 flex items-start space-x-2 text-[10px] text-purple-600 dark:text-purple-300">
-            <Sparkles className="w-5 h-5 shrink-0 text-[#7C3AED]" />
-            <p className="leading-snug select-none">
-              Nouveau message : {activeTab === 'chats' ? 'écrivez directement en solo' : 'gérez vos salons littéraires communautaires'}.
-            </p>
-          </div>
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW */}
@@ -739,7 +730,7 @@ export default function MessagesView({
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
                     <p className="text-[10px] text-white/90 font-bold mt-1.5">
-                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'} • {displayRole(interlocutor.role)}
+                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'}
                     </p>
                   </div>
                 </>
@@ -1059,7 +1050,6 @@ export default function MessagesView({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{userObj.username}</span>
-                        <span className="text-[9px] font-mono text-purple-600 font-extrabold uppercase bg-purple-50 dark:bg-purple-950/20 px-1 rounded">{displayRole(userObj.role)}</span>
                       </div>
                       <p className="text-[10px] text-gray-400 truncate mt-0.5">{userObj.bio || "Aucune biographie"}</p>
                     </div>
