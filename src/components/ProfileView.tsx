@@ -34,6 +34,7 @@ import {
   Trash,
   Trophy,
   Award,
+  Zap,
   Image as ImageIcon,
   MoreVertical,
   ChevronRight,
@@ -43,6 +44,7 @@ import {
   X
 } from 'lucide-react';
 import { VerifiedBadge } from './VerifiedBadge';
+import { levelProgress } from '../utils/leveling';
 import { User, UserRole, Story, Chapter } from '../types';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
@@ -1010,6 +1012,9 @@ const user = freshViewedUser || freshCurrentUser;
   const canSeeFollowers = isOwnProfile || !!user.showFollowers;
   const canSeeFriends = isOwnProfile || !!user.showFriends;
   const canSeeMentions = isOwnProfile || !!user.showMentions;
+  // Palmarès & niveaux : visibles par soi-même, ou si l'utilisateur l'autorise
+  // (showPalmares, activé par défaut). Réglable dans la confidentialité.
+  const canSeePalmares = isOwnProfile || (user.showPalmares ?? true);
 
   // Filtered Library Stories
   const getLibraryStories = () => {
@@ -1662,8 +1667,40 @@ const user = freshViewedUser || freshCurrentUser;
         </div>
       </div>
 
+      {/* NIVEAUX (XP) — deux jauges séparées Lecteur / Auteur, selon le rôle */}
+      {canSeePalmares && (() => {
+        const showReaderLvl = user.role !== 'Auteur';
+        const showAuthorLvl = user.role !== 'Lecteur';
+        const rp = levelProgress(user.readerXp || 0);
+        const ap = levelProgress(user.authorXp || 0);
+        const Gauge = (p: ReturnType<typeof levelProgress>, label: string, accent: string) => (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-zinc-700 dark:text-zinc-200">
+                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-white text-[10px] font-black ${accent}`}>{p.level}</span>
+                {label} · <span className="text-zinc-400 font-bold normal-case">{p.title}</span>
+              </span>
+              <span className="text-[9px] font-mono text-zinc-400">{p.inLevel}/{p.levelSpan} XP</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-zinc-150 dark:bg-zinc-800 overflow-hidden">
+              <div className={`h-full rounded-full ${accent} transition-all`} style={{ width: `${p.percent}%` }} />
+            </div>
+          </div>
+        );
+        return (
+          <div className="bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl space-y-3 font-sans text-left shadow-lg">
+            <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-200">
+              <Zap className="w-4 h-4 text-purple-600" />
+              <span className="font-bold text-[10px] uppercase tracking-wider">Niveaux & Expérience</span>
+            </div>
+            {showReaderLvl && Gauge(rp, 'Lecteur', 'bg-purple-600')}
+            {showAuthorLvl && Gauge(ap, 'Auteur', 'bg-emerald-600')}
+          </div>
+        );
+      })()}
+
       {/* COMPACT & ELEGANT ACCOMPLISHMENTS CARD DISPLAY */}
-      {(() => {
+      {canSeePalmares && (() => {
         const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
         // Le propriétaire/administrateur débloque tous les accomplissements.
         const ownerAllUnlocked = currentUser.role === 'Administrateur';
@@ -3785,6 +3822,24 @@ const user = freshViewedUser || freshCurrentUser;
                           onChange={(e) => {
                             onUpdateProfile({ showBooksWritten: e.target.checked });
                             setShowStatusToast(e.target.checked ? "Affichage du livre écrits activé !" : "Affichage du livre écrits désactivé !");
+                            setTimeout(() => setShowStatusToast(null), 2550);
+                          }}
+                          className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Afficher le palmarès / les niveaux */}
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
+                        <div className="space-y-0.5 pr-4">
+                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Afficher mon palmarès</label>
+                          <span className="text-[9px] text-zinc-455 block">Rendre visibles vos niveaux (XP) et vos accomplissements sur votre profil public. (Visible par défaut)</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={currentUser.showPalmares ?? true}
+                          onChange={(e) => {
+                            onUpdateProfile({ showPalmares: e.target.checked });
+                            setShowStatusToast(e.target.checked ? "Palmarès rendu public !" : "Palmarès masqué !");
                             setTimeout(() => setShowStatusToast(null), 2550);
                           }}
                           className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"

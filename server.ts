@@ -32,6 +32,7 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
   };
 }
 import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
+import { levelFromXp } from './src/utils/leveling';
 
 // Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
 // sans try/catch) ne doit jamais faire planter le process en production.
@@ -131,7 +132,7 @@ function serializeUser(user: any, includePrivate = false) {
   const blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers.map((b: any) => b.blockedId || b.id || b) : [];
   // flagReason est un motif de modération : on ne l'expose qu'en mode privé
   // (soi-même / administrateur), jamais sur les profils publics.
-  const { passwordHash, email, birthDate, flagReason, ...safeUser } = user;
+  const { passwordHash, email, birthDate, flagReason, xpMeta, ...safeUser } = user;
   const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
@@ -406,6 +407,43 @@ async function recomputeCertification(userId: string): Promise<void> {
   } catch (error) {
     console.error('[CERT] Échec du recalcul de certification:', error);
   }
+}
+
+// ----- Système de niveaux (XP) -----
+// Barème validé (deux jauges séparées : lecteur / auteur).
+const XP = {
+  readChapter: 10, finishBook: 50, likeGiven: 2, commentGiven: 5,
+  favoriteGiven: 3, followGiven: 5,
+  publishChapter: 30, publishStory: 80,
+  likeReceived: 3, favoriteReceived: 5, commentReceived: 4, followerGained: 10,
+};
+
+/** Ajoute de l'XP à une jauge (lecteur/auteur). Best-effort, jamais bloquant. */
+async function awardXp(userId: string | undefined, pool: 'reader' | 'author', amount: number): Promise<void> {
+  if (!userId || amount <= 0) return;
+  try {
+    const field = pool === 'author' ? 'authorXp' : 'readerXp';
+    await prisma.user.update({ where: { id: userId }, data: { [field]: { increment: amount } } });
+  } catch { /* l'XP ne doit jamais casser l'action principale */ }
+}
+
+/**
+ * Ajoute de l'XP avec un PLAFOND JOURNALIER par type d'action (anti-abus).
+ * Utilise User.xpMeta = { date: 'YYYY-MM-DD', counters: { [key]: n } }.
+ */
+async function awardCappedXp(userId: string | undefined, pool: 'reader' | 'author', amount: number, key: string, dailyMax: number): Promise<void> {
+  if (!userId || amount <= 0) return;
+  try {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { xpMeta: true } });
+    const today = new Date().toISOString().slice(0, 10);
+    let meta: any = (u?.xpMeta as any) || {};
+    if (meta.date !== today || typeof meta.counters !== 'object') meta = { date: today, counters: {} };
+    const used = meta.counters[key] || 0;
+    if (used >= dailyMax) return; // plafond atteint pour aujourd'hui
+    meta.counters[key] = used + 1;
+    await prisma.user.update({ where: { id: userId }, data: { xpMeta: meta } });
+    await awardXp(userId, pool, amount);
+  } catch { /* best-effort */ }
 }
 
 export async function createServerInstance() {
@@ -1262,6 +1300,7 @@ export async function createServerInstance() {
         privateProfile: user.privateProfile,
         showBooksRead: user.showBooksRead,
         showBooksWritten: user.showBooksWritten,
+        showPalmares: user.showPalmares,
         allowMessages: user.allowMessages,
         whoCanFollow: user.whoCanFollow,
         whoCanComment: user.whoCanComment,
@@ -1702,6 +1741,10 @@ export async function createServerInstance() {
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
       await recomputeCertification(existing.authorId);
+      // XP auteur : +80 à la PREMIÈRE publication d'un récit (transition vers Publié).
+      if (existing.status !== 'PUBLIE' && data.status === 'PUBLIE') {
+        awardXp(existing.authorId, 'author', XP.publishStory).catch(() => {});
+      }
       res.json(serializeStory(updatedStory));
     } catch (error) {
       console.error(error);
@@ -1761,6 +1804,8 @@ export async function createServerInstance() {
         },
       });
       await recomputeCertification(story.authorId);
+      // XP auteur : +30 si le chapitre est créé directement publié.
+      if (newChapter.isPublished) awardXp(story.authorId, 'author', XP.publishChapter).catch(() => {});
       res.status(201).json(serializeChapter(newChapter));
     } catch (error) {
       console.error(error);
@@ -1786,6 +1831,10 @@ export async function createServerInstance() {
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
+      // XP auteur : +30 à la PREMIÈRE publication du chapitre (transition).
+      if (!existingChapter.isPublished && updatedChapter.isPublished) {
+        awardXp(existingChapter.story.authorId, 'author', XP.publishChapter).catch(() => {});
+      }
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -1869,6 +1918,11 @@ export async function createServerInstance() {
       const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
       if (!permission.ok) return res.status(403).json({ error: permission.error });
       const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: true, replies: true } });
+      // XP : commentaire (plafonné côté donneur), bonus à l'auteur du récit.
+      if (story.authorId !== req.user.id) {
+        awardCappedXp(req.user.id, 'reader', XP.commentGiven, 'commentGiven', 10).catch(() => {});
+        awardXp(story.authorId, 'author', XP.commentReceived).catch(() => {});
+      }
       if (story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
@@ -2551,11 +2605,20 @@ export async function createServerInstance() {
       if (await blockExistsBetween(req.user.id, followingId)) {
         return res.status(403).json({ error: 'Action impossible : un blocage est actif.' });
       }
+      const alreadyFollowing = await prisma.follow.findUnique({
+        where: { followerId_followingId: { followerId: req.user.id, followingId } },
+        select: { id: true },
+      });
       const follow = await prisma.follow.upsert({
         where: { followerId_followingId: { followerId: req.user.id, followingId } },
         update: {},
         create: { followerId: req.user.id, followingId },
       });
+      // XP : nouvel abonnement uniquement (l'abonné = lecteur, le suivi = auteur).
+      if (!alreadyFollowing) {
+        awardXp(req.user.id, 'reader', XP.followGiven).catch(() => {});
+        awardXp(followingId, 'author', XP.followerGained).catch(() => {});
+      }
 
       const notification = await prisma.notification.create({
         data: {
@@ -2746,8 +2809,14 @@ export async function createServerInstance() {
   // Likes and Favorites
   app.post('/api/stories/:id/like', requireAuth, async (req: any, res) => {
     try {
+      const alreadyLiked = await prisma.storyLike.findUnique({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, select: { id: true } });
       const like = await prisma.storyLike.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
       const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+      // XP : seulement à un NOUVEAU like (pas au re-like), plafonné côté donneur.
+      if (!alreadyLiked && story && story.authorId !== req.user.id) {
+        awardCappedXp(req.user.id, 'reader', XP.likeGiven, 'likeGiven', 20).catch(() => {});
+        awardXp(story.authorId, 'author', XP.likeReceived).catch(() => {});
+      }
       if (story && story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
@@ -2825,8 +2894,14 @@ export async function createServerInstance() {
 
   app.post('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
     try {
+      const alreadyFav = await prisma.favorite.findUnique({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, select: { id: true } });
       const favorite = await prisma.favorite.upsert({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } }, update: {}, create: { userId: req.user.id, storyId: req.params.id } });
       const story = await prisma.story.findUnique({ where: { id: req.params.id } });
+      // XP : nouveau favori uniquement (action idempotente, pas de farming).
+      if (!alreadyFav && story && story.authorId !== req.user.id) {
+        awardXp(req.user.id, 'reader', XP.favoriteGiven).catch(() => {});
+        awardXp(story.authorId, 'author', XP.favoriteReceived).catch(() => {});
+      }
       if (story && story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
@@ -2874,11 +2949,16 @@ export async function createServerInstance() {
         where: { userId: req.user.id, storyId: req.params.id, chapterId, createdAt: { gte: since } },
         select: { id: true },
       });
+      // XP lecteur : +10 à la PREMIÈRE lecture d'un chapitre (jamais rejouable).
+      const everReadChapter = chapterId
+        ? await prisma.readingHistory.findFirst({ where: { userId: req.user.id, storyId: req.params.id, chapterId }, select: { id: true } })
+        : await prisma.readingHistory.findFirst({ where: { userId: req.user.id, storyId: req.params.id }, select: { id: true } });
       const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
       if (!alreadyCounted) {
         await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
         if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
       }
+      if (!everReadChapter) awardXp(req.user.id, 'reader', XP.readChapter).catch(() => {});
       res.status(201).json(history);
     } catch (error) {
       console.error(error);

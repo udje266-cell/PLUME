@@ -25,6 +25,9 @@ export interface User {
   isFlagged?: boolean;
   flagReason?: string;
   isBanned?: boolean;
+  readerXp?: number;
+  authorXp?: number;
+  showPalmares?: boolean;
   showFollowers?: boolean;
   showFollowing?: boolean;
   showFriends?: boolean;
