@@ -28,6 +28,14 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
 
+/** Formate un compteur de façon compacte : 1234 → « 1,2 k », 1500000 → « 1,5 M ». */
+function formatStat(n: number): string {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace('.', ',').replace(',0', '')} M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace('.', ',').replace(',0', '')} k`;
+  return String(v);
+}
+
 interface HomeViewProps {
   currentUser: User;
   allUsers: User[];
@@ -357,7 +365,7 @@ export default function HomeView({
                   </h4>
                   <p className="text-[10px] text-gray-400 line-clamp-1">
                     Par{' '}
-                    <span 
+                    <span
                       onClick={(e) => {
                         e.stopPropagation();
                         if (onViewProfile) {
@@ -372,6 +380,17 @@ export default function HomeView({
                       {story.authorName}
                     </span>
                   </p>
+                  {/* Vues + likes du récit */}
+                  <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400 pt-0.5">
+                    <span className="flex items-center gap-1" title="Vues">
+                      <Eye className="w-3 h-3 text-gray-500" />
+                      <span className="font-semibold">{formatStat(story.views)}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="J'aime">
+                      <Heart className="w-3 h-3 text-purple-500 fill-purple-500/10" />
+                      <span className="font-semibold">{formatStat(story.likes)}</span>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Card actions bottom */}

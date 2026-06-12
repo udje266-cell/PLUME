@@ -64,6 +64,14 @@ async function main() {
   // n'est JAMAIS en dur dans le dépôt : il provient de la variable ADMIN_PASSWORD.
   await ensureAdmin();
 
+  // Le contenu de DÉMO (faux auteurs + récits) n'est créé QUE si explicitement
+  // demandé via SEED_DEMO=true. Par défaut il est désactivé : sinon, après un
+  // nettoyage, le seed le recréerait à chaque redéploiement (base vide → seed).
+  if (process.env.SEED_DEMO !== 'true') {
+    console.log('[seed] Contenu de démo désactivé (SEED_DEMO ≠ true). Seul le compte admin est garanti.');
+    return;
+  }
+
   const existingStories = await prisma.story.count();
   if (existingStories > 0) {
     console.log(`[seed] ${existingStories} récit(s) déjà présents — contenu de démo ignoré (idempotent).`);
