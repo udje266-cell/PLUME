@@ -125,6 +125,7 @@ export interface Message {
   content: string;
   date: string;
   isRead: boolean;
+  isDelivered?: boolean;
   sender?: User;
   receiverId?: string;
   receiverName?: string;

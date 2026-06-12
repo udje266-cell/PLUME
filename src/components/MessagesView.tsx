@@ -28,12 +28,37 @@ import {
   Volume2,
   Trash2,
   Check,
+  Feather,
   Headphones,
   BookOpen
 } from 'lucide-react';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
 import { VerifiedBadge } from './VerifiedBadge';
+
+/**
+ * Accusés de lecture « façon plume » (style WhatsApp) :
+ *   • 1 plume blanche  → message envoyé
+ *   • 2 plumes blanches → message remis (reçu sur l'appareil)
+ *   • 1 plume violette  → message lu
+ * Avec une petite animation amusante à l'apparition de chaque état.
+ */
+function MessageTicks({ isDelivered, isRead }: { isDelivered?: boolean; isRead?: boolean }) {
+  if (isRead) {
+    return (
+      <Feather className="w-3.5 h-3.5 text-fuchsia-300 fill-fuchsia-300/30 shrink-0 inline animate-feather-pop" />
+    );
+  }
+  if (isDelivered) {
+    return (
+      <span className="inline-flex items-center -space-x-1.5 animate-feather-pop">
+        <Feather className="w-3.5 h-3.5 text-white shrink-0" />
+        <Feather className="w-3.5 h-3.5 text-white shrink-0" />
+      </span>
+    );
+  }
+  return <Feather className="w-3.5 h-3.5 text-white/70 shrink-0 inline animate-feather-in" />;
+}
 
 // Jeu d'émojis rapides (rendus avec la police native de l'appareil). Le clavier
 // natif du téléphone reste utilisable en plus, directement dans le champ texte.
@@ -538,7 +563,7 @@ export default function MessagesView({
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
                         {lastMsg?.senderId === currentUser.id && (
-                          <CheckCheck className="w-3.5 h-3.5 text-purple-650 dark:text-purple-450 shrink-0 inline mr-0.5" />
+                          <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} /></span>
                         )}
                         <span>{lastMsg ? lastMsg.content : partner.bio || 'Aucun message de chat'}</span>
                       </p>
@@ -841,7 +866,7 @@ export default function MessagesView({
                           <span>
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {isSentByMe && <CheckCheck className="w-3 h-3 text-purple-200" />}
+                          {isSentByMe && <Feather className="w-3 h-3 text-white/70 shrink-0 inline animate-feather-in" />}
                         </div>
                       </div>
                     </div>
@@ -899,13 +924,7 @@ export default function MessagesView({
                           <span>
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {isSentByMe && (
-                            msg.isRead ? (
-                              <CheckCheck className="w-3.5 h-3.5 text-purple-200 shrink-0 inline" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5 text-purple-300/60 shrink-0 inline" />
-                            )
-                          )}
+                          {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
                         </div>
 
                       </div>

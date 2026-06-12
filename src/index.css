@@ -43,6 +43,24 @@
   animation: fadeIn 0.25s ease-out forwards;
 }
 
+/* Accusés « plume » : petites animations amusantes pour les statuts de message. */
+@keyframes featherIn {
+  0% { opacity: 0; transform: translateY(-2px) rotate(-18deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0deg); }
+}
+@keyframes featherPop {
+  0% { transform: scale(0.4) rotate(-25deg); opacity: 0; }
+  55% { transform: scale(1.35) rotate(8deg); opacity: 1; }
+  75% { transform: scale(0.92) rotate(-4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.animate-feather-in {
+  animation: featherIn 0.3s ease-out;
+}
+.animate-feather-pop {
+  animation: featherPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 /* Custom smooth scrolling and scrollbars for high fidelity feeling */
 ::-webkit-scrollbar {
   width: 6px;

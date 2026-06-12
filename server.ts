@@ -797,6 +797,30 @@ export async function createServerInstance() {
       // Présence : marque en ligne + envoie la liste actuelle au nouvel arrivant.
       markOnline(authUserId);
       socket.emit('presence_list', Array.from(onlineUsers.keys()));
+
+      // Rattrapage « remis » : à la connexion, on marque distribués les messages
+      // reçus en attente et on prévient leurs expéditeurs (2 plumes blanches).
+      (async () => {
+        try {
+          const convs = await prisma.conversation.findMany({ where: { participants: { some: { id: authUserId } } }, select: { id: true } });
+          const ids = convs.map((c) => c.id);
+          if (!ids.length) return;
+          const pending = await prisma.message.findMany({ where: { conversationId: { in: ids }, senderId: { not: authUserId }, isDelivered: false }, select: { id: true, senderId: true } });
+          if (!pending.length) return;
+          await prisma.message.updateMany({ where: { id: { in: pending.map((m) => m.id) } }, data: { isDelivered: true } });
+          const bySender = new Map<string, string[]>();
+          for (const m of pending) { const a = bySender.get(m.senderId) || []; a.push(m.id); bySender.set(m.senderId, a); }
+          for (const [sid, mids] of bySender) io.to(`user:${sid}`).emit('message_delivered', { messageIds: mids });
+        } catch { /* best-effort */ }
+      })();
+    });
+
+    // Accusé de distribution en direct : le destinataire confirme la réception
+    // d'un message ; on le marque « remis » et on prévient l'expéditeur.
+    socket.on('message_ack', async (p: { messageId: string; senderId: string }) => {
+      if (!authUserId || !p?.messageId) return;
+      try { await prisma.message.update({ where: { id: p.messageId }, data: { isDelivered: true } }); } catch { /* ignore */ }
+      if (p.senderId) socket.to(`user:${p.senderId}`).emit('message_delivered', { messageIds: [p.messageId] });
     });
 
     socket.on('typing', (payload: { senderId: string; receiverId: string }) => {
@@ -2459,6 +2483,13 @@ export async function createServerInstance() {
         }
       }
 
+      // « Remis » (2 plumes blanches) : vrai si un destinataire est en ligne au
+      // moment de l'envoi (il recevra l'événement temps réel). Sinon, marqué
+      // remis plus tard quand il se connecte / charge la conversation.
+      const recipientOnline = conversation.participants.some(
+        (p) => p.id !== senderId && onlineUsers.has(p.id)
+      );
+
       // Create message
       let message;
       try {
@@ -2467,6 +2498,7 @@ export async function createServerInstance() {
             conversationId,
             senderId,
             content: trimmed,
+            isDelivered: recipientOnline,
             isRead: false
           },
           include: {

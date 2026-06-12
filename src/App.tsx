@@ -621,6 +621,9 @@ export default function App() {
     socket.on('new_message', (message: Message) => {
       if (message.senderId === (currentUser?.id || '')) return;
 
+      // Accusé de distribution (2 plumes blanches côté expéditeur).
+      socket.emit('message_ack', { messageId: message.id, senderId: message.senderId });
+
       const isCurrentActive = message.conversationId === activeConversationIdRef.current;
 
       if (isCurrentActive) {
@@ -660,11 +663,22 @@ export default function App() {
           return {
             ...c,
             unreadCount: payload.readerId === (currentUser?.id || '') ? 0 : c.unreadCount,
-            messages: c.messages.map((m) => m.senderId === payload.readerId ? { ...m, isRead: true } : m)
+            // Le lecteur a lu les messages des AUTRES : on les passe en « lu »
+            // (plume violette) côté expéditeur. (Avant : mauvaise condition.)
+            messages: c.messages.map((m) => m.senderId !== payload.readerId ? { ...m, isRead: true } : m)
           };
         }
         return c;
       }));
+    });
+
+    socket.on('message_delivered', ({ messageIds }: { messageIds: string[] }) => {
+      if (!Array.isArray(messageIds) || !messageIds.length) return;
+      const idSet = new Set(messageIds);
+      setConversations((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) => idSet.has(m.id) ? { ...m, isDelivered: true } : m),
+      })));
     });
 
     socket.on('user_followed', () => {
@@ -720,6 +734,7 @@ export default function App() {
       socket.off('conversation_deleted');
       socket.off('presence_list');
       socket.off('presence_update');
+      socket.off('message_delivered');
       socket.off('group_created');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();

@@ -189,6 +189,7 @@ model Message {
   senderId       String
   conversationId String
   content        String
+  isDelivered    Boolean      @default(false)
   isRead         Boolean      @default(false)
   sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
