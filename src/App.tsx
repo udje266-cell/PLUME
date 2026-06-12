@@ -34,6 +34,7 @@ import CallOverlay from './components/CallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
+import PullToRefresh from './components/PullToRefresh';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
@@ -1837,6 +1838,44 @@ export default function App() {
     }
   };
 
+  // Rafraîchissement global (tirer vers le bas) : recharge comptes, récits,
+  // commentaires, conversations et notifications depuis le serveur.
+  const handleGlobalRefresh = React.useCallback(async () => {
+    try {
+      await Promise.all([
+        refreshUsersData(),
+        fetchConversationsList(),
+        (async () => {
+          const r = await fetch('/api/stories');
+          if (r.ok) {
+            const s = await r.json();
+            setStories(s.map((story: Story) => normalizeStoryViewsFromStorage(normalizeStoryFavoritesFromStorage(normalizeStoryLikesFromStorage(story)))));
+          }
+        })(),
+        (async () => {
+          const r = await fetch('/api/comments');
+          if (r.ok) {
+            const c = await r.json();
+            setComments(c.map((comment: Comment) => normalizeCommentLikesFromStorage(comment)));
+          }
+        })(),
+        (async () => {
+          if (!currentUser?.id) return;
+          const r = await fetch(`/api/notifications/${currentUser.id}`, { headers: authHeaders() });
+          if (r.ok) {
+            const n = await r.json();
+            const mapped = n.map(mapServerNotification).slice(0, 120);
+            setNotifications(mapped);
+            localStorage.setItem('plume_notifications', JSON.stringify(mapped));
+          }
+        })(),
+      ]);
+    } catch (e) {
+      console.error('[PLUME] Erreur de rafraîchissement global :', e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   const handleCreateStory = (storyData: Partial<Story>) => {
     // Increment stats for achievements
     handleUpdateAndVerifyUserStats(st => {
@@ -2508,8 +2547,8 @@ export default function App() {
             />
 
             {/* Main scrollable body container */}
-            <div className="flex-1 overflow-y-auto pb-28 pt-2 scrollbar-none scroll-smooth">
-              
+            <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 pt-2 scrollbar-none scroll-smooth">
+
               {/* SPECIAL SCREEN: Reading pane overlay taking precedence */}
               {selectedStoryForReading ? (
                 <ReadingView
@@ -2657,7 +2696,7 @@ export default function App() {
                 </>
               )}
 
-            </div>
+            </PullToRefresh>
           </div>
         )}
 
