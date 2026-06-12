@@ -48,6 +48,14 @@ export default function AdminDashboard({
 
   const [activeSegment, setActiveSegment] = useState<'moderation' | 'users-management'>('moderation');
 
+  // Cible de défilement : quand on clique une carte de stat, on bascule vers le
+  // bon segment et on fait défiler jusqu'à la liste correspondante.
+  const segmentRef = React.useRef<HTMLDivElement>(null);
+  const goToSegment = (segment: 'moderation' | 'users-management') => {
+    setActiveSegment(segment);
+    setTimeout(() => segmentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
   // Compute stats metrics
   const totalVerifiedAuthors = allUsers.filter(u => u.isVerified).length;
   const flaggedStories = stories.filter(s => s.isFlagged);
@@ -71,11 +79,16 @@ export default function AdminDashboard({
       {/* Global Analytics Board */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
-        <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5">
+        <button
+          id="stat-card-members"
+          type="button"
+          onClick={() => goToSegment('users-management')}
+          className="text-left bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5 transition hover:border-purple-500/50 hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+        >
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Membres Actifs</span>
           <p className="text-2xl font-bold font-mono text-gray-900 dark:text-white mt-1.5">{allUsers.length}</p>
-          <div className="text-[9px] text-gray-455 mt-1">Gérés sous la charte PLUME</div>
-        </div>
+          <div className="text-[9px] text-purple-500/80 mt-1 font-semibold">Cliquez pour gérer les comptes →</div>
+        </button>
 
         <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Publications Globales</span>
@@ -83,11 +96,16 @@ export default function AdminDashboard({
           <div className="text-[9px] text-gray-455 mt-1">{stories.filter(s => s.status === 'Publié').length} Récits publiés</div>
         </div>
 
-        <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5">
+        <button
+          id="stat-card-reports"
+          type="button"
+          onClick={() => goToSegment('moderation')}
+          className="text-left bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5 transition hover:border-purple-500/50 hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+        >
           <span className="text-[10px] font-bold text-purple-650 dark:text-purple-400 uppercase tracking-wider block">Signalements Actifs</span>
-          <p className="text-2xl font-bold font-mono text-purple-600 mt-1.5">{flaggedStories.length}</p>
-          <div className="text-[9px] text-purple-500/80 mt-1">Histoires nécessitant enquête</div>
-        </div>
+          <p className="text-2xl font-bold font-mono text-purple-600 mt-1.5">{flaggedStories.length + flaggedUsers.length}</p>
+          <div className="text-[9px] text-purple-500/80 mt-1 font-semibold">Cliquez pour traiter les signalements →</div>
+        </button>
 
         <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Lectures Cumulées</span>
@@ -98,7 +116,7 @@ export default function AdminDashboard({
       </div>
 
       {/* Navigation Tabs between Moderation and Users */}
-      <div className="flex bg-gray-100 dark:bg-black p-1 rounded-xl self-start w-fit border border-gray-200/50 dark:border-purple-900/15">
+      <div ref={segmentRef} className="flex bg-gray-100 dark:bg-black p-1 rounded-xl self-start w-fit border border-gray-200/50 dark:border-purple-900/15">
         <button
           id="admin-tab-moderation"
           onClick={() => setActiveSegment('moderation')}
