@@ -41,6 +41,7 @@ interface MessagesViewProps {
   conversations: Conversation[];
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   onSendMessage: (conversationId: string, content: string) => void;
+  onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onSimulateReceiveMessage: (conversationId: string, senderId: string, content: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -135,6 +136,7 @@ export default function MessagesView({
   conversations,
   setConversations,
   onSendMessage,
+  onStartCall,
   onSimulateReceiveMessage,
   onStartConversation,
   activeConversationId,
@@ -270,9 +272,10 @@ export default function MessagesView({
   }, [callState]);
 
   const handleStartCall = () => {
-    // Les appels audio ne sont pas encore implémentés (pas d'infrastructure
-    // temps réel média) : on ne simule plus de connexion fictive.
-    alert('Les appels audio arriveront prochainement sur PLUME.');
+    // Appel audio réel (WebRTC) géré globalement par App via onStartCall.
+    if (!interlocutor) return;
+    if (interlocutor.id === currentUser.id) { alert('Vous ne pouvez pas vous appeler vous-même.'); return; }
+    onStartCall({ id: interlocutor.id, username: interlocutor.username, avatar: interlocutor.avatar });
   };
 
   const handleEndCall = () => {

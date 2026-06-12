@@ -743,6 +743,32 @@ export async function createServerInstance() {
       if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
     });
 
+    // ----- Signalisation WebRTC (appels audio) -----
+    // Le serveur ne fait que RELAYER les messages de signalisation entre les
+    // deux pairs (offre/réponse SDP + candidats ICE). Le flux audio lui-même
+    // est pair-à-pair (P2P) et ne transite jamais par le serveur. L'identité de
+    // l'appelant est déduite du token vérifié (authUserId), jamais du client.
+    socket.on('call:offer', (p: { to: string; sdp: any; caller?: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('call:incoming', { from: authUserId, caller: p.caller, sdp: p.sdp });
+    });
+    socket.on('call:answer', (p: { to: string; sdp: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('call:answered', { from: authUserId, sdp: p.sdp });
+    });
+    socket.on('call:ice', (p: { to: string; candidate: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('call:ice', { from: authUserId, candidate: p.candidate });
+    });
+    socket.on('call:reject', (p: { to: string }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('call:rejected', { from: authUserId });
+    });
+    socket.on('call:end', (p: { to: string }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('call:ended', { from: authUserId });
+    });
+
     socket.on('disconnect', () => {
       console.log(`[SOCKET] utilisateur déconnecté - socketId: ${socket.id}`);
     });

@@ -30,6 +30,8 @@ import ProfileView from './components/ProfileView';
 import AdminDashboard from './components/AdminDashboard';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
+import CallOverlay from './components/CallOverlay';
+import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
@@ -91,6 +93,12 @@ export default function App() {
 
   // Real-time notification toasts received through Socket.io
   const socketRef = useRef<Socket | null>(null);
+
+  // ----- Appels audio (WebRTC) -----
+  const callManagerRef = useRef<CallManager | null>(null);
+  const [callStatus, setCallStatus] = useState<CallStatus>('idle');
+  const [callPeer, setCallPeer] = useState<CallPeer | null>(null);
+  const [callRemoteStream, setCallRemoteStream] = useState<MediaStream | null>(null);
   const [realtimeToasts, setRealtimeToasts] = useState<RealtimeNotificationToast[]>([]);
 
   // Notifications : chargées depuis l'API, mises en cache localStorage, enrichies via Socket.io.
@@ -670,6 +678,14 @@ export default function App() {
       setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
     });
 
+    // Gestionnaire d'appels audio : relié au même socket (signalisation).
+    callManagerRef.current = new CallManager(socket, {
+      onStatus: (s) => { setCallStatus(s); if (s === 'idle') { setCallPeer(null); setCallRemoteStream(null); } },
+      onIncoming: (peer) => setCallPeer(peer),
+      onRemoteStream: (stream) => setCallRemoteStream(stream),
+      onError: (msg) => { setCallStatus('idle'); setCallPeer(null); setCallRemoteStream(null); alert(msg); },
+    });
+
     return () => {
       socket.off('connect');
       socket.off('new_notification');
@@ -680,10 +696,23 @@ export default function App() {
       socket.off('user_unfollowed');
       socket.off('group_created');
       socket.off('new_group_message');
+      callManagerRef.current?.dispose();
+      callManagerRef.current = null;
       socket.disconnect();
       socketRef.current = null;
     };
   }, [isAuthenticated, currentUser?.id]);
+
+  // Démarre un appel audio sortant vers un utilisateur.
+  const handleStartCall = React.useCallback((peer: { id: string; username?: string; avatar?: string }) => {
+    if (!callManagerRef.current || !currentUser) { alert("L'appel audio n'est pas disponible (connexion temps réel absente)."); return; }
+    if (callStatus !== 'idle') return;
+    setCallPeer({ id: peer.id, name: peer.username, avatar: peer.avatar });
+    callManagerRef.current.startCall(
+      { id: peer.id, name: peer.username, avatar: peer.avatar },
+      { id: currentUser.id, name: currentUser.username, avatar: currentUser.avatar },
+    );
+  }, [callStatus, currentUser]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
@@ -2480,6 +2509,7 @@ export default function App() {
                       allUsers={allUsers}
                       conversations={conversations}
                       setConversations={setConversations}
+                      onStartCall={handleStartCall}
                       onSendMessage={handleSendMessage}
                       onSimulateReceiveMessage={handleSimulateReceiveMessage}
                       onStartConversation={handleStartConversation}
@@ -2547,6 +2577,17 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* APPEL AUDIO — surcouche globale (entrant / sortant / en cours) */}
+        <CallOverlay
+          status={callStatus}
+          peer={callPeer}
+          remoteStream={callRemoteStream}
+          onAccept={() => callManagerRef.current?.accept()}
+          onReject={() => callManagerRef.current?.reject()}
+          onHangup={() => callManagerRef.current?.end()}
+          onToggleMute={() => callManagerRef.current?.toggleMute() ?? false}
+        />
 
         {/* REAL-TIME NOTIFICATIONS TOASTS OVERLAY */}
         <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none font-sans">
