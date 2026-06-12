@@ -460,11 +460,15 @@ export async function createServerInstance() {
     .filter(Boolean);
   // Origines de l'app native (Capacitor) : toujours tolérées pour Socket.io.
   const SOCKET_NATIVE_ORIGINS = ['capacitor://localhost', 'ionic://localhost', 'http://localhost', 'https://localhost'];
+  // IMPORTANT : les origines natives (Capacitor/APK) doivent TOUJOURS être
+  // autorisées pour Socket.io, sinon l'APK ne peut pas établir la connexion
+  // temps réel (messages, notifications, présence) en production — même quand
+  // CORS_ORIGINS n'est pas défini. Le web est servi en same-origin (pas de CORS).
   const corsOrigin: any =
     allowedOrigins.length > 0
       ? [...allowedOrigins, ...SOCKET_NATIVE_ORIGINS]
       : process.env.NODE_ENV === 'production'
-        ? false
+        ? SOCKET_NATIVE_ORIGINS
         : '*';
 
   const io = new Server(httpServer, {
@@ -760,6 +764,25 @@ export async function createServerInstance() {
     }
   });
 
+  // Présence en ligne (style WhatsApp). Map userId → nombre de connexions
+  // actives (un même utilisateur peut avoir plusieurs onglets/appareils).
+  // Mono-instance : suffisant pour le déploiement actuel.
+  const onlineUsers = new Map<string, number>();
+  const markOnline = (userId: string) => {
+    const n = (onlineUsers.get(userId) || 0) + 1;
+    onlineUsers.set(userId, n);
+    if (n === 1) io.emit('presence_update', { userId, online: true });
+  };
+  const markOffline = (userId: string) => {
+    const n = (onlineUsers.get(userId) || 0) - 1;
+    if (n <= 0) {
+      onlineUsers.delete(userId);
+      io.emit('presence_update', { userId, online: false });
+    } else {
+      onlineUsers.set(userId, n);
+    }
+  };
+
   io.on('connection', (socket) => {
     const authUserId = (socket.data as any).userId as string | undefined;
     console.log(`[SOCKET] utilisateur connecté - socketId: ${socket.id}`);
@@ -771,6 +794,9 @@ export async function createServerInstance() {
       socket.join(`user:${authUserId}`);
       console.log(`[SOCKET] room join - userId: ${authUserId}, socketId: ${socket.id}`);
       socket.emit('joined', { userId: authUserId });
+      // Présence : marque en ligne + envoie la liste actuelle au nouvel arrivant.
+      markOnline(authUserId);
+      socket.emit('presence_list', Array.from(onlineUsers.keys()));
     });
 
     socket.on('typing', (payload: { senderId: string; receiverId: string }) => {
@@ -809,6 +835,7 @@ export async function createServerInstance() {
 
     socket.on('disconnect', () => {
       console.log(`[SOCKET] utilisateur déconnecté - socketId: ${socket.id}`);
+      if (authUserId) markOffline(authUserId);
     });
   });
 
@@ -1168,6 +1195,50 @@ export async function createServerInstance() {
       res.json(users.map((u) => serializeUser(u, includePrivate)));
     } catch (error) {
       console.error('[PLUME] Erreur lors du chargement des utilisateurs, retour d\'un tableau vide par sécurité:', error);
+      res.json([]);
+    }
+  });
+
+  // Suggestions de personnes à découvrir (PLUME = aussi une appli pour se faire
+  // des amis). On propose des comptes aux GOÛTS PROCHES : score = nombre de
+  // genres favoris en commun (+ léger bonus si même rôle). On exclut soi-même,
+  // les comptes déjà suivis, bloqués (dans un sens ou l'autre) et bannis.
+  app.get('/api/suggestions/people', requireAuth, async (req: any, res) => {
+    try {
+      const me = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { following: { select: { followingId: true } }, blockedUsers: { select: { blockedId: true } }, blockedBy: { select: { blockerId: true } } },
+      });
+      if (!me) return res.json([]);
+      const myGenres = new Set(parseJsonArray(me.favoriteGenres));
+      const excluded = new Set<string>([
+        me.id,
+        ...me.following.map((f: any) => f.followingId),
+        ...me.blockedUsers.map((b: any) => b.blockedId),
+        ...me.blockedBy.map((b: any) => b.blockerId),
+      ]);
+
+      const candidates = await prisma.user.findMany({
+        where: { id: { notIn: Array.from(excluded) }, isBanned: false },
+        include: { followers: true, following: true, blockedUsers: true },
+        take: 200,
+      });
+
+      const scored = candidates
+        .map((u) => {
+          const genres = parseJsonArray(u.favoriteGenres);
+          const shared = genres.filter((g: string) => myGenres.has(g));
+          let score = shared.length * 10;
+          if (u.role === me.role) score += 2; // affinité de profil
+          return { user: u, score, shared };
+        })
+        .filter((c) => c.score > 0)
+        .sort((a, b) => b.score - a.score || (b.user.followers?.length || 0) - (a.user.followers?.length || 0))
+        .slice(0, 12);
+
+      res.json(scored.map((c) => ({ ...serializeUser(c.user), sharedGenres: c.shared })));
+    } catch (error) {
+      console.error('[SUGGESTIONS] erreur:', error);
       res.json([]);
     }
   });

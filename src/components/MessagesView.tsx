@@ -51,6 +51,7 @@ interface MessagesViewProps {
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   onSendMessage: (conversationId: string, content: string) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
+  onlineUserIds: Set<string>;
   onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -146,6 +147,7 @@ export default function MessagesView({
   setConversations,
   onSendMessage,
   onStartCall,
+  onlineUserIds,
   onDeleteConversation,
   onStartConversation,
   activeConversationId,
@@ -517,7 +519,9 @@ export default function MessagesView({
                       className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100 dark:ring-zinc-800"
                       referrerPolicy="no-referrer"
                     />
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-purple-600 border-2 border-white dark:border-zinc-900 rounded-full"></span>
+                    {onlineUserIds.has(partner.id) && (
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full"></span>
+                    )}
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -691,16 +695,18 @@ export default function MessagesView({
                       className="w-10 h-10 rounded-full object-cover border border-zinc-800 shrink-0"
                       referrerPolicy="no-referrer"
                     />
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-purple-600 border border-zinc-900 rounded-full"></span>
+                    {onlineUserIds.has(interlocutor.id) && (
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-zinc-900 rounded-full"></span>
+                    )}
                   </div>
-                  
+
                   <div className="text-left min-w-0">
                     <h4 className="text-xs font-serif font-black text-white leading-none flex items-center">
                       <span>{interlocutor.username}</span>
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
                     <p className="text-[10px] text-white/90 font-bold mt-1.5">
-                      en ligne • {interlocutor.role}
+                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'} • {interlocutor.role}
                     </p>
                   </div>
                 </>

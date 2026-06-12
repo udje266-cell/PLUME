@@ -102,6 +102,9 @@ export default function App() {
   const [callStatus, setCallStatus] = useState<CallStatus>('idle');
   const [callPeer, setCallPeer] = useState<CallPeer | null>(null);
   const [callRemoteStream, setCallRemoteStream] = useState<MediaStream | null>(null);
+
+  // Présence en ligne (style WhatsApp) : IDs des utilisateurs réellement connectés.
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [realtimeToasts, setRealtimeToasts] = useState<RealtimeNotificationToast[]>([]);
 
   // Notifications : chargées depuis l'API, mises en cache localStorage, enrichies via Socket.io.
@@ -677,6 +680,18 @@ export default function App() {
       setActiveConversationId((prev) => (prev === conversationId ? '' : prev));
     });
 
+    // Présence : liste initiale + mises à jour individuelles.
+    socket.on('presence_list', (ids: string[]) => {
+      setOnlineUserIds(new Set(Array.isArray(ids) ? ids : []));
+    });
+    socket.on('presence_update', ({ userId, online }: { userId: string; online: boolean }) => {
+      setOnlineUserIds((prev) => {
+        const next = new Set(prev);
+        if (online) next.add(userId); else next.delete(userId);
+        return next;
+      });
+    });
+
     socket.on('group_created', (group: ReadingGroup) => {
       setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
     });
@@ -703,6 +718,8 @@ export default function App() {
       socket.off('user_followed');
       socket.off('user_unfollowed');
       socket.off('conversation_deleted');
+      socket.off('presence_list');
+      socket.off('presence_update');
       socket.off('group_created');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();
@@ -2544,6 +2561,7 @@ export default function App() {
                       conversations={conversations}
                       setConversations={setConversations}
                       onStartCall={handleStartCall}
+                      onlineUserIds={onlineUserIds}
                       onSendMessage={handleSendMessage}
                       onDeleteConversation={handleDeleteConversation}
                       onStartConversation={handleStartConversation}

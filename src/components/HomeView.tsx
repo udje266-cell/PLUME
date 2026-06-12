@@ -12,7 +12,8 @@ import {
   TrendingUp, 
   Sparkles, 
   Clock, 
-  UserPlus, 
+  UserPlus,
+  Users,
   UserCheck, 
   FileText, 
   Eye, 
@@ -66,6 +67,18 @@ export default function HomeView({
   
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Suggestions de personnes aux goûts proches (PLUME = aussi pour se faire des amis).
+  const [suggestedPeople, setSuggestedPeople] = useState<(User & { sharedGenres?: string[] })[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/suggestions/people', { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => { if (!cancelled && Array.isArray(data)) setSuggestedPeople(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // Recalcule quand l'utilisateur change ou suit/défollow (following évolue).
+  }, [currentUser.id, (currentUser.following || []).length]);
 
   // Curseur « découverte ↔ pertinence » du fil « Pour toi » (0 = pertinence, 1 =
   // découverte). Persisté par utilisateur pour respecter le choix du lecteur.
@@ -423,6 +436,66 @@ export default function HomeView({
           })}
         </div>
       </section>
+
+      {/* SECTION: LECTEURS AUX GOÛTS PROCHES (se faire des amis) */}
+      {suggestedPeople.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex justify-between items-center pb-1.5 border-b border-gray-100 dark:border-zinc-900">
+            <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center space-x-1.5">
+              <Users className="w-3.5 h-3.5 text-purple-600" />
+              <span>Lecteurs aux goûts proches</span>
+            </h3>
+            <span className="text-[9px] font-mono text-purple-600 bg-purple-500/10 px-2 py-1 rounded-full uppercase font-bold">
+              Se faire des amis
+            </span>
+          </div>
+
+          <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+            {suggestedPeople.map((person) => {
+              const isFollowing = (currentUser.following || []).includes(person.id);
+              return (
+                <div
+                  key={person.id}
+                  className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col items-center text-center transition-all hover:border-purple-500/30"
+                >
+                  <img
+                    src={person.avatar || 'https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(person.username)}
+                    alt={person.username}
+                    onClick={() => onViewProfile?.(person.id)}
+                    className="w-14 h-14 rounded-full object-cover ring-2 ring-purple-500/15 cursor-pointer"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="mt-2 flex items-center gap-1 min-w-0">
+                    <span
+                      onClick={() => onViewProfile?.(person.id)}
+                      className="text-xs font-black text-gray-950 dark:text-gray-50 truncate cursor-pointer hover:text-purple-600"
+                    >
+                      {person.username}
+                    </span>
+                    {person.isVerified && <VerifiedBadge size="xs" />}
+                  </div>
+                  {person.sharedGenres && person.sharedGenres.length > 0 && (
+                    <p className="text-[8.5px] text-purple-600 dark:text-purple-300 font-bold mt-0.5 line-clamp-1">
+                      {person.sharedGenres.slice(0, 2).join(' · ')}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => onFollowAuthor(person.id)}
+                    className={`mt-2 w-full py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition flex items-center justify-center gap-1 ${
+                      isFollowing
+                        ? 'bg-purple-500/10 text-purple-600 border border-purple-500/20'
+                        : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    {isFollowing ? 'Suivi' : 'Suivre'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* SECTION 3: TENDANCES POPULAIRES (Sorted by rating/reads growth) */}
       <section className="space-y-4">
