@@ -1,0 +1,37 @@
+# Garde le backend Render éveillé (évite la mise en veille du plan gratuit).
+#
+# Le plan gratuit Render endort le service après ~15 min sans trafic, ce qui
+# provoque un démarrage à froid (~30-50 s) pour le visiteur suivant. Ce workflow
+# planifié pingue un endpoint léger toutes les ~10 min pour le maintenir actif.
+#
+# 100 % gratuit, sans carte bancaire : utilise les minutes GitHub Actions
+# (largement sous le quota gratuit ; chaque ping dure quelques secondes).
+#
+# Remarque : GitHub peut espacer les crons en période de forte charge, et
+# désactive les workflows planifiés après 60 jours SANS aucun commit sur le
+# dépôt. Tant que tu pousses de temps en temps, il reste actif.
+
+name: keep-backend-awake
+
+on:
+  schedule:
+    # Toutes les 10 minutes (heure UTC). 5 min est le minimum autorisé par GitHub.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {} # permet aussi un déclenchement manuel
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping du backend
+        run: |
+          URL="${{ vars.BACKEND_URL || 'https://plume-app-fudd.onrender.com' }}/api/config"
+          echo "Ping $URL"
+          # -m 90 : laisse le temps à un éventuel réveil à froid de répondre.
+          code=$(curl -s -m 90 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          echo "HTTP $code"
+          # On ne fait pas échouer le job pour un réveil lent : tant que le ping
+          # part, l'objectif (réveiller le service) est atteint.
+          if [ "$code" = "000" ]; then
+            echo "::warning::Pas de réponse (timeout) — le service se réveillait peut-être."
+          fi
