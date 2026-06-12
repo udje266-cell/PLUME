@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "271720613446",
+    "project_id": "plulefinal",
+    "storage_bucket": "plulefinal.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271720613446:android:a2484f522f0c02a6c62c47",
+        "android_client_info": {
+          "package_name": "com.plume.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSepkuDsRluO5R7pbTG4g5Ot-D9bpC85M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
