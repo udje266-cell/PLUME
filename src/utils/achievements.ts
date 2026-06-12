@@ -165,7 +165,7 @@ export function saveUnlockDate(userId: string, achievementId: string): string {
  * Generates specifically 125 achievements for Readers
  * Incorporates the 25 level-based accomplishments as part of the total
  */
-export function generateReaderAchievements(stats: UserStats, userId: string = 'current_user'): Achievement[] {
+export function generateReaderAchievements(stats: UserStats, userId: string = 'current_user', allUnlocked: boolean = false): Achievement[] {
   const list: Achievement[] = [];
   const TOTAL_READER = 125;
   const SIMPLE_COUNT = 75; // 60% simple, 40% difficult/complex
@@ -288,6 +288,9 @@ export function generateReaderAchievements(stats: UserStats, userId: string = 'c
       }
     }
 
+    // Le propriétaire/administrateur débloque tout (statut plein de l'archipel).
+    if (allUnlocked) isUnlocked = true;
+
     // Capture acquisition date dynamically
     let actualUnlockedDate = undefined;
     if (isUnlocked) {
@@ -315,7 +318,7 @@ export function generateReaderAchievements(stats: UserStats, userId: string = 'c
  * Generates specifically 100 accomplishments for Authors
  * 60 common / 15 rare / 15 epic / 10 mythic
  */
-export function generateAuthorAchievements(stats: UserStats, userId: string = 'current_user'): Achievement[] {
+export function generateAuthorAchievements(stats: UserStats, userId: string = 'current_user', allUnlocked: boolean = false): Achievement[] {
   const list: Achievement[] = [];
   const unlockDates = getUnlockDates(userId);
 
@@ -694,6 +697,9 @@ export function generateAuthorAchievements(stats: UserStats, userId: string = 'c
       realDesc = "Achever le légendaire grand œuvre immortel culminant à 500 000 mots.";
     }
 
+    // Le propriétaire/administrateur débloque tout (statut plein de l'archipel).
+    if (allUnlocked) isUnlocked = true;
+
     // Capture acquisition date dynamically
     let actualUnlockedDate = undefined;
     if (isUnlocked) {
@@ -724,7 +730,8 @@ export function generateAuthorAchievements(stats: UserStats, userId: string = 'c
 export function countAndEvaluateCertification(
   role: string,
   stats: UserStats,
-  userId: string = 'current_user'
+  userId: string = 'current_user',
+  allUnlocked: boolean = false
 ): {
   readerPercent: number;
   authorPercent: number;
@@ -732,8 +739,8 @@ export function countAndEvaluateCertification(
   unlockedAuthorCount: number;
   shouldCertify: boolean;
 } {
-  const readers = generateReaderAchievements(stats, userId);
-  const authors = generateAuthorAchievements(stats, userId);
+  const readers = generateReaderAchievements(stats, userId, allUnlocked);
+  const authors = generateAuthorAchievements(stats, userId, allUnlocked);
 
   const rUnlocked = readers.filter(a => a.isUnlocked).length;
   const aUnlocked = authors.filter(a => a.isUnlocked).length;
@@ -744,8 +751,9 @@ export function countAndEvaluateCertification(
   // Seule la spécialité Auteur peut être certifiée, en débloquant au moins 80 %
   // de ses accomplissements. Les lecteurs conservent leurs accomplissements mais
   // ne sont jamais certifiés ; le rôle « Utilisateur Mixte » n'existe plus.
+  // Le propriétaire/administrateur est certifié d'office (statut plein).
   let shouldCertify = false;
-  if (role === 'Auteur' && authorPercent >= 80) {
+  if (allUnlocked || (role === 'Auteur' && authorPercent >= 80)) {
     shouldCertify = true;
   }
 

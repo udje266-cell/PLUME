@@ -1662,8 +1662,10 @@ const user = freshViewedUser || freshCurrentUser;
       {/* COMPACT & ELEGANT ACCOMPLISHMENTS CARD DISPLAY */}
       {(() => {
         const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
-        const rAchievements = generateReaderAchievements(uStats);
-        const aAchievements = generateAuthorAchievements(uStats);
+        // Le propriétaire/administrateur débloque tous les accomplissements.
+        const ownerAllUnlocked = currentUser.role === 'Administrateur';
+        const rAchievements = generateReaderAchievements(uStats, currentUser.id, ownerAllUnlocked);
+        const aAchievements = generateAuthorAchievements(uStats, currentUser.id, ownerAllUnlocked);
         
         const unlockedR = rAchievements.filter(a => a.isUnlocked).length;
         // La certification d'auteur est calculée par le serveur (source du badge) :
@@ -2892,9 +2894,10 @@ const user = freshViewedUser || freshCurrentUser;
 
               {achievementsTab !== 'simulator' && (() => {
                 const isReaderMode = achievementsTab === 'reader';
-                const list = isReaderMode 
-                  ? generateReaderAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id)
-                  : generateAuthorAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id);
+                const ownerAllUnlocked = currentUser.role === 'Administrateur';
+                const list = isReaderMode
+                  ? generateReaderAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id, ownerAllUnlocked)
+                  : generateAuthorAchievements(getUserStats(currentUser.id, currentUser.role, currentUser.username), currentUser.id, ownerAllUnlocked);
                 
                 const unlockedList = list.filter(a => a.isUnlocked);
                 const pct = list.length ? Math.round((unlockedList.length / list.length) * 100) : 0;

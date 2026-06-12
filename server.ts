@@ -391,8 +391,12 @@ async function recomputeCertification(userId: string): Promise<void> {
   try {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, isVerified: true } });
     if (!user) return;
+    const role = roleFromPrisma(user.role);
     let shouldBeVerified = false;
-    if (roleFromPrisma(user.role) === 'Auteur') {
+    if (role === 'Administrateur') {
+      // Le propriétaire/administrateur est certifié d'office (statut plein).
+      shouldBeVerified = true;
+    } else if (role === 'Auteur') {
       const stats = await computeAuthorStats(userId);
       shouldBeVerified = countAndEvaluateCertification('Auteur', stats, userId).shouldCertify;
     }
@@ -1067,15 +1071,17 @@ export async function createServerInstance() {
   app.get('/api/me/certification', requireAuth, async (req: any, res) => {
     try {
       const role = roleFromPrisma(req.user.role);
+      // Administrateur = propriétaire : tous les accomplissements débloqués + certifié.
+      const ownerAllUnlocked = role === 'Administrateur';
       const stats = await computeAuthorStats(req.user.id);
-      const evalRes = countAndEvaluateCertification('Auteur', stats, req.user.id);
+      const evalRes = countAndEvaluateCertification('Auteur', stats, req.user.id, ownerAllUnlocked);
       res.json({
         role,
         authorPercent: evalRes.authorPercent,
         authorUnlocked: evalRes.unlockedAuthorCount,
         authorTotal: 100,
-        shouldCertify: role === 'Auteur' ? evalRes.shouldCertify : false,
-        isVerified: Boolean(req.user.isVerified),
+        shouldCertify: ownerAllUnlocked || (role === 'Auteur' && evalRes.shouldCertify),
+        isVerified: ownerAllUnlocked || Boolean(req.user.isVerified),
       });
     } catch (error) {
       console.error('[CERT] progression:', error);
