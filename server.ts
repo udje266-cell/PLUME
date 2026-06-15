@@ -893,9 +893,37 @@ export async function createServerInstance() {
     // deux pairs (offre/réponse SDP + candidats ICE). Le flux audio lui-même
     // est pair-à-pair (P2P) et ne transite jamais par le serveur. L'identité de
     // l'appelant est déduite du token vérifié (authUserId), jamais du client.
+    // Push d'appel entrant : si le destinataire n'est PAS connecté (donc HORS
+    // de l'appli), on l'alerte via FCM pour qu'il sache qu'on l'appelle. S'il
+    // est en ligne, l'overlay temps réel (socket) suffit → pas de doublon.
+    const pushIncomingCall = async (toUserId: string, groupId?: string) => {
+      try {
+        if (!authUserId || !toUserId) return;
+        if (onlineUsers.has(toUserId)) return;
+        const caller = await prisma.user.findUnique({ where: { id: authUserId }, select: { username: true } });
+        const callerName = caller?.username || 'Quelqu’un';
+        let groupName: string | undefined;
+        if (groupId) {
+          const g = await prisma.readingGroup.findUnique({ where: { id: groupId }, select: { name: true } }).catch(() => null);
+          groupName = g?.name || undefined;
+        }
+        await sendPushToUser(toUserId, {
+          title: groupId ? `Appel de groupe${groupName ? ' • ' + groupName : ''}` : 'Appel entrant',
+          body: groupId ? `${callerName} démarre un appel audio` : `${callerName} vous appelle`,
+          data: {
+            category: 'call',
+            callerId: authUserId,
+            callerName,
+            ...(groupId ? { groupId } : {}),
+          },
+        });
+      } catch { /* best-effort */ }
+    };
+
     socket.on('call:offer', (p: { to: string; sdp: any; caller?: any }) => {
       if (!authUserId || !p?.to) return;
       socket.to(`user:${p.to}`).emit('call:incoming', { from: authUserId, caller: p.caller, sdp: p.sdp });
+      pushIncomingCall(p.to).catch(() => {});
     });
     socket.on('call:answer', (p: { to: string; sdp: any }) => {
       if (!authUserId || !p?.to) return;
@@ -925,8 +953,10 @@ export async function createServerInstance() {
       set.add(authUserId);
       set.forEach((id) => { if (id !== authUserId) io.to(`user:${id}`).emit('group_call:participant_joined', { groupId: p.groupId, userId: authUserId }); });
       // Sonnerie : invite les membres du groupe (qui ne sont pas déjà en appel).
-      (p.memberIds || []).filter((id) => id !== authUserId && !set!.has(id)).forEach((id) =>
-        io.to(`user:${id}`).emit('group_call:invite', { groupId: p.groupId, from: authUserId }));
+      (p.memberIds || []).filter((id) => id !== authUserId && !set!.has(id)).forEach((id) => {
+        io.to(`user:${id}`).emit('group_call:invite', { groupId: p.groupId, from: authUserId });
+        pushIncomingCall(id, p.groupId).catch(() => {});
+      });
     });
     socket.on('group_call:leave', (p: { groupId: string }) => {
       if (!authUserId || !p?.groupId) return;
