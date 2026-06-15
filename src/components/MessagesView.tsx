@@ -106,6 +106,7 @@ interface MessagesViewProps {
   onRemoveGroupMember?: (groupId: string, userId: string) => void;
   groupTyping?: Record<string, string>;
   onGroupTyping?: (groupId: string, memberIds: string[], isTyping: boolean) => void;
+  onStartGroupCall?: (groupId: string, memberIds: string[]) => void;
   stories: Story[];
   onSelectStory: (story: Story) => void;
 }
@@ -210,6 +211,7 @@ export default function MessagesView({
   onRemoveGroupMember,
   groupTyping,
   onGroupTyping,
+  onStartGroupCall,
   stories,
   onSelectStory
 }: MessagesViewProps) {
@@ -879,11 +881,14 @@ export default function MessagesView({
 
             {/* Quick action tools - NO VIDEO: ONLY AUDIO per user's requests! */}
             <div className="flex items-center space-x-1 text-zinc-400 shrink-0">
-              <button 
+              <button
                 type="button"
-                className="p-2 hover:bg-zinc-800 rounded-full transition text-[#7C3AED] dark:text-purple-400" 
-                title="Lancer un appel audio" 
-                onClick={handleStartCall}
+                className="p-2 hover:bg-zinc-800 rounded-full transition text-[#7C3AED] dark:text-purple-400"
+                title={activeGroupId ? 'Lancer un appel de groupe' : 'Lancer un appel audio'}
+                onClick={() => {
+                  if (activeGroupId) onStartGroupCall?.(activeGroupId, activeGroup?.members || []);
+                  else handleStartCall();
+                }}
               >
                 <Phone className="w-4 h-4 scale-105" />
               </button>

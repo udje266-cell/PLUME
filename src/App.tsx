@@ -31,7 +31,9 @@ import AdminDashboard from './components/AdminDashboard';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
+import GroupCallOverlay from './components/GroupCallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
+import { GroupCallManager } from './utils/groupCall';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
@@ -105,6 +107,12 @@ export default function App() {
   const [callStatus, setCallStatus] = useState<CallStatus>('idle');
   const [callPeer, setCallPeer] = useState<CallPeer | null>(null);
   const [callRemoteStream, setCallRemoteStream] = useState<MediaStream | null>(null);
+
+  // ----- Appels de GROUPE (mesh) -----
+  const groupCallManagerRef = useRef<GroupCallManager | null>(null);
+  const [groupCallId, setGroupCallId] = useState<string | null>(null);
+  const [groupCallParticipants, setGroupCallParticipants] = useState<string[]>([]);
+  const [groupCallInvite, setGroupCallInvite] = useState<{ groupId: string; from: string } | null>(null);
 
   // Présence en ligne (style WhatsApp) : IDs des utilisateurs réellement connectés.
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
@@ -817,7 +825,20 @@ export default function App() {
       onError: (msg) => { setCallStatus('idle'); setCallPeer(null); setCallRemoteStream(null); alert(msg); },
     });
 
+    // Appels de groupe (mesh).
+    groupCallManagerRef.current = new GroupCallManager(socket, {
+      onActive: (active) => setGroupCallId(active ? groupCallManagerRef.current?.currentGroupId ?? null : null),
+      onParticipants: (ids) => setGroupCallParticipants(ids),
+      onError: (msg) => { alert(msg); setGroupCallId(null); setGroupCallParticipants([]); },
+    });
+    socket.on('group_call:invite', ({ groupId, from }: { groupId: string; from: string }) => {
+      // On ne propose de rejoindre que si on n'est pas déjà dans cet appel.
+      if (groupCallManagerRef.current?.currentGroupId === groupId) return;
+      setGroupCallInvite({ groupId, from });
+    });
+
     return () => {
+      socket.off('group_call:invite');
       socket.off('connect');
       socket.off('new_notification');
       socket.off('conversation_created');
@@ -839,6 +860,8 @@ export default function App() {
       socket.off('group_stop_typing');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();
+      groupCallManagerRef.current?.dispose();
+      groupCallManagerRef.current = null;
       callManagerRef.current = null;
       socket.disconnect();
       socketRef.current = null;
@@ -855,6 +878,23 @@ export default function App() {
       { id: currentUser.id, name: currentUser.username, avatar: currentUser.avatar },
     );
   }, [callStatus, currentUser]);
+
+  // Appels de groupe : démarrer / rejoindre / quitter.
+  const handleStartGroupCall = (groupId: string, memberIds: string[]) => {
+    if (!groupCallManagerRef.current) { alert("L'appel de groupe n'est pas disponible."); return; }
+    groupCallManagerRef.current.join(groupId, memberIds);
+  };
+  const acceptGroupCall = () => {
+    if (!groupCallInvite || !groupCallManagerRef.current) return;
+    const group = groups.find((g) => g.id === groupCallInvite.groupId);
+    groupCallManagerRef.current.join(groupCallInvite.groupId, group?.members || []);
+    setGroupCallInvite(null);
+  };
+  const leaveGroupCall = () => {
+    groupCallManagerRef.current?.leave();
+    setGroupCallId(null);
+    setGroupCallParticipants([]);
+  };
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
@@ -2762,6 +2802,7 @@ export default function App() {
                       onRemoveGroupMember={handleRemoveGroupMember}
                       groupTyping={groupTyping}
                       onGroupTyping={(groupId, memberIds, isTyping) => socketRef.current?.emit(isTyping ? 'group_typing' : 'group_stop_typing', { groupId, memberIds, senderName: currentUser!.username })}
+                      onStartGroupCall={handleStartGroupCall}
                       stories={allowedStories}
                       onSelectStory={handleSelectStoryForReading}
                     />
@@ -2829,6 +2870,22 @@ export default function App() {
           onHangup={() => callManagerRef.current?.end()}
           onToggleMute={() => callManagerRef.current?.toggleMute() ?? false}
         />
+
+        {/* APPEL DE GROUPE — surcouche (invitation + appel en cours) */}
+        {currentUser && (
+          <GroupCallOverlay
+            activeGroupId={groupCallId}
+            participantIds={groupCallParticipants}
+            invite={groupCallInvite}
+            groups={groups}
+            allUsers={allUsers}
+            currentUser={currentUser}
+            onAccept={acceptGroupCall}
+            onDecline={() => setGroupCallInvite(null)}
+            onLeave={leaveGroupCall}
+            onToggleMute={() => groupCallManagerRef.current?.toggleMute() ?? false}
+          />
+        )}
 
         {/* REAL-TIME NOTIFICATIONS TOASTS OVERLAY */}
         <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none font-sans">

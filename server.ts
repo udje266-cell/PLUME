@@ -818,6 +818,16 @@ export async function createServerInstance() {
     }
   };
 
+  // Appels de GROUPE (maillage WebRTC) : participants actifs par groupe.
+  const groupCallParticipants = new Map<string, Set<string>>();
+  const leaveGroupCall = (groupId: string, userId: string) => {
+    const set = groupCallParticipants.get(groupId);
+    if (!set || !set.has(userId)) return;
+    set.delete(userId);
+    set.forEach((id) => io.to(`user:${id}`).emit('group_call:participant_left', { groupId, userId }));
+    if (set.size === 0) groupCallParticipants.delete(groupId);
+  };
+
   io.on('connection', (socket) => {
     const authUserId = (socket.data as any).userId as string | undefined;
     console.log(`[SOCKET] utilisateur connecté - socketId: ${socket.id}`);
@@ -904,9 +914,44 @@ export async function createServerInstance() {
       socket.to(`user:${p.to}`).emit('call:ended', { from: authUserId });
     });
 
+    // ----- Appels de GROUPE (maillage WebRTC, audio) -----
+    socket.on('group_call:join', (p: { groupId: string; memberIds?: string[] }) => {
+      if (!authUserId || !p?.groupId) return;
+      let set = groupCallParticipants.get(p.groupId);
+      if (!set) { set = new Set(); groupCallParticipants.set(p.groupId, set); }
+      // Liste des participants DÉJÀ en appel envoyée à l'arrivant (il créera les
+      // connexions vers eux). Puis on l'ajoute et on prévient les autres.
+      socket.emit('group_call:participants', { groupId: p.groupId, userIds: Array.from(set) });
+      set.add(authUserId);
+      set.forEach((id) => { if (id !== authUserId) io.to(`user:${id}`).emit('group_call:participant_joined', { groupId: p.groupId, userId: authUserId }); });
+      // Sonnerie : invite les membres du groupe (qui ne sont pas déjà en appel).
+      (p.memberIds || []).filter((id) => id !== authUserId && !set!.has(id)).forEach((id) =>
+        io.to(`user:${id}`).emit('group_call:invite', { groupId: p.groupId, from: authUserId }));
+    });
+    socket.on('group_call:leave', (p: { groupId: string }) => {
+      if (!authUserId || !p?.groupId) return;
+      leaveGroupCall(p.groupId, authUserId);
+    });
+    socket.on('group_call:offer', (p: { groupId: string; to: string; sdp: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('group_call:offer', { groupId: p.groupId, from: authUserId, sdp: p.sdp });
+    });
+    socket.on('group_call:answer', (p: { groupId: string; to: string; sdp: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('group_call:answer', { groupId: p.groupId, from: authUserId, sdp: p.sdp });
+    });
+    socket.on('group_call:ice', (p: { groupId: string; to: string; candidate: any }) => {
+      if (!authUserId || !p?.to) return;
+      socket.to(`user:${p.to}`).emit('group_call:ice', { groupId: p.groupId, from: authUserId, candidate: p.candidate });
+    });
+
     socket.on('disconnect', () => {
       console.log(`[SOCKET] utilisateur déconnecté - socketId: ${socket.id}`);
-      if (authUserId) markOffline(authUserId);
+      if (authUserId) {
+        markOffline(authUserId);
+        // Retire l'utilisateur de tous les appels de groupe en cours.
+        Array.from(groupCallParticipants.keys()).forEach((gid) => leaveGroupCall(gid, authUserId));
+      }
     });
   });
 
