@@ -2582,18 +2582,25 @@ export async function createServerInstance() {
         conversation.participants
           .filter(p => p.id !== senderId)
           .map(async (p) => {
+            // Aperçu lisible (façon WhatsApp) : nom de l'expéditeur en titre,
+            // contenu du message en corps (sticker/note vocale résumés).
+            const preview = trimmed.startsWith('[sticker]')
+              ? '🪶 Sticker'
+              : trimmed.startsWith('[🎙️ Note Vocale')
+                ? '🎙️ Note vocale'
+                : (trimmed.length > 140 ? trimmed.slice(0, 137) + '…' : trimmed);
             const notification = await prisma.notification.create({
               data: {
                 userId: p.id,
                 type: 'MESSAGE' as any,
-                title: 'Nouveau message',
-                message: `Tu as reçu un nouveau message de ${actualSender.username}.`,
+                title: `💬 ${actualSender.username}`,
+                message: preview,
                 data: {
                   actorId: actualSender.id,
                   actorName: actualSender.username,
                   actorAvatar: actualSender.avatar || '',
                   conversationId,
-                  excerpt: trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed,
+                  excerpt: preview,
                 } as any
               }
             });
