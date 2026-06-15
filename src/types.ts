@@ -173,6 +173,8 @@ export interface ReadingGroup {
   id: string;
   name: string;
   description: string;
+  avatar?: string;
+  creatorId?: string; // admin du groupe
   members: string[]; // User IDs
   lastMessage?: string;
   lastMessageDate?: string;

@@ -358,6 +358,7 @@ model ReadingGroup {
   id          String         @id @default(cuid())
   name        String
   description String         @default("")
+  avatar      String?
   storyId     String?
   creatorId   String
   creator     User           @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)

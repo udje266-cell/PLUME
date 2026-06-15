@@ -31,7 +31,8 @@ import {
   Feather,
   Headphones,
   BookOpen,
-  Sticker
+  Sticker,
+  Camera
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -100,6 +101,11 @@ interface MessagesViewProps {
   setGroupMessages: React.Dispatch<React.SetStateAction<GroupMessage[]>>;
   onCreateGroup: (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }) => Promise<ReadingGroup | null>;
   onSendGroupMessage: (groupId: string, content: string) => void;
+  onUpdateGroup?: (groupId: string, data: { name?: string; description?: string; avatar?: string }) => void;
+  onAddGroupMembers?: (groupId: string, memberIds: string[]) => void;
+  onRemoveGroupMember?: (groupId: string, userId: string) => void;
+  groupTyping?: Record<string, string>;
+  onGroupTyping?: (groupId: string, memberIds: string[], isTyping: boolean) => void;
   stories: Story[];
   onSelectStory: (story: Story) => void;
 }
@@ -199,6 +205,11 @@ export default function MessagesView({
   setGroupMessages,
   onCreateGroup,
   onSendGroupMessage,
+  onUpdateGroup,
+  onAddGroupMembers,
+  onRemoveGroupMember,
+  groupTyping,
+  onGroupTyping,
   stories,
   onSelectStory
 }: MessagesViewProps) {
@@ -218,6 +229,24 @@ export default function MessagesView({
   const [stickerCrop, setStickerCrop] = useState({ x: 0, y: 0 });
   const [stickerZoom, setStickerZoom] = useState(1);
   const [stickerCroppedPixels, setStickerCroppedPixels] = useState<Area | null>(null);
+  // Réglages de groupe (façon WhatsApp).
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [groupAddOpen, setGroupAddOpen] = useState(false);
+  const [uploadingGroupPhoto, setUploadingGroupPhoto] = useState(false);
+  const groupPhotoRef = useRef<HTMLInputElement>(null);
+  const handleGroupPhoto = async (file: File | null, groupId: string) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    setUploadingGroupPhoto(true);
+    try {
+      const url = await uploadImageToCloudinary(file);
+      onUpdateGroup?.(groupId, { avatar: url });
+    } catch (e: any) {
+      alert(e?.message || 'Échec du changement de photo.');
+    } finally {
+      setUploadingGroupPhoto(false);
+      if (groupPhotoRef.current) groupPhotoRef.current.value = '';
+    }
+  };
 
   // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
   const sendSticker = (value: string) => {
@@ -314,7 +343,14 @@ export default function MessagesView({
   const typingStopRef = useRef<any>(null);
   const handleTypingChange = (value: string) => {
     setMessageText(value);
-    if (activeGroupId || !activeConversationId || !interlocutor || interlocutor.id === currentUser.id) return;
+    if (activeGroupId) {
+      const members = activeGroup?.members || [];
+      onGroupTyping?.(activeGroupId, members, true);
+      clearTimeout(typingStopRef.current);
+      typingStopRef.current = setTimeout(() => onGroupTyping?.(activeGroupId, members, false), 1500);
+      return;
+    }
+    if (!activeConversationId || !interlocutor || interlocutor.id === currentUser.id) return;
     onTyping?.(interlocutor.id, true);
     clearTimeout(typingStopRef.current);
     typingStopRef.current = setTimeout(() => onTyping?.(interlocutor.id, false), 1500);
@@ -695,8 +731,10 @@ export default function MessagesView({
                   }`}
                 >
                   <div className="relative shrink-0 select-none">
-                    <div className="w-11 h-11 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center border border-purple-505/20 text-purple-600 dark:text-purple-400">
-                      <BookOpen className="w-5 h-5 flex items-center justify-center" />
+                    <div className="w-11 h-11 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center border border-purple-505/20 text-purple-600 dark:text-purple-400 overflow-hidden">
+                      {group.avatar
+                        ? <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        : <BookOpen className="w-5 h-5 flex items-center justify-center" />}
                     </div>
                   </div>
 
@@ -710,10 +748,15 @@ export default function MessagesView({
                       </span>
                     </div>
 
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
-                      <span className="text-purple-600 dark:text-purple-400 font-semibold mr-1">Récit:</span>
-                      <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
-                    </p>
+                    {groupTyping?.[group.id] ? (
+                      <p className="text-[10px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
+                        <Feather className="w-3 h-3 animate-feather-write" /> {groupTyping[group.id]} écrit…
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
+                        <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
+                      </p>
+                    )}
                   </div>
                 </button>
               );
@@ -786,20 +829,22 @@ export default function MessagesView({
 
               {/* Header profile photo & title representation */}
               {activeGroupId ? (
-                // Group Header Style
-                <>
-                  <div className="w-10 h-10 rounded-full bg-purple-950/50 flex items-center justify-center text-purple-400 font-bold shrink-0">
-                    <BookOpen className="w-5 h-5" />
+                // Group Header Style (clic → réglages du groupe)
+                <button type="button" onClick={() => setShowGroupSettings(true)} className="flex items-center gap-2 min-w-0 text-left">
+                  <div className="w-10 h-10 rounded-full bg-purple-950/50 flex items-center justify-center text-purple-400 font-bold shrink-0 overflow-hidden">
+                    {activeGroup?.avatar
+                      ? <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      : <BookOpen className="w-5 h-5" />}
                   </div>
                   <div className="text-left min-w-0">
                     <h4 className="text-xs font-serif font-black text-white leading-none truncate max-w-[190px]">
                       {activeGroup?.name}
                     </h4>
                     <p className="text-[9px] text-[#A78BFA] font-bold mt-1.5 truncate max-w-[190px]">
-                      {activeGroup?.description}
+                      {activeGroupId && groupTyping?.[activeGroupId] ? `${groupTyping[activeGroupId]} écrit…` : (activeGroup?.description || `${activeGroup?.members.length || 0} membres`)}
                     </p>
                   </div>
-                </>
+                </button>
               ) : (
                 // Direct Solo Chat Header Style
                 <>
@@ -1061,12 +1106,14 @@ export default function MessagesView({
                 })
               )
             )}
-              {/* Indicateur « en train d'écrire » (plume qui écrit) */}
-              {partnerTyping && (
+              {/* Indicateur « en train d'écrire » (plume qui écrit) — privé ET groupe */}
+              {(partnerTyping || (activeGroupId && groupTyping?.[activeGroupId])) && (
                 <div className="flex justify-start animate-fade-in mt-1">
                   <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
                     <Feather className="w-4 h-4 text-purple-300 animate-feather-write" />
-                    <span className="text-[10px] text-zinc-300 italic">{interlocutor.username} écrit…</span>
+                    <span className="text-[10px] text-zinc-300 italic">
+                      {activeGroupId ? `${groupTyping?.[activeGroupId]} écrit…` : `${interlocutor.username} écrit…`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -1363,6 +1410,96 @@ export default function MessagesView({
           </div>
         </div>
       )}
+
+      {/* MODALE : RÉGLAGES DU GROUPE (façon WhatsApp) */}
+      {showGroupSettings && activeGroup && (() => {
+        const isGroupAdmin = activeGroup.creatorId === currentUser.id;
+        const memberUsers = (activeGroup.members || []).map((id) => allUsers.find((u) => u.id === id)).filter(Boolean) as User[];
+        const addableUsers = allUsers.filter((u) => u.id !== currentUser.id && !(activeGroup.members || []).includes(u.id));
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={() => { setShowGroupSettings(false); setGroupAddOpen(false); }}>
+            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[88vh] overflow-hidden flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
+                <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100">Infos du groupe</h3>
+                <button onClick={() => { setShowGroupSettings(false); setGroupAddOpen(false); }} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {/* Photo + nom */}
+                <div className="flex flex-col items-center gap-2">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full bg-purple-100 dark:bg-purple-950/30 overflow-hidden flex items-center justify-center text-purple-500">
+                      {activeGroup.avatar ? <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <BookOpen className="w-9 h-9" />}
+                    </div>
+                    {isGroupAdmin && (
+                      <>
+                        <input ref={groupPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleGroupPhoto(e.target.files?.[0] || null, activeGroup.id)} />
+                        <button onClick={() => groupPhotoRef.current?.click()} disabled={uploadingGroupPhoto} className="absolute bottom-0 right-0 bg-purple-600 text-white rounded-full p-1.5 shadow disabled:opacity-50" title="Changer la photo">
+                          {uploadingGroupPhoto ? <span className="w-3.5 h-3.5 block rounded-full border-2 border-white/40 border-t-white animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {isGroupAdmin ? (
+                    <input
+                      defaultValue={activeGroup.name}
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== activeGroup.name) onUpdateGroup?.(activeGroup.id, { name: v }); }}
+                      className="text-center text-sm font-black bg-transparent border-b border-transparent focus:border-purple-500 outline-none text-gray-900 dark:text-white"
+                    />
+                  ) : (
+                    <span className="text-sm font-black text-gray-900 dark:text-white">{activeGroup.name}</span>
+                  )}
+                  <span className="text-[10px] text-zinc-400">{memberUsers.length} membre{memberUsers.length > 1 ? 's' : ''}</span>
+                </div>
+
+                {/* Membres */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-zinc-400">Membres</span>
+                    {isGroupAdmin && <button onClick={() => setGroupAddOpen((v) => !v)} className="text-[10px] font-black uppercase text-purple-600 flex items-center gap-1"><Plus className="w-3 h-3" />Ajouter</button>}
+                  </div>
+
+                  {groupAddOpen && isGroupAdmin && (
+                    <div className="mb-3 max-h-40 overflow-y-auto rounded-xl border border-gray-150 dark:border-zinc-800 divide-y divide-gray-100 dark:divide-zinc-850">
+                      {addableUsers.length === 0 ? <p className="text-[10px] text-zinc-400 p-3 text-center">Aucun utilisateur à ajouter.</p> : addableUsers.slice(0, 50).map((u) => (
+                        <button key={u.id} onClick={() => { onAddGroupMembers?.(activeGroup.id, [u.id]); setGroupAddOpen(false); }} className="w-full flex items-center gap-2 p-2 hover:bg-purple-500/10 text-left">
+                          <img src={u.avatar} alt={u.username} className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
+                          <span className="text-xs font-bold text-gray-800 dark:text-gray-100 flex-1 truncate">{u.username}</span>
+                          <Plus className="w-3.5 h-3.5 text-purple-600" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    {memberUsers.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-850/50">
+                        <img src={u.avatar} alt={u.username} onClick={() => onViewProfile?.(u.id)} className="w-8 h-8 rounded-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-100 flex-1 truncate">{u.username}</span>
+                        {u.id === activeGroup.creatorId && <span className="text-[8px] font-black uppercase bg-purple-500/15 text-purple-600 px-1.5 py-0.5 rounded">Admin</span>}
+                        {isGroupAdmin && u.id !== activeGroup.creatorId && (
+                          <button onClick={() => onRemoveGroupMember?.(activeGroup.id, u.id)} className="p-1 text-gray-400 hover:text-red-500" title="Retirer"><X className="w-3.5 h-3.5" /></button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quitter le groupe (sauf l'admin) */}
+              <div className="p-4 border-t border-gray-100 dark:border-zinc-850">
+                {activeGroup.creatorId !== currentUser.id ? (
+                  <button onClick={() => { if (confirm('Quitter ce groupe ?')) { onRemoveGroupMember?.(activeGroup.id, currentUser.id); setShowGroupSettings(false); } }} className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider">
+                    Quitter le groupe
+                  </button>
+                ) : (
+                  <p className="text-[10px] text-center text-zinc-400">Vous êtes l'administrateur de ce groupe.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODALE : ROGNAGE DU STICKER (format carré) */}
       {stickerCropSrc && (

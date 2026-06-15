@@ -1419,21 +1419,30 @@ const user = freshViewedUser || freshCurrentUser;
         {/* INTERACTION ACTIONS FOR OTHER PROFILES */}
         {!isOwnProfile && (
           <div className="flex items-center justify-center gap-2.5 w-full max-w-sm mx-auto pt-1.5 select-none font-sans">
-            {/* BUTTON 1: SUIVRE / NE PLUS SUIVRE */}
-            <button
-              id={`profile-follow-action-${user.id}`}
-              onClick={() => onFollowAuthor?.(user.id)}
-              className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1.5 shadow ${
-                currentUser.following.includes(user.id)
-                  ? 'bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-950 hover:bg-zinc-900'
-                  : 'bg-purple-600 hover:bg-purple-700 text-white hover:scale-[1.02] active:scale-95'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>
-                {currentUser.following.includes(user.id) ? 'Ne plus suivre' : 'Suivre'}
-              </span>
-            </button>
+            {/* BUTTON 1: SUIVRE / SUIVRE EN RETOUR / AMIS / NE PLUS SUIVRE */}
+            {(() => {
+              const iFollow = (currentUser.following || []).includes(user.id);
+              const theyFollowMe = (user.following || []).includes(currentUser.id);
+              const label = iFollow
+                ? (theyFollowMe ? 'Amis' : 'Ne plus suivre')
+                : (theyFollowMe ? 'Suivre en retour' : 'Suivre');
+              return (
+                <button
+                  id={`profile-follow-action-${user.id}`}
+                  onClick={() => onFollowAuthor?.(user.id)}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1.5 shadow ${
+                    iFollow
+                      ? (theyFollowMe
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                          : 'bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-950 hover:bg-zinc-900')
+                      : 'bg-purple-600 hover:bg-purple-700 text-white hover:scale-[1.02] active:scale-95'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{label}</span>
+                </button>
+              );
+            })()}
 
             {/* BUTTON 2: MESSAGE */}
             <button

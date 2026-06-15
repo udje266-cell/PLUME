@@ -219,6 +219,7 @@ function serializeGroup(group: any) {
     id: group.id,
     name: group.name,
     description: group.description || '',
+    avatar: group.avatar || undefined,
     storyId: group.storyId || undefined,
     creatorId: group.creatorId,
     members: Array.isArray(group.members) ? group.members.map((m: any) => m.id || m) : [],
@@ -863,6 +864,18 @@ export async function createServerInstance() {
 
     socket.on('stop_typing', (payload: { senderId: string; receiverId: string }) => {
       if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
+    });
+
+    // Saisie dans un GROUPE : relayée à tous les membres sauf l'expéditeur.
+    socket.on('group_typing', (p: { groupId: string; memberIds: string[]; senderName?: string }) => {
+      if (!authUserId || !Array.isArray(p?.memberIds)) return;
+      p.memberIds.filter((id) => id !== authUserId).forEach((id) =>
+        socket.to(`user:${id}`).emit('group_typing', { groupId: p.groupId, senderId: authUserId, senderName: p.senderName }));
+    });
+    socket.on('group_stop_typing', (p: { groupId: string; memberIds: string[] }) => {
+      if (!authUserId || !Array.isArray(p?.memberIds)) return;
+      p.memberIds.filter((id) => id !== authUserId).forEach((id) =>
+        socket.to(`user:${id}`).emit('group_stop_typing', { groupId: p.groupId, senderId: authUserId }));
     });
 
     // ----- Signalisation WebRTC (appels audio) -----
@@ -2759,6 +2772,79 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de l’envoi du message de groupe.' });
+    }
+  });
+
+  // Helper : renvoie le groupe (avec membres) et notifie ses membres en direct.
+  const broadcastGroupUpdate = async (groupId: string) => {
+    const fresh = await prisma.readingGroup.findUnique({
+      where: { id: groupId },
+      include: { members: { select: { id: true } }, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+    if (!fresh) return null;
+    const serialized = serializeGroup(fresh);
+    fresh.members.forEach((m) => io.to(`user:${m.id}`).emit('group_updated', serialized));
+    return serialized;
+  };
+
+  // Modifier un groupe (nom, description, photo) — RÉSERVÉ à l'admin (créateur).
+  app.put('/api/groups/:id', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (group.creatorId !== req.user.id) return res.status(403).json({ error: 'Seul l’administrateur du groupe peut le modifier.' });
+      const { name, description, avatar } = req.body || {};
+      const data: any = {};
+      if (typeof name === 'string' && name.trim()) data.name = name.trim().slice(0, 120);
+      if (typeof description === 'string') data.description = description.slice(0, 1000);
+      if (typeof avatar === 'string') data.avatar = avatar;
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data });
+      res.json(await broadcastGroupUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la modification du groupe.' });
+    }
+  });
+
+  // Ajouter des membres — RÉSERVÉ à l'admin.
+  app.post('/api/groups/:id/members', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (group.creatorId !== req.user.id) return res.status(403).json({ error: 'Seul l’administrateur peut ajouter des membres.' });
+      const ids: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
+      if (!ids.length) return res.status(400).json({ error: 'Aucun membre à ajouter.' });
+      await prisma.readingGroup.update({
+        where: { id: req.params.id },
+        data: { members: { connect: ids.map((id) => ({ id })) } },
+      });
+      res.json(await broadcastGroupUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’ajout de membres.' });
+    }
+  });
+
+  // Retirer un membre — admin retire n'importe qui ; un membre peut se retirer.
+  app.delete('/api/groups/:id/members/:userId', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      const isAdmin = group.creatorId === req.user.id;
+      const isSelf = req.params.userId === req.user.id;
+      if (!isAdmin && !isSelf) return res.status(403).json({ error: 'Action interdite.' });
+      if (req.params.userId === group.creatorId) return res.status(400).json({ error: 'L’administrateur ne peut pas être retiré du groupe.' });
+      await prisma.readingGroup.update({
+        where: { id: req.params.id },
+        data: { members: { disconnect: { id: req.params.userId } } },
+      });
+      await broadcastGroupUpdate(req.params.id);
+      // Prévient l'utilisateur retiré pour qu'il enlève le groupe de sa liste.
+      io.to(`user:${req.params.userId}`).emit('group_removed', { groupId: req.params.id });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du retrait du membre.' });
     }
   });
 

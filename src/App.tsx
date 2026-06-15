@@ -111,6 +111,9 @@ export default function App() {
   // « En train d'écrire » : IDs des utilisateurs qui m'écrivent en ce moment.
   const [typingUserIds, setTypingUserIds] = useState<Set<string>>(new Set());
   const typingTimeoutsRef = useRef<Record<string, any>>({});
+  // « En train d'écrire » dans un GROUPE : groupId → nom de l'auteur.
+  const [groupTyping, setGroupTyping] = useState<Record<string, string>>({});
+  const groupTypingTimeoutsRef = useRef<Record<string, any>>({});
   // Passe à true une fois le token restauré (natif) → évite d'ouvrir le socket
   // temps réel sans authentification au démarrage de l'app.
   const [tokenRestored, setTokenRestored] = useState(false);
@@ -297,6 +300,39 @@ export default function App() {
     } catch (e) {
       console.error('[PLUME] Erreur envoi message de groupe :', e);
     }
+  };
+
+  // ----- Gestion des groupes (façon WhatsApp) -----
+  const handleUpdateGroup = async (groupId: string, data: { name?: string; description?: string; avatar?: string }) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}`, {
+        method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data),
+      });
+      if (!res.ok) { let m = 'Modification impossible.'; try { const d = await res.json(); if (d.error) m = d.error; } catch {} alert(m); return; }
+      const updated = await res.json();
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...updated } : g)));
+    } catch { alert('Erreur de connexion.'); }
+  };
+  const handleAddGroupMembers = async (groupId: string, memberIds: string[]) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members`, {
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ memberIds }),
+      });
+      if (!res.ok) { let m = 'Ajout impossible.'; try { const d = await res.json(); if (d.error) m = d.error; } catch {} alert(m); return; }
+      const updated = await res.json();
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...updated } : g)));
+    } catch { alert('Erreur de connexion.'); }
+  };
+  const handleRemoveGroupMember = async (groupId: string, userId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE', headers: authHeaders() });
+      if (!res.ok && res.status !== 204) { let m = 'Retrait impossible.'; try { const d = await res.json(); if (d.error) m = d.error; } catch {} alert(m); return; }
+      if (userId === currentUser?.id) {
+        setGroups((prev) => prev.filter((g) => g.id !== groupId));
+      } else {
+        setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, members: (g.members || []).filter((id) => id !== userId) } : g)));
+      }
+    } catch { alert('Erreur de connexion.'); }
   };
 
   const handleMarkNotificationsRead = (type?: AppNotification['type'] | AppNotification['type'][] | 'all') => {
@@ -748,6 +784,26 @@ export default function App() {
       setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
     });
 
+    socket.on('group_updated', (group: ReadingGroup) => {
+      setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, ...group } : g)));
+    });
+    socket.on('group_removed', ({ groupId }: { groupId: string }) => {
+      setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    });
+    socket.on('group_typing', ({ groupId, senderName }: { groupId: string; senderName?: string }) => {
+      if (!groupId) return;
+      setGroupTyping((prev) => ({ ...prev, [groupId]: senderName || 'Quelqu’un' }));
+      clearTimeout(groupTypingTimeoutsRef.current[groupId]);
+      groupTypingTimeoutsRef.current[groupId] = setTimeout(() => {
+        setGroupTyping((prev) => { const n = { ...prev }; delete n[groupId]; return n; });
+      }, 5000);
+    });
+    socket.on('group_stop_typing', ({ groupId }: { groupId: string }) => {
+      if (!groupId) return;
+      clearTimeout(groupTypingTimeoutsRef.current[groupId]);
+      setGroupTyping((prev) => { const n = { ...prev }; delete n[groupId]; return n; });
+    });
+
     socket.on('new_group_message', (msg: GroupMessage) => {
       setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
@@ -777,6 +833,10 @@ export default function App() {
       socket.off('message_delivered');
       socket.off('story_stats');
       socket.off('group_created');
+      socket.off('group_updated');
+      socket.off('group_removed');
+      socket.off('group_typing');
+      socket.off('group_stop_typing');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();
       callManagerRef.current = null;
@@ -2697,6 +2757,11 @@ export default function App() {
                       setGroupMessages={setGroupMessages}
                       onCreateGroup={handleCreateGroup}
                       onSendGroupMessage={handleSendGroupMessage}
+                      onUpdateGroup={handleUpdateGroup}
+                      onAddGroupMembers={handleAddGroupMembers}
+                      onRemoveGroupMember={handleRemoveGroupMember}
+                      groupTyping={groupTyping}
+                      onGroupTyping={(groupId, memberIds, isTyping) => socketRef.current?.emit(isTyping ? 'group_typing' : 'group_stop_typing', { groupId, memberIds, senderName: currentUser!.username })}
                       stories={allowedStories}
                       onSelectStory={handleSelectStoryForReading}
                     />
