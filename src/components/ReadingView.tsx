@@ -71,6 +71,17 @@ interface ReadingViewProps {
 
 type ReadingTheme = 'light' | 'sepia' | 'dark' | 'dimmed';
 type SoundscapeType = 'none' | 'rain' | 'forest' | 'fireplace' | 'library' | 'ocean' | 'breeze';
+
+// Vrais sons d'ambiance (Mixkit, libres et hotlinkables) — bien plus réalistes
+// que la synthèse. Si une URL échoue (hors ligne / erreur réseau), on bascule
+// automatiquement sur le synthétiseur de secours.
+const REAL_SOUND_URLS: Partial<Record<SoundscapeType, string>> = {
+  rain: 'https://assets.mixkit.co/active_storage/sfx/1247/1247-preview.mp3',     // Long rain ambience
+  forest: 'https://assets.mixkit.co/active_storage/sfx/2472/2472-preview.mp3',   // Morning birds
+  ocean: 'https://assets.mixkit.co/active_storage/sfx/3126/3126-preview.mp3',    // Water flowing ambience loop
+  breeze: 'https://assets.mixkit.co/active_storage/sfx/2658/2658-preview.mp3',   // Wind blowing ambience
+  library: 'https://assets.mixkit.co/active_storage/sfx/2414/2414-preview.mp3',  // Night forest with insects (ambiance feutrée)
+};
 type FontStyleType = 'sans' | 'serif' | 'classic' | 'mono';
 type LineSpacingType = 'tight' | 'normal' | 'loose';
 type PlumeCardBgType = 'sunset' | 'cosmic' | 'emerald' | 'aurora' | 'gold' | 'neon' | 'dark' | 'minimal' | 'custom';
@@ -509,6 +520,7 @@ export default function ReadingView({
   const [activeSoundscape, setActiveSoundscape] = useState<SoundscapeType>('none');
   const [soundVolume, setSoundVolume] = useState<number>(0.4);
   const soundSynthRef = useRef<WebAudioSoundSynth | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
   // Discrete interactions & reactions
   const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
@@ -587,27 +599,40 @@ export default function ReadingView({
   useEffect(() => {
     soundSynthRef.current = new WebAudioSoundSynth();
     return () => {
-      if (soundSynthRef.current) {
-        soundSynthRef.current.stop();
-      }
+      soundSynthRef.current?.stop();
+      if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
     };
   }, []);
 
-  // Update sound synthesis configuration on changes
+  // Ambiance sonore : vrai audio (Mixkit) si dispo, sinon synthèse. On coupe
+  // toujours les deux sources avant de (re)démarrer.
   useEffect(() => {
-    if (soundSynthRef.current) {
-      if (activeSoundscape === 'none') {
-        soundSynthRef.current.stop();
-      } else {
-        soundSynthRef.current.start(activeSoundscape, soundVolume);
-      }
+    soundSynthRef.current?.stop();
+    if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
+
+    if (activeSoundscape === 'none') return;
+
+    const url = REAL_SOUND_URLS[activeSoundscape];
+    if (url) {
+      const a = new Audio(url);
+      a.loop = true;
+      a.volume = soundVolume;
+      const fallbackToSynth = () => {
+        if (audioElRef.current === a) audioElRef.current = null;
+        soundSynthRef.current?.start(activeSoundscape, soundVolume);
+      };
+      a.onerror = fallbackToSynth;
+      a.play().catch(fallbackToSynth); // hors-ligne / lecture refusée → synthèse
+      audioElRef.current = a;
+    } else {
+      soundSynthRef.current?.start(activeSoundscape, soundVolume);
     }
   }, [activeSoundscape]);
 
+  // Volume : appliqué aux DEUX sources possibles.
   useEffect(() => {
-    if (soundSynthRef.current) {
-      soundSynthRef.current.setVolume(soundVolume);
-    }
+    if (audioElRef.current) audioElRef.current.volume = soundVolume;
+    soundSynthRef.current?.setVolume(soundVolume);
   }, [soundVolume]);
 
   // Marque le chapitre lu + (au CHANGEMENT de chapitre seulement) remonte en

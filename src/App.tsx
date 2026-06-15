@@ -896,6 +896,26 @@ export default function App() {
     }
   };
 
+  // Ouvre l'élément pertinent depuis l'onglet Notifications.
+  const handleOpenNotification = (n: AppNotification) => {
+    if (!n) return;
+    if (n.type === 'message') {
+      // Ouvre la conversation avec l'expéditeur (messagerie).
+      if (n.actorId) handleOpenDiscussion(n.actorId);
+      return;
+    }
+    if (n.type === 'follow' || n.type === 'friend') {
+      if (n.actorId) handleViewUserProfile(n.actorId);
+      return;
+    }
+    // commentaire / like / favori : ouvrir le récit concerné, sinon le profil.
+    if (n.storyId) {
+      const story = stories.find(s => s.id === n.storyId);
+      if (story) { handleSelectStoryForReading(story); return; }
+    }
+    if (n.actorId) handleViewUserProfile(n.actorId);
+  };
+
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('plume_dark_mode');
     return saved ? JSON.parse(saved) : true; // Default to eye-safe dark theme
@@ -2541,6 +2561,7 @@ export default function App() {
               onToggleDarkMode={handleToggleDarkMode}
               notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
+              onOpenNotification={handleOpenNotification}
               unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
             />
 

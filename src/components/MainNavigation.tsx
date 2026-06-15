@@ -37,6 +37,7 @@ interface MainNavigationProps {
   onToggleDarkMode: () => void;
   notifications?: AppNotification[];
   onMarkNotificationsRead?: (type?: AppNotification['type'] | AppNotification['type'][] | 'all') => void;
+  onOpenNotification?: (notification: AppNotification) => void;
   unreadMessagesCount?: number;
 }
 
@@ -49,6 +50,7 @@ export default function MainNavigation({
   onToggleDarkMode,
   notifications = [],
   onMarkNotificationsRead,
+  onOpenNotification,
   unreadMessagesCount = 0,
 }: MainNavigationProps) {
 
@@ -226,9 +228,10 @@ export default function MainNavigation({
                       getVisibleNotifications().map((notification) => {
                         const Icon = notifIcon(notification.type);
                         return (
-                          <div
+                          <button
                             key={notification.id}
-                            className={`px-4 py-3 border-b border-gray-100 dark:border-zinc-850 flex gap-3 text-left ${
+                            onClick={() => { onOpenNotification?.(notification); setIsNotificationsOpen(false); }}
+                            className={`w-full px-4 py-3 border-b border-gray-100 dark:border-zinc-850 flex gap-3 text-left cursor-pointer hover:bg-purple-500/10 transition ${
                               notification.read ? 'bg-white dark:bg-[#0E0E14]' : 'bg-purple-500/5 dark:bg-purple-950/15'
                             }`}
                           >
@@ -255,7 +258,7 @@ export default function MainNavigation({
                                 {formatNotificationDate(notification.createdAt)}
                               </p>
                             </div>
-                          </div>
+                          </button>
                         );
                       })
                     )}
