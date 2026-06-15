@@ -36,93 +36,47 @@ export interface Achievement {
   unlockedDate?: string; // Stored in localStorage
 }
 
+// Statistiques de départ d'un NOUVEAU compte : tout à ZÉRO → aucun
+// accomplissement débloqué à la création. Les compteurs augmentent ensuite avec
+// l'activité réelle (lecture, écriture, etc.). L'administrateur a tout débloqué
+// via le drapeau `allUnlocked`, indépendamment de ces statistiques.
 export const INITIAL_STATS: UserStats = {
-  chaptersRead: 12,
-  commentsPosted: 3,
-  likesGiven: 5,
-  favoritesAdded: 2,
-  activeDays: 4,
+  chaptersRead: 0,
+  commentsPosted: 0,
+  likesGiven: 0,
+  favoritesAdded: 0,
+  activeDays: 0,
   completedReadCycles: 0,
-  
-  wordsWritten: 1200,
-  storiesCreated: 1,
-  chaptersPublished: 2,
-  viewsReceived: 140,
-  likesReceived: 18,
-  decorChanges: 1,
-  
-  genresReadCount: 2,
-  authorsFollowedCount: 1,
+
+  wordsWritten: 0,
+  storiesCreated: 0,
+  chaptersPublished: 0,
+  viewsReceived: 0,
+  likesReceived: 0,
+  decorChanges: 0,
+
+  genresReadCount: 0,
+  authorsFollowedCount: 0,
 };
 
 /**
  * Gets user stats from local storage or returns customized initial stats based on preset users
  */
-export function getUserStats(userId: string, role?: string, username?: string): UserStats {
+export function getUserStats(userId: string, _role?: string, _username?: string): UserStats {
   const stored = localStorage.getItem(`plume_stats_v1_${userId}`);
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      // Guarantee fallback properties for levels
-      if (parsed.genresReadCount === undefined) parsed.genresReadCount = 2;
-      if (parsed.authorsFollowedCount === undefined) parsed.authorsFollowedCount = 1;
+      if (parsed.genresReadCount === undefined) parsed.genresReadCount = 0;
+      if (parsed.authorsFollowedCount === undefined) parsed.authorsFollowedCount = 0;
       return parsed;
     } catch (e) {
       console.error("Error reading stats:", e);
     }
   }
-
-  // Fallback de démonstration : limité aux COMPTES de démo explicites (par id ou
-  // pseudo). On ne se base plus sur le rôle, sinon tout vrai utilisateur (ex.
-  // chaque "Lecteur") hériterait de statistiques fictives.
-  const stats = { ...INITIAL_STATS };
-  const lowerUser = (userId || '').toLowerCase();
-  const lowerUsername = (username || '').toLowerCase();
-  const isReader = lowerUser === 'user_reader' || lowerUsername === 'charlotte_b';
-  const isAuthor = lowerUser === 'user_author' || lowerUsername === 'alexandre_dumas_modern';
-  const isMixed = lowerUser === 'user_mixed' || lowerUsername === 'sophie_l';
-
-  if (isReader) {
-    stats.chaptersRead = 105;
-    stats.commentsPosted = 15;
-    stats.likesGiven = 22;
-    stats.favoritesAdded = 8;
-    stats.activeDays = 14;
-    stats.completedReadCycles = 2;
-    stats.wordsWritten = 0;
-    stats.storiesCreated = 0;
-    stats.chaptersPublished = 0;
-    stats.genresReadCount = 4;
-    stats.authorsFollowedCount = 5;
-  } else if (isAuthor) {
-    stats.chaptersRead = 5;
-    stats.commentsPosted = 4;
-    stats.likesGiven = 3;
-    stats.favoritesAdded = 1;
-    stats.activeDays = 28;
-    stats.wordsWritten = 85000;
-    stats.storiesCreated = 4;
-    stats.chaptersPublished = 12;
-    stats.viewsReceived = 2450;
-    stats.likesReceived = 180;
-    stats.genresReadCount = 1;
-    stats.authorsFollowedCount = 2;
-  } else if (isMixed) {
-    stats.chaptersRead = 31;
-    stats.commentsPosted = 10;
-    stats.likesGiven = 14;
-    stats.favoritesAdded = 6;
-    stats.activeDays = 18;
-    stats.completedReadCycles = 1;
-    stats.wordsWritten = 4800;
-    stats.storiesCreated = 1;
-    stats.chaptersPublished = 3;
-    stats.viewsReceived = 380;
-    stats.likesReceived = 24;
-    stats.genresReadCount = 3;
-    stats.authorsFollowedCount = 3;
-  }
-  return stats;
+  // Aucun statut stocké → compte « neuf » : tout à zéro (aucun accomplissement).
+  // Plus aucun preset fictif : les statistiques montent avec l'activité réelle.
+  return { ...INITIAL_STATS };
 }
 
 export function saveUserStats(userId: string, stats: UserStats): void {

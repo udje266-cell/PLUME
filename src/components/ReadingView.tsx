@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
+import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
 
 interface ReadingViewProps {
   story: Story;
@@ -457,24 +458,24 @@ export default function ReadingView({
 }: ReadingViewProps) {
   
   // Custom States
+  // Reprise PAR LIVRE : on restaure le chapitre exact où l'utilisateur s'était
+  // arrêté pour CE récit (et non le dernier livre lu, toutes œuvres confondues).
   const [activeChapterIndex, setActiveChapterIndex] = useState<number>(() => {
     try {
-      const isAuthor = story.authorId === currentUser.id;
-      if (!isAuthor) {
-        const saved = localStorage.getItem('plume_last_read_progress');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.storyId === story.id) {
-            const foundIdx = story.chapters.findIndex(ch => ch.id === parsed.chapterId);
-            if (foundIdx !== -1) return foundIdx;
-          }
-        }
+      const saved = getBookProgress(currentUser.id, story.id);
+      if (saved && saved.chapterIndex >= 0 && saved.chapterIndex < story.chapters.length) {
+        return saved.chapterIndex;
       }
     } catch (e) {
       console.error('[ReadingView] Error restoring reading progress:', e);
     }
     return 0;
   });
+  // Suivi de la progression de lecture réelle (défilement) pour CE récit.
+  const readerRootRef = useRef<HTMLDivElement>(null);
+  const restoredScrollRef = useRef(false);
+  const [readPercent, setReadPercent] = useState<number>(() => getBookProgress(currentUser.id, story.id)?.percent ?? 0);
+
   // Téléchargement hors-ligne de ce récit.
   const [downloaded, setDownloaded] = useState<boolean>(() => isDownloaded(story.id));
   const toggleDownload = () => {
@@ -609,7 +610,10 @@ export default function ReadingView({
     }
   }, [soundVolume]);
 
-  // Jump page top on chapter change and count the chapter as read once.
+  // Marque le chapitre lu + (au CHANGEMENT de chapitre seulement) remonte en
+  // haut. Au tout premier affichage, on NE remonte PAS : l'effet de reprise
+  // ci-dessous restaure la position sauvegardée.
+  const firstChapterEffectRef = useRef(true);
   useEffect(() => {
     if (activeChapter && !isOwnStory) {
       onMarkChapterRead(story.id, activeChapter.id);
@@ -624,8 +628,62 @@ export default function ReadingView({
     }
 
     setActiveParagraphIndex(0);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (firstChapterEffectRef.current) {
+      firstChapterEffectRef.current = false;
+    } else {
+      const el = getScrollParent(readerRootRef.current);
+      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+      else window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }, [activeChapterIndex, story.id]);
+
+  // Suivi + reprise de la position de défilement réelle pour CE récit.
+  const chapterIdxRef = useRef(activeChapterIndex);
+  useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
+  useEffect(() => {
+    const scrollEl = getScrollParent(readerRootRef.current);
+    const metrics = () => {
+      if (scrollEl) {
+        const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+        return { ratio: max > 0 ? scrollEl.scrollTop / max : 0 };
+      }
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      return { ratio: max > 0 ? window.scrollY / max : 0 };
+    };
+    let timer: any = null;
+    const onScroll = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        const ratio = Math.min(1, Math.max(0, metrics().ratio));
+        const total = Math.max(1, story.chapters.length);
+        const percent = Math.round(((chapterIdxRef.current + ratio) / total) * 100);
+        setReadPercent(percent);
+        if (!isOwnStory) saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
+      }, 350);
+    };
+    const target: any = scrollEl || window;
+    target.addEventListener('scroll', onScroll, { passive: true });
+
+    // Reprise de la position au premier affichage de ce livre.
+    if (!restoredScrollRef.current) {
+      restoredScrollRef.current = true;
+      const saved = getBookProgress(currentUser.id, story.id);
+      if (saved && saved.scrollRatio > 0.01) {
+        setTimeout(() => {
+          if (scrollEl) {
+            const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+            scrollEl.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
+          } else {
+            const max = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
+          }
+        }, 150);
+      }
+    }
+    return () => { target.removeEventListener('scroll', onScroll); if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
 
   // Save quotes synchronize
   useEffect(() => {
@@ -704,21 +762,27 @@ export default function ReadingView({
       setActiveParagraphIndex(prev => prev === closestIdx ? prev : closestIdx);
     };
 
-    let scrollTimeoutId: any = null;
-    const throttledScroll = () => {
-      if (scrollTimeoutId) return;
-      scrollTimeoutId = setTimeout(() => {
+    // Synchronisation calée sur les frames (requestAnimationFrame) → 100 %
+    // fluide, sans à-coups. ET surtout : on écoute le VRAI conteneur défilant
+    // (le défilement n'atteint pas `window`), sinon la mise en évidence ne
+    // suivait jamais le scroll.
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
         handleScroll();
-        scrollTimeoutId = null;
-      }, 50); // Fluidité élevée et performances préservées
+      });
     };
 
-    window.addEventListener('scroll', throttledScroll, { passive: true });
+    const scrollEl = getScrollParent(readerRootRef.current);
+    const target: any = scrollEl || window;
+    target.addEventListener('scroll', onScroll, { passive: true });
     handleScroll();
 
     return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      if (scrollTimeoutId) clearTimeout(scrollTimeoutId);
+      target.removeEventListener('scroll', onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       if (clickScrollTimeoutRef.current) clearTimeout(clickScrollTimeoutRef.current);
     };
   }, [isCinemaMode, activeChapter.id]);
@@ -1225,7 +1289,7 @@ export default function ReadingView({
   const chapterComments = comments.filter(c => c.chapterId === activeChapter.id);
 
   return (
-    <div className={`min-h-screen pb-24 transition-all duration-700 bg-gradient-to-br ${getAmbianceGradient()} ${readingTheme === 'dark' || readingTheme === 'dimmed' ? 'dark text-[#E4E4E7]' : 'text-[#2C3E50]'}`}>
+    <div ref={readerRootRef} className={`min-h-screen pb-24 transition-all duration-700 bg-gradient-to-br ${getAmbianceGradient()} ${readingTheme === 'dark' || readingTheme === 'dimmed' ? 'dark text-[#E4E4E7]' : 'text-[#2C3E50]'}`}>
       
       {/* 1. TOP HEADER NAVIGATION - HIDDEN IN IMMERSIVE MODE */}
       {!isImmersive && (
@@ -1727,7 +1791,7 @@ export default function ReadingView({
             </button>
 
             <span className="text-xs font-sans font-black uppercase tracking-widest px-4 py-1.5 bg-[#7C3AED]/10 text-[#7C3AED] dark:text-purple-400 rounded-full">
-              {Math.round(((activeChapterIndex + 1) / story.chapters.length) * 100)}% de l'œuvre
+              {Math.max(readPercent, Math.round((activeChapterIndex / story.chapters.length) * 100))}% de l'œuvre
             </span>
 
             <button
