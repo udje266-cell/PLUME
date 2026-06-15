@@ -46,21 +46,25 @@ import { VerifiedBadge } from './VerifiedBadge';
  *   • 1 plume violette  → message lu
  * Avec une petite animation amusante à l'apparition de chaque état.
  */
-function MessageTicks({ isDelivered, isRead }: { isDelivered?: boolean; isRead?: boolean }) {
+function MessageTicks({ isDelivered, isRead, muted }: { isDelivered?: boolean; isRead?: boolean; muted?: boolean }) {
+  // `muted` = affiché sur un fond CLAIR (liste des discussions) : les plumes
+  // blanches y seraient invisibles → on utilise une teinte grise/violette.
+  const plain = muted ? 'text-zinc-400 dark:text-zinc-500' : 'text-white';
+  const faint = muted ? 'text-zinc-400 dark:text-zinc-500' : 'text-white/70';
   if (isRead) {
     return (
-      <Feather className="w-3.5 h-3.5 text-fuchsia-300 fill-fuchsia-300/30 shrink-0 inline animate-feather-pop" />
+      <Feather className="w-3.5 h-3.5 text-fuchsia-500 dark:text-fuchsia-300 fill-fuchsia-400/30 shrink-0 inline animate-feather-pop" />
     );
   }
   if (isDelivered) {
     return (
       <span className="inline-flex items-center -space-x-1.5 animate-feather-pop">
-        <Feather className="w-3.5 h-3.5 text-white shrink-0" />
-        <Feather className="w-3.5 h-3.5 text-white shrink-0" />
+        <Feather className={`w-3.5 h-3.5 ${plain} shrink-0`} />
+        <Feather className={`w-3.5 h-3.5 ${plain} shrink-0`} />
       </span>
     );
   }
-  return <Feather className="w-3.5 h-3.5 text-white/70 shrink-0 inline animate-feather-in" />;
+  return <Feather className={`w-3.5 h-3.5 ${faint} shrink-0 inline animate-feather-in`} />;
 }
 
 // Jeu d'émojis rapides (rendus avec la police native de l'appareil). Le clavier
@@ -80,6 +84,8 @@ interface MessagesViewProps {
   onSendMessage: (conversationId: string, content: string) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
+  typingUserIds?: Set<string>;
+  onTyping?: (receiverId: string, isTyping: boolean) => void;
   onViewProfile?: (userId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
@@ -177,6 +183,8 @@ export default function MessagesView({
   onSendMessage,
   onStartCall,
   onlineUserIds,
+  typingUserIds,
+  onTyping,
   onViewProfile,
   onDeleteConversation,
   onStartConversation,
@@ -276,6 +284,18 @@ export default function MessagesView({
     ?? allUsers[0]
     ?? currentUser;
   const activeGroup = groups.find(g => g.id === activeGroupId);
+
+  // « En train d'écrire » : on prévient l'interlocuteur quand on tape, et on
+  // arrête après une courte pause. (Conversations privées uniquement.)
+  const typingStopRef = useRef<any>(null);
+  const handleTypingChange = (value: string) => {
+    setMessageText(value);
+    if (activeGroupId || !activeConversationId || !interlocutor || interlocutor.id === currentUser.id) return;
+    onTyping?.(interlocutor.id, true);
+    clearTimeout(typingStopRef.current);
+    typingStopRef.current = setTimeout(() => onTyping?.(interlocutor.id, false), 1500);
+  };
+  const partnerTyping = !activeGroupId && !!interlocutor && (typingUserIds?.has(interlocutor.id) ?? false);
 
   // Auto-scroll to bottom of discussion
   useEffect(() => {
@@ -386,6 +406,11 @@ export default function MessagesView({
       onSendMessage(activeConversationId, messageText.trim());
     }
     setMessageText('');
+    // Fin de saisie : on arrête l'indicateur « écrit… » chez l'interlocuteur.
+    if (!activeGroupId && interlocutor) {
+      clearTimeout(typingStopRef.current);
+      onTyping?.(interlocutor.id, false);
+    }
   };
 
   // Les notes vocales ne sont pas encore implémentées (pas d'enregistrement/
@@ -605,7 +630,7 @@ export default function MessagesView({
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
                         {lastMsg?.senderId === currentUser.id && (
-                          <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} /></span>
+                          <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
                         )}
                         <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
                       </p>
@@ -935,11 +960,25 @@ export default function MessagesView({
 
                   // Sticker : affichage SANS bulle (grand emoji ou image).
                   if (sticker) {
+                    const savable = !isSentByMe && isStickerUrl(sticker) && !customStickers.includes(sticker);
                     return (
                       <div key={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
-                        {isStickerUrl(sticker)
-                          ? <img src={sticker} alt="sticker" className="w-28 h-28 object-contain drop-shadow" referrerPolicy="no-referrer" />
-                          : <span className="text-[64px] leading-none">{sticker}</span>}
+                        <div className="relative group">
+                          {isStickerUrl(sticker)
+                            ? <img src={sticker} alt="sticker" className="w-28 h-28 object-contain drop-shadow" referrerPolicy="no-referrer" />
+                            : <span className="text-[64px] leading-none">{sticker}</span>}
+                          {/* Enregistrer le sticker d'un autre (comme sur WhatsApp). */}
+                          {savable && (
+                            <button
+                              type="button"
+                              onClick={() => { addCustomSticker(sticker); setCustomStickers(getCustomStickers()); }}
+                              className="absolute -bottom-1 -right-1 bg-purple-600 text-white rounded-full p-1 shadow-md active:scale-90 transition"
+                              title="Enregistrer ce sticker"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1 mt-0.5 text-[9px] font-mono text-zinc-400">
                           <span>{new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
@@ -991,6 +1030,15 @@ export default function MessagesView({
                 })
               )
             )}
+              {/* Indicateur « en train d'écrire » (plume qui écrit) */}
+              {partnerTyping && (
+                <div className="flex justify-start animate-fade-in mt-1">
+                  <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                    <Feather className="w-4 h-4 text-purple-300 animate-feather-write" />
+                    <span className="text-[10px] text-zinc-300 italic">{interlocutor.username} écrit…</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -1084,7 +1132,7 @@ export default function MessagesView({
                   placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
                   className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
                   value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
+                  onChange={(e) => handleTypingChange(e.target.value)}
                   onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
                 />
 

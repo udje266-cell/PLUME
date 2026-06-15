@@ -108,6 +108,9 @@ export default function App() {
 
   // Présence en ligne (style WhatsApp) : IDs des utilisateurs réellement connectés.
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  // « En train d'écrire » : IDs des utilisateurs qui m'écrivent en ce moment.
+  const [typingUserIds, setTypingUserIds] = useState<Set<string>>(new Set());
+  const typingTimeoutsRef = useRef<Record<string, any>>({});
   // Passe à true une fois le token restauré (natif) → évite d'ouvrir le socket
   // temps réel sans authentification au démarrage de l'app.
   const [tokenRestored, setTokenRestored] = useState(false);
@@ -723,6 +726,24 @@ export default function App() {
       });
     });
 
+    // « En train d'écrire » : on ajoute l'expéditeur et on l'enlève
+    // automatiquement après un court délai (sécurité si stop_typing se perd).
+    const clearTyping = (senderId: string) => setTypingUserIds((prev) => {
+      if (!prev.has(senderId)) return prev;
+      const next = new Set(prev); next.delete(senderId); return next;
+    });
+    socket.on('typing', ({ senderId }: { senderId: string }) => {
+      if (!senderId) return;
+      setTypingUserIds((prev) => prev.has(senderId) ? prev : new Set(prev).add(senderId));
+      clearTimeout(typingTimeoutsRef.current[senderId]);
+      typingTimeoutsRef.current[senderId] = setTimeout(() => clearTyping(senderId), 5000);
+    });
+    socket.on('stop_typing', ({ senderId }: { senderId: string }) => {
+      if (!senderId) return;
+      clearTimeout(typingTimeoutsRef.current[senderId]);
+      clearTyping(senderId);
+    });
+
     socket.on('group_created', (group: ReadingGroup) => {
       setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
     });
@@ -751,6 +772,8 @@ export default function App() {
       socket.off('conversation_deleted');
       socket.off('presence_list');
       socket.off('presence_update');
+      socket.off('typing');
+      socket.off('stop_typing');
       socket.off('message_delivered');
       socket.off('story_stats');
       socket.off('group_created');
@@ -2660,6 +2683,8 @@ export default function App() {
                       setConversations={setConversations}
                       onStartCall={handleStartCall}
                       onlineUserIds={onlineUserIds}
+                      typingUserIds={typingUserIds}
+                      onTyping={(receiverId, isTyping) => socketRef.current?.emit(isTyping ? 'typing' : 'stop_typing', { senderId: currentUser!.id, receiverId })}
                       onViewProfile={handleViewUserProfile}
                       onSendMessage={handleSendMessage}
                       onDeleteConversation={handleDeleteConversation}
