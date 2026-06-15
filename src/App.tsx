@@ -1656,11 +1656,7 @@ export default function App() {
 
     if (!targetStory || targetStory.id !== storyId) return;
 
-    // Pour une version publique propre, un auteur ne doit pas augmenter ses propres mentions.
-    if (targetStory.authorId === currentUser.id) {
-      alert("Vous ne pouvez pas aimer votre propre histoire. Les mentions viennent des lecteurs.");
-      return;
-    }
+    // L'auteur peut aimer sa propre histoire (comme sur les réseaux sociaux).
 
     const likeMap = readLikeMap(STORY_LIKERS_STORAGE_KEY);
     const initialLikedBy = mergeLikeIds(

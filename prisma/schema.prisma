@@ -22,6 +22,8 @@ model User {
   passwordHash      String?
   role              String   @default("Lecteur")
   avatar            String?
+  // Bannière de profil persistée côté serveur (visible par toute la communauté).
+  banner            String?
   bio               String   @default("")
   isVerified        Boolean  @default(false)
   emailVerified     Boolean  @default(false)

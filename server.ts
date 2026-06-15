@@ -1507,6 +1507,7 @@ export async function createServerInstance() {
       const data: any = {
         bio: user.bio ?? undefined,
         avatar: user.avatar ?? undefined,
+        banner: user.banner ?? undefined,
         gender: user.gender ? genderToPrisma(user.gender) : undefined,
         birthDate: user.birthDate ? new Date(user.birthDate) : undefined,
         favoriteGenres: Array.isArray(user.favoriteGenres) ? JSON.stringify(user.favoriteGenres) : undefined,

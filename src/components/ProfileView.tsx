@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { 
@@ -494,14 +495,16 @@ const user = freshViewedUser || freshCurrentUser;
   };
   
   const [profileBanner, setProfileBanner] = useState(() => {
-    return getSafeProfileBanner(user.id);
+    // La bannière est persistée côté serveur (visible par tous) ; le localStorage
+    // ne sert que de cache d'affichage immédiat.
+    return user.banner || getSafeProfileBanner(user.id);
   });
 
   // Keep state updated, when viewed user or bio changes
   React.useEffect(() => {
     setBioText(user.bio);
-    setProfileBanner(getSafeProfileBanner(user.id));
-  }, [user.id, user.bio]);
+    setProfileBanner(user.banner || getSafeProfileBanner(user.id));
+  }, [user.id, user.bio, user.banner]);
 
   // State handles for story context menus & modals
   const [expandedMenuStoryId, setExpandedMenuStoryId] = useState<string | null>(null);
@@ -626,6 +629,8 @@ const user = freshViewedUser || freshCurrentUser;
 
     setProfileBanner(url);
     localStorage.setItem(getProfileBannerStorageKey(currentUser.id), url);
+    // Persistance serveur : la bannière devient visible par toute la communauté.
+    onUpdateProfile({ banner: url });
     setIsBannerPickerOpen(false);
   };
 
@@ -691,6 +696,8 @@ const user = freshViewedUser || freshCurrentUser;
 
       setProfileBanner(imageUrl);
       localStorage.setItem(getProfileBannerStorageKey(currentUser.id), imageUrl);
+      // Persistance serveur : la bannière devient visible par toute la communauté.
+      onUpdateProfile({ banner: imageUrl });
 
       setShowStatusToast('Bannière mise à jour avec succès !');
       setTimeout(() => setShowStatusToast(null), 3000);
@@ -1192,8 +1199,8 @@ const user = freshViewedUser || freshCurrentUser;
         </div>
       )}
 
-      {bannerImageSrc && (
-        <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
+      {bannerImageSrc && createPortal(
+        <div className="fixed inset-0 z-[2147483000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans overflow-y-auto">
           <div className="w-full max-w-xl bg-white dark:bg-[#0E0E14] rounded-3xl border border-purple-500/20 shadow-2xl overflow-hidden animate-scale-up">
             <div className="px-5 py-4 border-b border-zinc-150 dark:border-zinc-850">
               <h3 className="font-serif font-black text-sm text-zinc-900 dark:text-white">
@@ -1255,7 +1262,8 @@ const user = freshViewedUser || freshCurrentUser;
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 1. EDITABLE PROFILE BANNER */}
@@ -1396,9 +1404,13 @@ const user = freshViewedUser || freshCurrentUser;
           </h3>
           
           <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase mt-1">
-            PLUME ID: <span className="font-bold text-purple-600">@{user.id}</span>
-            {user.gender && (
-              <span className="mx-2 text-zinc-300 dark:text-zinc-700">•</span>
+            {currentUser.role === 'Administrateur' && (
+              <>
+                PLUME ID: <span className="font-bold text-purple-600">@{user.id}</span>
+                {user.gender && (
+                  <span className="mx-2 text-zinc-300 dark:text-zinc-700">•</span>
+                )}
+              </>
             )}
             {user.gender && (
               <span className="font-sans font-bold text-zinc-650 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-850 px-2 py-0.5 rounded-md inline-block uppercase text-[8px]">{user.gender}</span>
@@ -2166,9 +2178,11 @@ const user = freshViewedUser || freshCurrentUser;
                         <p className="text-[11px] font-sans font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight group-hover:text-purple-500 transition">
                           {su.username}
                         </p>
-                        <p className="text-[8.5px] text-zinc-400 font-mono truncate leading-tight mt-0.5">
-                          @{su.id}
-                        </p>
+                        {currentUser.role === 'Administrateur' && (
+                          <p className="text-[8.5px] text-zinc-400 font-mono truncate leading-tight mt-0.5">
+                            @{su.id}
+                          </p>
+                        )}
                       </div>
 
                       <div className="text-[8px] font-mono font-bold tracking-wider text-purple-750 dark:text-purple-400 bg-purple-500/5 dark:bg-purple-950/10 border border-purple-500/10 px-2 py-0.5 rounded uppercase">

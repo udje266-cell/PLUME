@@ -11,6 +11,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar: string;
+  banner?: string;
   bio: string;
   followers: string[];
   following: string[];

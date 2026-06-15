@@ -22,6 +22,7 @@ import {
   Check,
   Volume2,
   VolumeX,
+  Headphones,
   Sparkles,
   Info,
   Maximize2,
@@ -40,6 +41,7 @@ import {
 import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
+import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 
 interface ReadingViewProps {
   story: Story;
@@ -218,6 +220,7 @@ class WebAudioSoundSynth {
   gainNode: GainNode | null = null;
   nodes: AudioNode[] = [];
   intervalId: any = null;
+  orbit: { node: AudioNode; stop: () => void } | null = null;
 
   start(type: string, volume: number) {
     this.stop();
@@ -227,7 +230,11 @@ class WebAudioSoundSynth {
       this.audioCtx = new AudioContextClass();
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
-      this.gainNode.connect(this.audioCtx.destination);
+      // Spatialisation 3D : la nappe sonore synthétisée tourne autour de
+      // l'auditeur (HRTF) pour un rendu immersif au casque, comme le son réel.
+      this.orbit = makeOrbitPanner(this.audioCtx);
+      this.gainNode.connect(this.orbit.node);
+      this.orbit.node.connect(this.audioCtx.destination);
 
       // Bruit COLORÉ (et non blanc) pour un rendu naturel : le bruit rose (1/f)
       // et le bruit brun (1/f²) imitent la pluie, l'océan et le vent bien plus
@@ -431,6 +438,10 @@ class WebAudioSoundSynth {
       } catch (e) {}
     });
     this.nodes = [];
+    if (this.orbit) {
+      try { this.orbit.stop(); } catch (e) {}
+      this.orbit = null;
+    }
     if (this.audioCtx) {
       try {
         this.audioCtx.close();
@@ -523,6 +534,9 @@ export default function ReadingView({
   const [soundVolume, setSoundVolume] = useState<number>(0.4);
   const soundSynthRef = useRef<WebAudioSoundSynth | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const spatialRef = useRef<SpatialHandle | null>(null);
+  // Son immersif « 3D » (spatialisation HRTF pour casque/écouteurs).
+  const [spatialAudioOn, setSpatialAudioOn] = useState<boolean>(true);
 
   // Discrete interactions & reactions
   const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
@@ -602,38 +616,58 @@ export default function ReadingView({
     soundSynthRef.current = new WebAudioSoundSynth();
     return () => {
       soundSynthRef.current?.stop();
+      spatialRef.current?.stop();
+      spatialRef.current = null;
       if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
     };
   }, []);
 
   // Ambiance sonore : vrai audio (Mixkit) si dispo, sinon synthèse. On coupe
-  // toujours les deux sources avant de (re)démarrer.
+  // toujours les sources avant de (re)démarrer. Si la spatialisation 3D est
+  // active, le son réel est routé dans Web Audio (HRTF) pour tourner autour de
+  // l'auditeur — immersion totale au casque.
   useEffect(() => {
     soundSynthRef.current?.stop();
+    spatialRef.current?.stop();
+    spatialRef.current = null;
     if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
 
     if (activeSoundscape === 'none') return;
 
     const url = REAL_SOUND_URLS[activeSoundscape];
     if (url) {
-      const a = new Audio(url);
+      const a = new Audio();
+      // crossOrigin AVANT le src : indispensable pour router le flux dans Web
+      // Audio sans le « tainter » (Mixkit renvoie Access-Control-Allow-Origin).
+      a.crossOrigin = 'anonymous';
       a.loop = true;
-      a.volume = soundVolume;
+      a.src = url;
       const fallbackToSynth = () => {
+        spatialRef.current?.stop();
+        spatialRef.current = null;
         if (audioElRef.current === a) audioElRef.current = null;
         soundSynthRef.current?.start(activeSoundscape, soundVolume);
       };
       a.onerror = fallbackToSynth;
+      if (spatialAudioOn) {
+        const handle = spatializeElement(a, soundVolume);
+        if (handle) { spatialRef.current = handle; a.volume = 1; }
+        else a.volume = soundVolume; // navigateur sans Web Audio → stéréo simple
+      } else {
+        a.volume = soundVolume;
+      }
       a.play().catch(fallbackToSynth); // hors-ligne / lecture refusée → synthèse
       audioElRef.current = a;
     } else {
       soundSynthRef.current?.start(activeSoundscape, soundVolume);
     }
-  }, [activeSoundscape]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSoundscape, spatialAudioOn]);
 
-  // Volume : appliqué aux DEUX sources possibles.
+  // Volume : appliqué à la source active (graphe spatial, élément, ou synthé).
   useEffect(() => {
-    if (audioElRef.current) audioElRef.current.volume = soundVolume;
+    if (spatialRef.current) spatialRef.current.setVolume(soundVolume);
+    else if (audioElRef.current) audioElRef.current.volume = soundVolume;
     soundSynthRef.current?.setVolume(soundVolume);
   }, [soundVolume]);
 
@@ -668,55 +702,71 @@ export default function ReadingView({
   const chapterIdxRef = useRef(activeChapterIndex);
   useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
   useEffect(() => {
-    // Calcule le ratio (0..1) de défilement à partir de l'ÉLÉMENT qui a défilé
-    // (capté en phase de capture sur document, donc peu importe que ce soit la
-    // fenêtre ou un conteneur interne).
-    const ratioFromTarget = (t: EventTarget | null): number => {
-      const docMax = document.documentElement.scrollHeight - window.innerHeight;
-      const winRatio = docMax > 0 ? window.scrollY / docMax : 0;
-      if (t && t instanceof HTMLElement && typeof t.scrollTop === 'number' && t.scrollHeight > t.clientHeight) {
-        const max = t.scrollHeight - t.clientHeight;
-        const r = max > 0 ? t.scrollTop / max : 0;
-        // On prend le plus pertinent : l'élément défilé, sinon la fenêtre.
-        return Math.max(r, winRatio);
+    // Le conteneur réellement défilé pour la lecture (sinon la fenêtre/page).
+    const getScroller = (): HTMLElement | null => getScrollParent(readerRootRef.current);
+
+    // Ratio de progression (0..1) DANS le chapitre courant, calculé sur le bon
+    // conteneur : on ne devine plus, on mesure le défileur de lecture lui-même.
+    const computeRatio = (): number => {
+      const el = getScroller();
+      if (el) {
+        const max = el.scrollHeight - el.clientHeight;
+        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
       }
-      return winRatio;
+      const docMax = document.documentElement.scrollHeight - window.innerHeight;
+      return docMax > 0 ? Math.min(1, Math.max(0, window.scrollY / docMax)) : 0;
     };
 
+    // On n'accepte QUE le défilement du conteneur de lecture (ou de la page).
+    // Un défilement d'un autre élément (liste de chapitres, menu, carrousel…)
+    // ne doit PAS fausser le pourcentage — c'était la cause du « 100 % » subit.
+    const isReaderScrollEvent = (t: EventTarget | null): boolean => {
+      const el = getScroller();
+      if (el) return t === el;
+      return t === document || t === window || t === document.documentElement || t === document.body;
+    };
+
+    let restoring = false;
     let timer: any = null;
     const onScroll = (e: Event) => {
+      if (restoring) return;
+      if (!isReaderScrollEvent(e.target)) return;
       if (timer) return;
-      const target = e.target;
       timer = setTimeout(() => {
         timer = null;
-        const ratio = Math.min(1, Math.max(0, ratioFromTarget(target)));
+        const ratio = computeRatio();
         const total = Math.max(1, story.chapters.length);
         const percent = Math.round(((chapterIdxRef.current + ratio) / total) * 100);
         setReadPercent(percent);
-        if (!isOwnStory) {
-          saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
-        }
-      }, 300);
+        // On sauvegarde toujours la position de reprise (y compris pour l'auteur).
+        saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
+      }, 250);
     };
-    // Capture-phase sur document : capte le scroll de N'IMPORTE quel conteneur.
+    // Capture-phase sur document : capte le scroll quel que soit le conteneur,
+    // mais on filtre ensuite pour ne garder que le défileur de lecture.
     document.addEventListener('scroll', onScroll, true);
 
-    // Reprise de la position au premier affichage de ce livre.
+    // Reprise de la position au premier affichage de ce livre. On ré-applique
+    // plusieurs fois pour absorber le rendu progressif (images, polices) afin
+    // d'atterrir EXACTEMENT là où l'on s'était arrêté.
     if (!restoredScrollRef.current) {
       restoredScrollRef.current = true;
       const saved = getBookProgress(currentUser.id, story.id);
       if (saved && saved.scrollRatio > 0.01) {
-        // Délai pour laisser le contenu se rendre, puis on restaure sur le bon
-        // conteneur (détecté à ce moment-là) ET la fenêtre, par sécurité.
-        setTimeout(() => {
-          const el = getScrollParent(readerRootRef.current);
+        restoring = true;
+        const apply = () => {
+          const el = getScroller();
           if (el) {
             const max = el.scrollHeight - el.clientHeight;
             if (max > 0) el.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
+          } else {
+            const wmax = document.documentElement.scrollHeight - window.innerHeight;
+            if (wmax > 0) window.scrollTo({ top: wmax * saved.scrollRatio, behavior: 'auto' });
           }
-          const wmax = document.documentElement.scrollHeight - window.innerHeight;
-          if (wmax > 0) window.scrollTo({ top: wmax * saved.scrollRatio, behavior: 'auto' });
-        }, 280);
+        };
+        [120, 350, 700].forEach((d) => setTimeout(apply, d));
+        // Fin de la fenêtre de restauration : on rend la main au suivi réel.
+        setTimeout(() => { restoring = false; }, 850);
       }
     }
     return () => { document.removeEventListener('scroll', onScroll, true); if (timer) clearTimeout(timer); };
@@ -1536,6 +1586,27 @@ export default function ReadingView({
                         <span className="text-[9.5px] font-mono text-gray-400 font-bold font-mono">{~~(soundVolume * 100)}%</span>
                       </div>
                     )}
+
+                    {/* Son immersif 3D (HRTF) — la source tourne autour de soi. */}
+                    <button
+                      type="button"
+                      id="spatial-audio-toggle"
+                      onClick={() => setSpatialAudioOn((v) => !v)}
+                      className={`w-full flex items-center justify-between gap-2 py-1.5 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer mt-1 ${
+                        spatialAudioOn
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-purple-600'
+                      }`}
+                      title="Son spatialisé pour casque et écouteurs"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Headphones className="w-3.5 h-3.5" />
+                        <span>Son immersif 3D</span>
+                      </span>
+                      <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase ${spatialAudioOn ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
+                        {spatialAudioOn ? 'Casque' : 'Off'}
+                      </span>
+                    </button>
                   </div>
 
                   {/* Advanced Customizations */}

@@ -27,7 +27,6 @@ import {
   Check
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
-import { displayRole } from '../utils/role';
 import { getDownloadedBooks, removeDownload } from '../utils/offline';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
@@ -234,14 +233,6 @@ export default function HomeView({
             <span>Archipel Plume</span>
             <Sparkles className="w-4 h-4 text-purple-600 fill-purple-600/10" />
           </h1>
-          <p className="text-gray-400 text-[10px] uppercase font-bold tracking-wider mt-1">
-            Lecteur actif : @{currentUser.username.toLowerCase()}
-          </p>
-        </div>
-
-        {/* Mini stats pill */}
-        <div className="bg-purple-500/10 text-purple-600 dark:text-purple-400 px-3 py-1.5 rounded-xl border border-purple-500/15 text-[10px] font-black uppercase tracking-wider">
-          {displayRole(currentUser.role)}
         </div>
       </header>
 

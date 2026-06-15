@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Send, 
   MessageSquare, 
@@ -1506,9 +1507,11 @@ export default function MessagesView({
         );
       })()}
 
-      {/* MODALE : ROGNAGE DU STICKER (format carré) */}
-      {stickerCropSrc && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col p-4 animate-fade-in" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}>
+      {/* MODALE : ROGNAGE DU STICKER (format carré) — rendue via un portail sur
+          document.body afin qu'aucun parent (transform/overflow d'une vue
+          animée) ne puisse rogner la modale ni masquer ses boutons. */}
+      {stickerCropSrc && createPortal(
+        <div className="fixed inset-0 bg-black/80 z-[2147483000] flex flex-col p-4 animate-fade-in" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}>
           <div className="flex-1 min-h-0 relative max-w-md w-full mx-auto rounded-2xl overflow-hidden bg-zinc-900">
             <Cropper
               image={stickerCropSrc}
@@ -1533,7 +1536,7 @@ export default function MessagesView({
               <button
                 type="button"
                 onClick={() => setStickerCropSrc(null)}
-                className="flex-1 py-2.5 rounded-xl bg-zinc-700 text-white font-bold text-xs uppercase tracking-wider"
+                className="flex-1 py-3 rounded-xl bg-zinc-700 text-white font-bold text-xs uppercase tracking-wider"
               >
                 Annuler
               </button>
@@ -1541,13 +1544,14 @@ export default function MessagesView({
                 type="button"
                 onClick={confirmStickerCrop}
                 disabled={uploadingSticker || !stickerCroppedPixels}
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider"
+                className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider"
               >
                 {uploadingSticker ? 'Création…' : 'Créer le sticker'}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
