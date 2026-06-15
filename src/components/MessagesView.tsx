@@ -267,9 +267,14 @@ export default function MessagesView({
   }, []);
 
   const activeConv = conversations.find(c => c.id === activeConversationId);
-  const interlocutor = activeConv 
-    ? (activeConv.participants.find(p => p.id !== currentUser.id) || activeConv.participants[0])
-    : (allUsers.find(u => u.id !== currentUser.id) || allUsers[1] || allUsers[0]);
+  // Robuste : on ne tombe jamais sur `undefined` même si `participants` est vide.
+  const interlocutor =
+    activeConv?.participants?.find(p => p.id !== currentUser.id)
+    ?? activeConv?.participants?.[0]
+    ?? allUsers.find(u => u.id !== currentUser.id)
+    ?? allUsers[1]
+    ?? allUsers[0]
+    ?? currentUser;
   const activeGroup = groups.find(g => g.id === activeGroupId);
 
   // Auto-scroll to bottom of discussion
@@ -651,7 +656,7 @@ export default function MessagesView({
 
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
                       <span className="text-purple-600 dark:text-purple-400 font-semibold mr-1">Récit:</span>
-                      <span>{group.lastMessage || 'Aucune discussion récente'}</span>
+                      <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
                     </p>
                   </div>
                 </button>
@@ -1080,7 +1085,7 @@ export default function MessagesView({
                   className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  onFocus={() => setShowEmojiPicker(false)}
+                  onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
                 />
 
                 <button

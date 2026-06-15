@@ -1469,7 +1469,7 @@ const user = freshViewedUser || freshCurrentUser;
             className="flex-1 flex flex-col items-center justify-center p-1 sm:p-2 rounded-xl hover:bg-purple-500/5 dark:hover:bg-purple-950/10 transition cursor-pointer group min-w-0"
           >
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
-              {canSeeFollowing ? user.following.length : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
+              {canSeeFollowing ? (user.following?.length ?? 0) : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
             <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">Suivis</span>
           </button>
@@ -1587,7 +1587,7 @@ const user = freshViewedUser || freshCurrentUser;
 
           {!isEditingBio ? (
             <p className="text-xs text-zinc-650 dark:text-zinc-300 italic font-serif leading-relaxed px-1">
-              {currentUser.bio || "Aucune biographie rédigée. Évoquez votre univers littéraire et invitez vos futurs lecteurs dans vos songes !"}
+              {user.bio || "Aucune biographie rédigée. Évoquez votre univers littéraire et invitez vos futurs lecteurs dans vos songes !"}
             </p>
           ) : (
             <div className="space-y-4 pt-1 shadow-inner rounded-xl p-2 bg-zinc-50 dark:bg-zinc-950/40">

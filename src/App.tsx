@@ -2559,6 +2559,7 @@ export default function App() {
               {/* SPECIAL SCREEN: Reading pane overlay taking precedence */}
               {selectedStoryForReading ? (
                 <ReadingView
+                  key={selectedStoryForReading.id}
                   story={selectedStoryForReading}
                   onBack={() => setSelectedStoryForReading(null)}
                   currentUser={currentUser!}
