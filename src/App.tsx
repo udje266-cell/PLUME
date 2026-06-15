@@ -1226,6 +1226,55 @@ export default function App() {
     if (isAuthenticated) initPushNotifications().catch(() => {});
   }, [isAuthenticated]);
 
+  // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
+  // /api/users en échec au démarrage…). On (re)charge le profil directement via
+  // /auth/me, indépendamment du reste du bootstrap, et on tranche toujours :
+  //   • profil valide → on entre dans l'app ;
+  //   • session invalide (401) ou utilisateur inexistant → on déconnecte (AuthView) ;
+  //   • erreur réseau (serveur froid/hors-ligne) → un seul réessai après 4 s, puis
+  //     l'écran d'attente garde son bouton « Se reconnecter » manuel.
+  useEffect(() => {
+    if (!isAuthenticated || currentUser) return;
+    let cancelled = false;
+    let retryTimer: any = null;
+
+    const logout = () => {
+      localStorage.removeItem('plume_auth_token');
+      localStorage.removeItem('plume_is_logged_in');
+      localStorage.removeItem('plume_current_user');
+      setIsAuthenticated(false);
+    };
+
+    const loadProfile = async (attempt: number) => {
+      try {
+        await restoreAuthToken();
+        const res = await fetch('/api/auth/me', { headers: authHeaders() });
+        if (cancelled) return;
+        if (res.ok) {
+          const me = await res.json().catch(() => null);
+          if (me && me.id) {
+            setCurrentUser(me);
+            localStorage.setItem('plume_current_user', JSON.stringify(me));
+            return;
+          }
+          // 200 mais profil nul/incomplet → la session pointe vers un compte
+          // inexistant : on déconnecte plutôt que de rester bloqué.
+          logout();
+          return;
+        }
+        if (res.status === 401 || res.status === 403) { logout(); return; }
+        // Autre code (5xx, serveur froid) : on réessaie (jusqu'à ~30 s).
+        if (attempt < 6) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+      } catch {
+        // Réseau indisponible / serveur en cours de démarrage : on réessaie.
+        if (attempt < 6 && !cancelled) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+      }
+    };
+
+    loadProfile(0);
+    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
+  }, [isAuthenticated, currentUser]);
+
   useEffect(() => {
     if (!currentUser?.id) return;
     localStorage.setItem(getFavoritesStorageKey(currentUser.id), JSON.stringify(favorites));
