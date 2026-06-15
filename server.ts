@@ -496,6 +496,20 @@ export async function createServerInstance() {
     }).catch(() => {});
   };
 
+  // Diffuse en TEMPS RÉEL les compteurs d'un récit à son auteur (et aux clients)
+  // après un like/favori → la stat « Mentions » du profil se met à jour sans
+  // rafraîchissement.
+  const emitStoryStats = async (storyId: string) => {
+    try {
+      const story = await prisma.story.findUnique({
+        where: { id: storyId },
+        select: { authorId: true, _count: { select: { likes: true, favorites: true } } },
+      });
+      if (!story) return;
+      io.emit('story_stats', { storyId, likes: story._count.likes, favoritesCount: story._count.favorites });
+    } catch { /* best-effort */ }
+  };
+
   const PORT = Number(process.env.PORT || 3000);
   const JWT_SECRET = process.env.JWT_SECRET || 'plume_secret_dev_change_later';
 
@@ -2983,6 +2997,7 @@ export async function createServerInstance() {
       }
       // Le total de likes reçus alimente la certification de l'auteur.
       if (story) recomputeCertification(story.authorId).catch(() => {});
+      emitStoryStats(req.params.id).catch(() => {});
       res.status(201).json(like);
     } catch (error) {
       console.error(error);
@@ -2994,6 +3009,7 @@ export async function createServerInstance() {
     await prisma.storyLike.delete({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } } }).catch(() => null);
     const story = await prisma.story.findUnique({ where: { id: req.params.id }, select: { authorId: true } });
     if (story) recomputeCertification(story.authorId).catch(() => {});
+    emitStoryStats(req.params.id).catch(() => {});
     res.status(204).end();
   });
 
@@ -3066,6 +3082,7 @@ export async function createServerInstance() {
         });
         notifyUser(story.authorId, notification);
       }
+      emitStoryStats(req.params.id).catch(() => {});
       res.status(201).json(favorite);
     } catch (error) {
       console.error(error);
@@ -3075,6 +3092,7 @@ export async function createServerInstance() {
 
   app.delete('/api/stories/:id/favorite', requireAuth, async (req: any, res) => {
     await prisma.favorite.delete({ where: { userId_storyId: { userId: req.user.id, storyId: req.params.id } } }).catch(() => null);
+    emitStoryStats(req.params.id).catch(() => {});
     res.status(204).end();
   });
 

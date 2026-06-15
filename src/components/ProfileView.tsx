@@ -1000,12 +1000,17 @@ const user = freshViewedUser || freshCurrentUser;
   const totalViews = writtenStories.reduce((acc, curr) => acc + curr.views, 0);
   const totalReads = writtenStories.reduce((acc, curr) => acc + curr.reads, 0);
 
-  // Amis : liste serveur pour le profil connecté, sinon intersection follow mutuel.
+  // Amis = abonnement MUTUEL (cohérent quel que soit le point de vue). Sur son
+  // propre profil, on y ajoute aussi les amitiés explicites (demandes acceptées)
+  // renvoyées par le serveur. Avant : le profil perso n'utilisait QUE les
+  // amitiés explicites → un follow mutuel apparaissait « ami » sur le profil de
+  // l'autre mais pas sur le sien.
   const followersList = user.followers || [];
   const followingList = user.following || [];
+  const mutualFollow = followingList.filter(id => followersList.includes(id));
   const friendsList = isOwnProfile && friendIds
-    ? friendIds
-    : followingList.filter(id => followersList.includes(id));
+    ? Array.from(new Set([...mutualFollow, ...friendIds]))
+    : mutualFollow;
   const friendsCount = friendsList.length;
 
   // Privacy rules for public visibility of stats categories

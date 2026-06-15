@@ -692,6 +692,12 @@ export default function App() {
       })));
     });
 
+    // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
+    // du profil se met à jour sans rafraîchissement.
+    socket.on('story_stats', ({ storyId, likes, favoritesCount }: { storyId: string; likes: number; favoritesCount: number }) => {
+      setStories((prev) => prev.map((s) => s.id === storyId ? { ...s, likes, favoritesCount } : s));
+    });
+
     socket.on('user_followed', () => {
       refreshUsersData();
     });
@@ -746,6 +752,7 @@ export default function App() {
       socket.off('presence_list');
       socket.off('presence_update');
       socket.off('message_delivered');
+      socket.off('story_stats');
       socket.off('group_created');
       socket.off('new_group_message');
       callManagerRef.current?.dispose();
