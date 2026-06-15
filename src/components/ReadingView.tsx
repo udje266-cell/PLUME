@@ -762,10 +762,11 @@ export default function ReadingView({
       setActiveParagraphIndex(prev => prev === closestIdx ? prev : closestIdx);
     };
 
-    // Synchronisation calée sur les frames (requestAnimationFrame) → 100 %
-    // fluide, sans à-coups. ET surtout : on écoute le VRAI conteneur défilant
-    // (le défilement n'atteint pas `window`), sinon la mise en évidence ne
-    // suivait jamais le scroll.
+    // Synchronisation calée sur les frames (requestAnimationFrame) → fluide.
+    // On écoute À LA FOIS `window` ET le conteneur défilant détecté : selon le
+    // contexte, le défilement vient de l'un ou de l'autre. Le surlignage se base
+    // sur des coordonnées écran (getBoundingClientRect), donc peu importe lequel
+    // défile — l'essentiel est de capter l'événement.
     let rafId: number | null = null;
     const onScroll = () => {
       if (rafId !== null) return;
@@ -776,12 +777,13 @@ export default function ReadingView({
     };
 
     const scrollEl = getScrollParent(readerRootRef.current);
-    const target: any = scrollEl || window;
-    target.addEventListener('scroll', onScroll, { passive: true });
+    const targets: Array<Window | HTMLElement> = [window];
+    if (scrollEl && scrollEl !== (document.scrollingElement as any)) targets.push(scrollEl);
+    targets.forEach((t) => t.addEventListener('scroll', onScroll, { passive: true } as any));
     handleScroll();
 
     return () => {
-      target.removeEventListener('scroll', onScroll);
+      targets.forEach((t) => t.removeEventListener('scroll', onScroll as any));
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (clickScrollTimeoutRef.current) clearTimeout(clickScrollTimeoutRef.current);
     };
@@ -1308,7 +1310,7 @@ export default function ReadingView({
 
             {/* Book metadata dynamic title */}
             <div className="text-center max-w-[160px] sm:max-w-xs truncate">
-              <span className="text-[9px] uppercase font-bold tracking-widest text-purple-600 dark:text-purple-450 block font-mono">Lecture Augmentée</span>
+              <span className="text-[9px] uppercase font-bold tracking-widest text-purple-600 dark:text-purple-450 block font-mono">Lecture</span>
               <h1 className="text-sm font-black font-serif text-gray-900 dark:text-white truncate leading-tight">{story.title}</h1>
             </div>
 
@@ -1327,17 +1329,6 @@ export default function ReadingView({
                 title={downloaded ? 'Téléchargé (disponible hors ligne) — appuyer pour retirer' : 'Télécharger pour lire hors ligne'}
               >
                 {downloaded ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-              </button>
-
-              {/* Augmented Reading Trigger Button */}
-              <button
-                id="toggle-augmented-btn"
-                onClick={() => setIsAugmentedOpen(true)}
-                className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-500/15 dark:text-purple-400 dark:hover:bg-purple-400/10 transition flex items-center gap-1 font-bold text-xs"
-                title="Lecture Augmentée (Résumé, Protagonistes, Citations)"
-              >
-                <Sparkles className="w-4 h-4 fill-purple-600/10" />
-                <span className="hidden md:inline">Explorer</span>
               </button>
 
               {/* Soundscape Control Icon */}
@@ -1666,7 +1657,7 @@ export default function ReadingView({
                 >
                   {/* Floating discrete react toolbar next to hovered/focused paragraph */}
                   {!isImmersive && (
-                    <div className="absolute right-2 -bottom-2 z-10 hidden group-hover:flex items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in">
+                    <div className={`absolute right-2 -bottom-2 z-10 items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in ${isPFocus ? 'flex' : 'hidden group-hover:flex'}`}>
                       {/* Like paragraph line (hidden in Cinema mode) */}
                       {!isCinemaMode && (
                         <>
