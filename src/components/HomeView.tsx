@@ -5,7 +5,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  BookOpen, 
+  BookOpen,
+  Download,
+  Trash2, 
   Heart, 
   Star, 
   Share2, 
@@ -26,6 +28,7 @@ import {
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
 import { displayRole } from '../utils/role';
+import { getDownloadedBooks, removeDownload } from '../utils/offline';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
@@ -68,6 +71,15 @@ export default function HomeView({
   
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Livres téléchargés (disponibles hors ligne). Se met à jour quand on
+  // télécharge / retire un livre ailleurs dans l'app.
+  const [offlineBooks, setOfflineBooks] = useState<Story[]>(() => getDownloadedBooks());
+  useEffect(() => {
+    const refresh = () => setOfflineBooks(getDownloadedBooks());
+    window.addEventListener('plume-offline-changed', refresh);
+    return () => window.removeEventListener('plume-offline-changed', refresh);
+  }, []);
 
   // Suggestions de personnes aux goûts proches (PLUME = aussi pour se faire des amis).
   const [suggestedPeople, setSuggestedPeople] = useState<(User & { sharedGenres?: string[] })[]>([]);
@@ -232,6 +244,40 @@ export default function HomeView({
           {displayRole(currentUser.role)}
         </div>
       </header>
+
+      {/* SECTION: LIVRES TÉLÉCHARGÉS (disponibles hors ligne) */}
+      {offlineBooks.length > 0 && (
+        <section className="space-y-3">
+          <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center space-x-1.5">
+            <Download className="w-3.5 h-3.5" />
+            <span>Disponibles hors ligne ({offlineBooks.length})</span>
+          </h3>
+          <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+            {offlineBooks.map((book) => (
+              <div key={book.id} className="w-32 flex-shrink-0 relative">
+                <div
+                  onClick={() => onSelectStory(book)}
+                  className="aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer bg-gray-100 dark:bg-zinc-900 border border-emerald-500/20 relative group"
+                >
+                  {book.cover && (
+                    <img src={book.cover} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  )}
+                  <span className="absolute top-1 left-1 text-[7px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded uppercase shadow">Hors ligne</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeDownload(book.id); }}
+                    className="absolute top-1 right-1 p-1 rounded-lg bg-black/50 text-white hover:bg-red-600 transition"
+                    title="Retirer le téléchargement"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <h4 onClick={() => onSelectStory(book)} className="mt-1.5 text-[11px] font-black text-gray-950 dark:text-gray-50 line-clamp-1 cursor-pointer hover:text-purple-600">{book.title}</h4>
+                <p className="text-[9px] text-gray-400 line-clamp-1">{book.authorName}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* SECTION 1: CONTINUER LA LECTURE */}
       <section className="space-y-3">

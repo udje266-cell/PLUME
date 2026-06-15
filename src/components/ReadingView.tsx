@@ -38,6 +38,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { Story, Chapter, Comment, User } from '../types';
+import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 
 interface ReadingViewProps {
   story: Story;
@@ -215,20 +216,46 @@ class WebAudioSoundSynth {
       this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
       this.gainNode.connect(this.audioCtx.destination);
 
-      const createNoiseBuffer = (duration = 2) => {
+      // Bruit COLORÉ (et non blanc) pour un rendu naturel : le bruit rose (1/f)
+      // et le bruit brun (1/f²) imitent la pluie, l'océan et le vent bien plus
+      // fidèlement que le bruit blanc, qui « siffle ». Buffers stéréo +
+      // décorrélés gauche/droite pour une vraie largeur immersive.
+      const createNoiseBuffer = (duration = 2, color: 'white' | 'pink' | 'brown' = 'pink') => {
         if (!this.audioCtx) return null;
-        const bSize = this.audioCtx.sampleRate * duration;
-        const buf = this.audioCtx.createBuffer(1, bSize, this.audioCtx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < bSize; i++) {
-          data[i] = Math.random() * 2 - 1;
+        const bSize = Math.floor(this.audioCtx.sampleRate * duration);
+        const buf = this.audioCtx.createBuffer(2, bSize, this.audioCtx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const data = buf.getChannelData(ch);
+          if (color === 'brown') {
+            let last = 0;
+            for (let i = 0; i < bSize; i++) {
+              const white = Math.random() * 2 - 1;
+              last = (last + 0.02 * white) / 1.02;
+              data[i] = last * 3.5;
+            }
+          } else if (color === 'pink') {
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+            for (let i = 0; i < bSize; i++) {
+              const white = Math.random() * 2 - 1;
+              b0 = 0.99886 * b0 + white * 0.0555179;
+              b1 = 0.99332 * b1 + white * 0.0750759;
+              b2 = 0.96900 * b2 + white * 0.1538520;
+              b3 = 0.86650 * b3 + white * 0.3104856;
+              b4 = 0.55000 * b4 + white * 0.5329522;
+              b5 = -0.7616 * b5 - white * 0.0168980;
+              data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+              b6 = white * 0.115926;
+            }
+          } else {
+            for (let i = 0; i < bSize; i++) data[i] = Math.random() * 2 - 1;
+          }
         }
         return buf;
       };
 
-      const setupNoiseSource = (filterFreq: number, filterType: BiquadFilterType = 'lowpass', q = 1, bufferDuration = 2) => {
+      const setupNoiseSource = (filterFreq: number, filterType: BiquadFilterType = 'lowpass', q = 1, bufferDuration = 2, color: 'white' | 'pink' | 'brown' = 'pink') => {
         if (!this.audioCtx || !this.gainNode) return null;
-        const buf = createNoiseBuffer(bufferDuration);
+        const buf = createNoiseBuffer(bufferDuration, color);
         if (!buf) return null;
         const src = this.audioCtx.createBufferSource();
         src.buffer = buf;
@@ -303,7 +330,7 @@ class WebAudioSoundSynth {
         this.intervalId = birdInterval;
       }
       else if (type === 'fireplace') {
-        setupNoiseSource(80, 'lowpass', 1, 2);
+        setupNoiseSource(90, 'lowpass', 1, 2, 'brown');
         
         const woodCrackles = setInterval(() => {
           if (!this.audioCtx || !this.gainNode) return;
@@ -344,7 +371,7 @@ class WebAudioSoundSynth {
         this.intervalId = libraryTones;
       }
       else if (type === 'ocean') {
-        const wave = setupNoiseSource(450, 'lowpass', 1, 4);
+        const wave = setupNoiseSource(500, 'lowpass', 1, 4, 'brown');
         if (wave) {
           const lfo = this.audioCtx.createOscillator();
           const lfoGain = this.audioCtx.createGain();
@@ -448,6 +475,19 @@ export default function ReadingView({
     }
     return 0;
   });
+  // Téléchargement hors-ligne de ce récit.
+  const [downloaded, setDownloaded] = useState<boolean>(() => isDownloaded(story.id));
+  const toggleDownload = () => {
+    if (downloaded) {
+      removeDownload(story.id);
+      setDownloaded(false);
+    } else {
+      const ok = downloadBook(story);
+      setDownloaded(ok);
+      if (!ok) alert("Le téléchargement a échoué (espace insuffisant ?).");
+    }
+  };
+
   const [fontSize, setFontSize] = useState<number>(18); // Font Size Slider (14px - 32px)
   const [fontStyle, setFontStyle] = useState<FontStyleType>('serif'); // Typography presets
   const [lineSpacing, setLineSpacing] = useState<LineSpacingType>('normal');
@@ -1210,7 +1250,21 @@ export default function ReadingView({
 
             {/* Top Toolbar controls */}
             <div className="flex items-center space-x-1.5">
-              
+
+              {/* Téléchargement hors-ligne */}
+              <button
+                id="reader-download-btn"
+                onClick={toggleDownload}
+                className={`p-2.5 rounded-xl border transition ${
+                  downloaded
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-purple-600'
+                }`}
+                title={downloaded ? 'Téléchargé (disponible hors ligne) — appuyer pour retirer' : 'Télécharger pour lire hors ligne'}
+              >
+                {downloaded ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+              </button>
+
               {/* Augmented Reading Trigger Button */}
               <button
                 id="toggle-augmented-btn"

@@ -30,10 +30,13 @@ import {
   Check,
   Feather,
   Headphones,
-  BookOpen
+  BookOpen,
+  Sticker
 } from 'lucide-react';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
+import { uploadImageToCloudinary } from '../utils/uploadImage';
+import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
 
 /**
@@ -194,7 +197,38 @@ export default function MessagesView({
 
   const [messageText, setMessageText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
+  const [customStickers, setCustomStickers] = useState<string[]>(() => getCustomStickers());
+  const [uploadingSticker, setUploadingSticker] = useState(false);
+  const stickerFileRef = useRef<HTMLInputElement>(null);
   const [mobileShowThread, setMobileShowThread] = useState(false);
+
+  // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
+  const sendSticker = (value: string) => {
+    const content = encodeSticker(value);
+    if (activeGroupId) {
+      onSendGroupMessage(activeGroupId, content);
+    } else if (activeConversationId) {
+      onSendMessage(activeConversationId, content);
+    }
+    setShowStickers(false);
+  };
+
+  const handleCreateSticker = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Choisis une image.'); return; }
+    setUploadingSticker(true);
+    try {
+      const url = await uploadImageToCloudinary(file);
+      addCustomSticker(url);
+      setCustomStickers(getCustomStickers());
+    } catch (e: any) {
+      alert(e?.message || "Échec de l'envoi du sticker.");
+    } finally {
+      setUploadingSticker(false);
+      if (stickerFileRef.current) stickerFileRef.current.value = '';
+    }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -568,7 +602,7 @@ export default function MessagesView({
                         {lastMsg?.senderId === currentUser.id && (
                           <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} /></span>
                         )}
-                        <span>{lastMsg ? lastMsg.content : partner.bio || 'Aucun message de chat'}</span>
+                        <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
                       </p>
                       
                       {unreadCount > 0 && (
@@ -847,11 +881,15 @@ export default function MessagesView({
                           </div>
                         )}
 
-                        {/* Content text or Voice wrapper */}
-                        {isVoiceStr ? (
-                          <VoicePlayerMockup 
-                            durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'} 
-                            isSentByMe={isSentByMe} 
+                        {/* Content text / Voice / Sticker */}
+                        {parseSticker(msg.content) ? (
+                          isStickerUrl(parseSticker(msg.content)!)
+                            ? <img src={parseSticker(msg.content)!} alt="sticker" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
+                            : <span className="text-5xl leading-none">{parseSticker(msg.content)}</span>
+                        ) : isVoiceStr ? (
+                          <VoicePlayerMockup
+                            durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'}
+                            isSentByMe={isSentByMe}
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
@@ -888,35 +926,51 @@ export default function MessagesView({
                 threadMessages.map((msg) => {
                   const isSentByMe = msg.senderId === currentUser.id;
                   const isVoiceStr = msg.content.startsWith('[🎙️ Note Vocale');
+                  const sticker = parseSticker(msg.content);
+
+                  // Sticker : affichage SANS bulle (grand emoji ou image).
+                  if (sticker) {
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
+                        {isStickerUrl(sticker)
+                          ? <img src={sticker} alt="sticker" className="w-28 h-28 object-contain drop-shadow" referrerPolicy="no-referrer" />
+                          : <span className="text-[64px] leading-none">{sticker}</span>}
+                        <div className="flex items-center gap-1 mt-0.5 text-[9px] font-mono text-zinc-400">
+                          <span>{new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
-                    <div 
-                      key={msg.id} 
+                    <div
+                      key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
                       <div className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-1.5 shadow-sm rounded-xl ${
-                        isSentByMe 
-                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-tr-none text-right' 
+                        isSentByMe
+                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-tr-none text-right'
                           : 'bg-black text-white rounded-tl-none border border-zinc-800/85 text-left'
                       }`}>
-                        
+
                         <span className={`absolute top-0 w-2 h-2 ${
-                          isSentByMe 
-                            ? 'right-[-5px] bg-purple-600 dark:bg-purple-700 rounded-bl-full' 
+                          isSentByMe
+                            ? 'right-[-5px] bg-purple-600 dark:bg-purple-700 rounded-bl-full'
                             : 'left-[-5px] bg-black rounded-br-full'
                         }`}></span>
 
                         {isVoiceStr ? (
-                          <VoicePlayerMockup 
-                            durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'} 
-                            isSentByMe={isSentByMe} 
+                          <VoicePlayerMockup
+                            durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'}
+                            isSentByMe={isSentByMe}
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words pr-1 text-left">
                             {msg.content}
                           </p>
                         )}
-                        
+
                         <div className={`flex items-center justify-end space-x-1 mt-1 text-[9px] font-mono ${
                           isSentByMe ? 'text-purple-200' : 'text-zinc-400'
                         }`}>
@@ -954,15 +1008,69 @@ export default function MessagesView({
                 </div>
               )}
 
+              {/* Sélecteur de stickers (base + personnalisés) */}
+              {showStickers && (
+                <div className="mb-2 p-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-lg max-h-56 overflow-y-auto animate-fade-in space-y-2">
+                  <input
+                    ref={stickerFileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleCreateSticker(e.target.files?.[0] || null)}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Stickers</span>
+                    <button
+                      type="button"
+                      onClick={() => stickerFileRef.current?.click()}
+                      disabled={uploadingSticker}
+                      className="flex items-center gap-1 text-[9px] font-black uppercase text-purple-600 bg-purple-500/10 px-2 py-1 rounded-lg hover:bg-purple-500/20 disabled:opacity-50"
+                    >
+                      <Plus className="w-3 h-3" />{uploadingSticker ? 'Envoi…' : 'Créer'}
+                    </button>
+                  </div>
+                  {customStickers.length > 0 && (
+                    <div className="grid grid-cols-5 gap-2">
+                      {customStickers.map((url) => (
+                        <div key={url} className="relative group">
+                          <button type="button" onClick={() => sendSticker(url)} className="block w-full aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-zinc-800 active:scale-95 transition">
+                            <img src={url} alt="sticker" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </button>
+                          <button type="button" onClick={() => { removeCustomSticker(url); setCustomStickers(getCustomStickers()); }} className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition" title="Supprimer">
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {BASE_STICKERS.map((s) => (
+                      <button key={s} type="button" onClick={() => sendSticker(s)} className="text-3xl leading-none p-1 rounded-xl hover:bg-purple-500/10 active:scale-90 transition">
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {/* Standard message input bar */}
               <form onSubmit={handleSend} className="flex items-center space-x-1.5">
                 <button
                   type="button"
                   className={`p-1.5 rounded-full transition-all shrink-0 ${showEmojiPicker ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
                   title="Émojis"
-                  onClick={() => setShowEmojiPicker((v) => !v)}
+                  onClick={() => { setShowEmojiPicker((v) => !v); setShowStickers(false); }}
                 >
                   <Smile className="w-5 h-5 shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  className={`p-1.5 rounded-full transition-all shrink-0 ${showStickers ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
+                  title="Stickers"
+                  onClick={() => { setShowStickers((v) => !v); setShowEmojiPicker(false); }}
+                >
+                  <Sticker className="w-5 h-5 shrink-0" />
                 </button>
 
                 <input

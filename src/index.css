@@ -8,6 +8,27 @@
   --font-serif: "Source Serif 4", Georgia, ui-serif, serif;
 }
 
+/* ---------------------------------------------------------------------------
+   Filet de sécurité MOBILE : rien ne doit déborder horizontalement de l'écran.
+   - On borne la largeur à celle de l'appareil et on coupe le débordement X.
+   - Les mots/URLs très longs sont coupés pour ne pas élargir la page.
+   - Les images ne dépassent jamais leur conteneur.
+   Les zones à défilement horizontal volontaire (carrousels) gardent leur
+   propre `overflow-x-auto` et continuent de fonctionner.
+--------------------------------------------------------------------------- */
+html, body, #root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+* {
+  /* Évite qu'un mot/lien interminable pousse la mise en page hors écran. */
+  overflow-wrap: anywhere;
+}
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
+
 @keyframes slideUp {
   from {
     transform: translateY(100%);
