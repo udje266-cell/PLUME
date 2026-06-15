@@ -1508,8 +1508,8 @@ export default function MessagesView({
 
       {/* MODALE : ROGNAGE DU STICKER (format carré) */}
       {stickerCropSrc && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col p-4 animate-fade-in">
-          <div className="flex-1 relative max-w-md w-full mx-auto rounded-2xl overflow-hidden bg-zinc-900">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col p-4 animate-fade-in" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}>
+          <div className="flex-1 min-h-0 relative max-w-md w-full mx-auto rounded-2xl overflow-hidden bg-zinc-900">
             <Cropper
               image={stickerCropSrc}
               crop={stickerCrop}
@@ -1522,7 +1522,7 @@ export default function MessagesView({
               onCropComplete={(_, pixels) => setStickerCroppedPixels(pixels)}
             />
           </div>
-          <div className="max-w-md w-full mx-auto mt-3 space-y-3">
+          <div className="max-w-md w-full mx-auto mt-3 space-y-3 shrink-0">
             <input
               type="range" min={1} max={3} step={0.01}
               value={stickerZoom}
