@@ -1233,10 +1233,14 @@ export default function App() {
   //   • session invalide (401) ou utilisateur inexistant → on déconnecte (AuthView) ;
   //   • erreur réseau (serveur froid/hors-ligne) → un seul réessai après 4 s, puis
   //     l'écran d'attente garde son bouton « Se reconnecter » manuel.
+  // État de la récupération de profil (pour l'écran d'attente) + bouton Réessayer.
+  const [profileRecoveryFailed, setProfileRecoveryFailed] = useState(false);
+  const [recoveryNonce, setRecoveryNonce] = useState(0);
   useEffect(() => {
-    if (!isAuthenticated || currentUser) return;
+    if (!isAuthenticated || currentUser) { setProfileRecoveryFailed(false); return; }
     let cancelled = false;
     let retryTimer: any = null;
+    setProfileRecoveryFailed(false);
 
     const logout = () => {
       localStorage.removeItem('plume_auth_token');
@@ -1263,17 +1267,19 @@ export default function App() {
           return;
         }
         if (res.status === 401 || res.status === 403) { logout(); return; }
-        // Autre code (5xx, serveur froid) : on réessaie (jusqu'à ~30 s).
-        if (attempt < 6) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+        // Autre code (5xx, serveur froid) : on réessaie (jusqu'à ~45 s).
+        if (attempt < 8) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+        else if (!cancelled) setProfileRecoveryFailed(true);
       } catch {
         // Réseau indisponible / serveur en cours de démarrage : on réessaie.
-        if (attempt < 6 && !cancelled) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+        if (attempt < 8 && !cancelled) retryTimer = setTimeout(() => loadProfile(attempt + 1), 5000);
+        else if (!cancelled) setProfileRecoveryFailed(true);
       }
     };
 
     loadProfile(0);
     return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, recoveryNonce]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -2766,18 +2772,48 @@ export default function App() {
           // (MainNavigation/HomeView lisaient currentUser.role sur undefined).
           <div className="min-h-screen flex flex-col items-center justify-center gap-5 p-8 text-center">
             <div className="text-4xl animate-pulse">🪶</div>
-            <p className="text-sm font-bold text-gray-500 dark:text-gray-300">Chargement de votre profil…</p>
-            <button
-              onClick={() => {
-                localStorage.removeItem('plume_is_logged_in');
-                localStorage.removeItem('plume_current_user');
-                localStorage.removeItem('plume_auth_token');
-                setIsAuthenticated(false);
-              }}
-              className="text-xs font-black uppercase tracking-wider text-purple-600 bg-purple-500/10 px-4 py-2.5 rounded-xl hover:bg-purple-500/20"
-            >
-              Se reconnecter
-            </button>
+            {profileRecoveryFailed ? (
+              <>
+                <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Serveur injoignable</p>
+                <p className="text-xs text-gray-400 max-w-xs">
+                  Impossible de charger votre profil. Le serveur démarre peut-être (cela peut prendre ~1 min) ou votre connexion est instable.
+                </p>
+                <div className="flex flex-col gap-2 w-full max-w-xs">
+                  <button
+                    onClick={() => { setProfileRecoveryFailed(false); setRecoveryNonce((n) => n + 1); }}
+                    className="text-xs font-black uppercase tracking-wider text-white bg-purple-600 px-4 py-3 rounded-xl hover:bg-purple-700"
+                  >
+                    Réessayer
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('plume_is_logged_in');
+                      localStorage.removeItem('plume_current_user');
+                      localStorage.removeItem('plume_auth_token');
+                      setIsAuthenticated(false);
+                    }}
+                    className="text-xs font-black uppercase tracking-wider text-purple-600 bg-purple-500/10 px-4 py-3 rounded-xl hover:bg-purple-500/20"
+                  >
+                    Se reconnecter
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-gray-500 dark:text-gray-300">Chargement de votre profil…</p>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('plume_is_logged_in');
+                    localStorage.removeItem('plume_current_user');
+                    localStorage.removeItem('plume_auth_token');
+                    setIsAuthenticated(false);
+                  }}
+                  className="text-xs font-black uppercase tracking-wider text-purple-600 bg-purple-500/10 px-4 py-2.5 rounded-xl hover:bg-purple-500/20"
+                >
+                  Se reconnecter
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-screen">

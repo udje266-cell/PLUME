@@ -73,7 +73,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/login', { email, password });
+      const data = await apiPost('/api/auth/login', { email, password }, 45000);
       // Token gardé en mémoire (pas dans localStorage) ; le serveur a aussi posé
       // un cookie httpOnly pour la persistance après rechargement.
       setAuthToken(data.token);
@@ -114,7 +114,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: 'register' });
+      const data = await apiPost('/api/auth/otp/request', { email, reason: 'register' }, 45000);
 
       setOtpReason('register');
       setPendingUser({
@@ -159,7 +159,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: 'reset' });
+      const data = await apiPost('/api/auth/otp/request', { email, reason: 'reset' }, 45000);
       setOtpReason('reset');
       setMode('otp');
       setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
@@ -185,7 +185,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      await apiPost('/api/auth/reset-password', { email, password, code: verifiedOtpCode });
+      await apiPost('/api/auth/reset-password', { email, password, code: verifiedOtpCode }, 45000);
 
       setPassword('');
       setVerifiedOtpCode('');
@@ -214,7 +214,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
 
     try {
       if (otpReason === 'register' && pendingUser) {
-        const data = await apiPost('/api/auth/register', { ...pendingUser, password, code: codeEntered });
+        const data = await apiPost('/api/auth/register', { ...pendingUser, password, code: codeEntered }, 45000);
 
         // Token gardé en mémoire (pas dans localStorage) ; cookie httpOnly posé
         // par le serveur pour la persistance après rechargement.
@@ -241,7 +241,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setSuccessMsg('');
     setIsLoading(true);
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: otpReason });
+      const data = await apiPost('/api/auth/otp/request', { email, reason: otpReason }, 45000);
       setSuccessMsg(data.message || 'Nouveau code OTP envoyé par e-mail.');
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (error: any) {
