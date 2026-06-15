@@ -2588,13 +2588,22 @@ export default function App() {
         const response = await originalFetch(input, init);
         if (response.status === 401) {
           const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-          // On ne déconnecte/alerte QUE si l'utilisateur était réellement
-          // authentifié (vraie expiration en cours d'usage), pas pendant la
-          // phase d'initialisation ni sur les routes d'auth ci-dessus.
+          // Un 401 isolé NE doit PAS casser une session valide : une requête
+          // bancale ou une course juste après la connexion suffisait sinon à
+          // déconnecter (boucle de login). On VÉRIFIE donc la session via
+          // /auth/me (source de vérité) avant de déconnecter pour de bon.
           if (!ignore401(urlStr) && isAuthenticatedRef.current) {
-            console.warn('[AUTH] 401 en session active → déconnexion.');
-            handleLogout();
-            alert("Votre session a expiré. Veuillez vous reconnecter.");
+            try {
+              const check = await originalFetch('/api/auth/me', { headers: authHeaders() });
+              if (check.status === 401 || check.status === 403) {
+                console.warn('[AUTH] Session réellement expirée → déconnexion.');
+                handleLogout();
+                alert("Votre session a expiré. Veuillez vous reconnecter.");
+              }
+              // Sinon : la session est valide, le 401 était transitoire → on ignore.
+            } catch {
+              // Réseau indisponible : on NE déconnecte pas (évite les faux positifs).
+            }
           }
         }
         return response;
