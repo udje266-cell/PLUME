@@ -39,9 +39,9 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
-import { uploadImageToCloudinary } from '../utils/uploadImage';
+import { uploadImageToCloudinary, uploadVideoToCloudinary } from '../utils/uploadImage';
 import { getCroppedImageFile } from '../utils/cropImage';
-import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl } from '../utils/stickers';
+import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl, isVideoSticker, buildVideoStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
 
 /**
@@ -232,6 +232,20 @@ export default function MessagesView({
   const [stickerCrop, setStickerCrop] = useState({ x: 0, y: 0 });
   const [stickerZoom, setStickerZoom] = useState(1);
   const [stickerCroppedPixels, setStickerCroppedPixels] = useState<Area | null>(null);
+  // Sticker VIDÉO : rognage (carré, sur une image-poster) + découpe (début/fin).
+  const videoStickerFileRef = useRef<HTMLInputElement>(null);
+  const [videoStickerFile, setVideoStickerFile] = useState<File | null>(null);
+  const [videoStickerSrc, setVideoStickerSrc] = useState<string | null>(null);
+  const [videoStickerPoster, setVideoStickerPoster] = useState<string | null>(null);
+  const [videoStickerDims, setVideoStickerDims] = useState<{ w: number; h: number } | null>(null);
+  const [videoStickerCrop, setVideoStickerCrop] = useState({ x: 0, y: 0 });
+  const [videoStickerZoom, setVideoStickerZoom] = useState(1);
+  const [videoStickerCroppedPixels, setVideoStickerCroppedPixels] = useState<Area | null>(null);
+  const [videoStickerDuration, setVideoStickerDuration] = useState(0);
+  const [videoTrimStart, setVideoTrimStart] = useState(0);
+  const [videoTrimEnd, setVideoTrimEnd] = useState(0);
+  const [processingVideoSticker, setProcessingVideoSticker] = useState(false);
+  const trimPreviewRef = useRef<HTMLVideoElement>(null);
   // Réglages de groupe (façon WhatsApp).
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [groupAddOpen, setGroupAddOpen] = useState(false);
@@ -293,6 +307,94 @@ export default function MessagesView({
       setUploadingSticker(false);
     }
   };
+
+  // --- Sticker VIDÉO : étape 1 — charger la vidéo, lire sa durée et capturer
+  // une image-poster (1re frame) pour le rognage carré. ---
+  const MAX_STICKER_CLIP = 6; // durée max d'un sticker vidéo (s)
+  const handleCreateVideoSticker = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) { alert('Choisis une vidéo.'); return; }
+    if (file.size > 30 * 1024 * 1024) { alert('La vidéo ne doit pas dépasser 30 Mo.'); return; }
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    v.src = url;
+    v.onloadedmetadata = () => {
+      const dur = isFinite(v.duration) ? v.duration : 0;
+      setVideoStickerDims({ w: v.videoWidth, h: v.videoHeight });
+      setVideoStickerDuration(dur);
+      setVideoTrimStart(0);
+      setVideoTrimEnd(Math.min(MAX_STICKER_CLIP, dur || MAX_STICKER_CLIP));
+      // Capture la 1re frame comme poster pour le rognage.
+      const grab = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) { ctx.drawImage(v, 0, 0); setVideoStickerPoster(canvas.toDataURL('image/jpeg', 0.85)); }
+        } catch { /* CORS-safe : la vidéo est locale (objectURL) */ }
+      };
+      v.onseeked = grab;
+      try { v.currentTime = Math.min(0.1, (dur || 1) / 2); } catch { grab(); }
+    };
+    setVideoStickerFile(file);
+    setVideoStickerSrc(url);
+    setVideoStickerCrop({ x: 0, y: 0 });
+    setVideoStickerZoom(1);
+    setVideoStickerCroppedPixels(null);
+    setVideoStickerPoster(null);
+    if (videoStickerFileRef.current) videoStickerFileRef.current.value = '';
+  };
+
+  const cancelVideoSticker = () => {
+    if (videoStickerSrc) URL.revokeObjectURL(videoStickerSrc);
+    setVideoStickerFile(null);
+    setVideoStickerSrc(null);
+    setVideoStickerPoster(null);
+    setVideoStickerDims(null);
+    setVideoStickerCroppedPixels(null);
+  };
+
+  // --- Sticker VIDÉO : étape 2 — téléverser puis dériver l'URL rognée+découpée. ---
+  const confirmVideoSticker = async () => {
+    if (!videoStickerFile || !videoStickerCroppedPixels || !videoStickerDims) return;
+    setProcessingVideoSticker(true);
+    try {
+      const secureUrl = await uploadVideoToCloudinary(videoStickerFile);
+      const url = buildVideoStickerUrl(secureUrl, {
+        x: videoStickerCroppedPixels.x,
+        y: videoStickerCroppedPixels.y,
+        w: videoStickerCroppedPixels.width,
+        h: videoStickerCroppedPixels.height,
+        start: videoTrimStart,
+        end: videoTrimEnd,
+      });
+      addCustomSticker(url);
+      setCustomStickers(getCustomStickers());
+      cancelVideoSticker();
+    } catch (e: any) {
+      alert(e?.message || "Échec de la création du sticker vidéo.");
+    } finally {
+      setProcessingVideoSticker(false);
+    }
+  };
+
+  // Aperçu de la découpe : boucle la vidéo entre début et fin choisis.
+  useEffect(() => {
+    const v = trimPreviewRef.current;
+    if (!v || !videoStickerSrc) return;
+    const onTime = () => {
+      if (v.currentTime >= videoTrimEnd || v.currentTime < videoTrimStart) {
+        v.currentTime = videoTrimStart;
+        v.play().catch(() => {});
+      }
+    };
+    v.addEventListener('timeupdate', onTime);
+    try { v.currentTime = videoTrimStart; v.play().catch(() => {}); } catch { /* ignore */ }
+    return () => v.removeEventListener('timeupdate', onTime);
+  }, [videoStickerSrc, videoTrimStart, videoTrimEnd]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -996,7 +1098,9 @@ export default function MessagesView({
                         {/* Content text / Voice / Sticker */}
                         {parseSticker(msg.content) ? (
                           isStickerUrl(parseSticker(msg.content)!)
-                            ? <img src={parseSticker(msg.content)!} alt="sticker" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
+                            ? (isVideoSticker(parseSticker(msg.content)!)
+                                ? <video src={parseSticker(msg.content)!} className="w-24 h-24 object-contain rounded-lg" muted loop autoPlay playsInline />
+                                : <img src={parseSticker(msg.content)!} alt="sticker" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />)
                             : <span className="text-5xl leading-none">{parseSticker(msg.content)}</span>
                         ) : isVoiceStr ? (
                           <VoicePlayerMockup
@@ -1047,7 +1151,9 @@ export default function MessagesView({
                       <div key={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
                         <div className="relative group">
                           {isStickerUrl(sticker)
-                            ? <img src={sticker} alt="sticker" className="w-28 h-28 object-contain drop-shadow" referrerPolicy="no-referrer" />
+                            ? (isVideoSticker(sticker)
+                                ? <video src={sticker} className="w-28 h-28 object-contain drop-shadow rounded-lg" muted loop autoPlay playsInline />
+                                : <img src={sticker} alt="sticker" className="w-28 h-28 object-contain drop-shadow" referrerPolicy="no-referrer" />)
                             : <span className="text-[64px] leading-none">{sticker}</span>}
                           {/* Enregistrer le sticker d'un autre (comme sur WhatsApp). */}
                           {savable && (
@@ -1155,23 +1261,42 @@ export default function MessagesView({
                     className="hidden"
                     onChange={(e) => handleCreateSticker(e.target.files?.[0] || null)}
                   />
+                  <input
+                    ref={videoStickerFileRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => handleCreateVideoSticker(e.target.files?.[0] || null)}
+                  />
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Stickers</span>
-                    <button
-                      type="button"
-                      onClick={() => stickerFileRef.current?.click()}
-                      disabled={uploadingSticker}
-                      className="flex items-center gap-1 text-[9px] font-black uppercase text-purple-600 bg-purple-500/10 px-2 py-1 rounded-lg hover:bg-purple-500/20 disabled:opacity-50"
-                    >
-                      <Plus className="w-3 h-3" />{uploadingSticker ? 'Envoi…' : 'Créer'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => stickerFileRef.current?.click()}
+                        disabled={uploadingSticker}
+                        className="flex items-center gap-1 text-[9px] font-black uppercase text-purple-600 bg-purple-500/10 px-2 py-1 rounded-lg hover:bg-purple-500/20 disabled:opacity-50"
+                      >
+                        <Plus className="w-3 h-3" />{uploadingSticker ? 'Envoi…' : 'Image'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => videoStickerFileRef.current?.click()}
+                        disabled={processingVideoSticker}
+                        className="flex items-center gap-1 text-[9px] font-black uppercase text-purple-600 bg-purple-500/10 px-2 py-1 rounded-lg hover:bg-purple-500/20 disabled:opacity-50"
+                      >
+                        <Play className="w-3 h-3" />Vidéo
+                      </button>
+                    </div>
                   </div>
                   {customStickers.length > 0 && (
                     <div className="grid grid-cols-5 gap-2">
                       {customStickers.map((url) => (
                         <div key={url} className="relative group">
                           <button type="button" onClick={() => sendSticker(url)} className="block w-full aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-zinc-800 active:scale-95 transition">
-                            <img src={url} alt="sticker" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            {isVideoSticker(url)
+                              ? <video src={url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                              : <img src={url} alt="sticker" className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                           </button>
                           <button type="button" onClick={() => { removeCustomSticker(url); setCustomStickers(getCustomStickers()); }} className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition" title="Supprimer">
                             <X className="w-2.5 h-2.5" />
@@ -1547,6 +1672,98 @@ export default function MessagesView({
                 className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider"
               >
                 {uploadingSticker ? 'Création…' : 'Créer le sticker'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODALE : STICKER VIDÉO — rognage carré (sur poster) + découpe début/fin. */}
+      {videoStickerSrc && createPortal(
+        <div className="fixed inset-0 bg-black/85 z-[2147483000] flex flex-col p-4 animate-fade-in" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}>
+          <div className="max-w-md w-full mx-auto flex-1 min-h-0 flex flex-col gap-3">
+            <div className="flex items-center justify-between shrink-0">
+              <span className="text-white font-black text-xs uppercase tracking-wider">Sticker vidéo</span>
+              <span className="text-[10px] text-zinc-400">Rogne (carré) puis découpe (max {MAX_STICKER_CLIP}s)</span>
+            </div>
+
+            {/* Rognage carré sur l'image-poster (1re frame). */}
+            <div className="flex-1 min-h-0 relative rounded-2xl overflow-hidden bg-zinc-900">
+              {videoStickerPoster ? (
+                <Cropper
+                  image={videoStickerPoster}
+                  crop={videoStickerCrop}
+                  zoom={videoStickerZoom}
+                  aspect={1}
+                  cropShape="rect"
+                  showGrid={false}
+                  onCropChange={setVideoStickerCrop}
+                  onZoomChange={setVideoStickerZoom}
+                  onCropComplete={(_, pixels) => setVideoStickerCroppedPixels(pixels)}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-xs">Préparation…</div>
+              )}
+            </div>
+
+            {/* Aperçu animé de la découpe. */}
+            <div className="shrink-0 flex items-center gap-3">
+              <video
+                ref={trimPreviewRef}
+                src={videoStickerSrc}
+                className="w-16 h-16 rounded-lg object-cover bg-black shrink-0"
+                muted
+                playsInline
+              />
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-zinc-400 w-10 shrink-0">Début</span>
+                  <input
+                    type="range" min={0} max={Math.max(0.1, videoStickerDuration)} step={0.1}
+                    value={videoTrimStart}
+                    onChange={(e) => {
+                      const s = Math.min(Number(e.target.value), videoTrimEnd - 0.3);
+                      setVideoTrimStart(Math.max(0, s));
+                      if (videoTrimEnd - s > MAX_STICKER_CLIP) setVideoTrimEnd(s + MAX_STICKER_CLIP);
+                    }}
+                    className="flex-1 accent-purple-600"
+                  />
+                  <span className="text-[9px] font-mono text-zinc-300 w-8 text-right">{videoTrimStart.toFixed(1)}s</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-zinc-400 w-10 shrink-0">Fin</span>
+                  <input
+                    type="range" min={0} max={Math.max(0.1, videoStickerDuration)} step={0.1}
+                    value={videoTrimEnd}
+                    onChange={(e) => {
+                      let en = Math.max(Number(e.target.value), videoTrimStart + 0.3);
+                      if (en - videoTrimStart > MAX_STICKER_CLIP) en = videoTrimStart + MAX_STICKER_CLIP;
+                      setVideoTrimEnd(Math.min(videoStickerDuration || en, en));
+                    }}
+                    className="flex-1 accent-purple-600"
+                  />
+                  <span className="text-[9px] font-mono text-zinc-300 w-8 text-right">{videoTrimEnd.toFixed(1)}s</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex gap-2">
+              <button
+                type="button"
+                onClick={cancelVideoSticker}
+                disabled={processingVideoSticker}
+                className="flex-1 py-3 rounded-xl bg-zinc-700 text-white font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmVideoSticker}
+                disabled={processingVideoSticker || !videoStickerCroppedPixels}
+                className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider"
+              >
+                {processingVideoSticker ? 'Création…' : 'Créer le sticker'}
               </button>
             </div>
           </div>

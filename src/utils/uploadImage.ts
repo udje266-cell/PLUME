@@ -82,6 +82,74 @@ function postToCloudinary(
   });
 }
 
+function postVideoToCloudinary(
+  file: File,
+  cloudName: string,
+  uploadPreset: string,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('upload_preset', uploadPreset);
+    form.append('folder', 'plume');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`);
+    xhr.timeout = 120_000;
+
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+    xhr.onload = () => {
+      let data: any = {};
+      try {
+        data = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        return reject(new Error('Réponse Cloudinary illisible.'));
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && data.secure_url) {
+        resolve(data.secure_url as string);
+      } else {
+        reject(new Error(data?.error?.message || `Échec de l'envoi (HTTP ${xhr.status}).`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Erreur réseau pendant l’envoi de la vidéo.'));
+    xhr.ontimeout = () => reject(new Error('Délai dépassé pendant l’envoi de la vidéo.'));
+    xhr.send(form);
+  });
+}
+
+/**
+ * Envoie une vidéo (sticker vidéo) et renvoie son URL sécurisée Cloudinary.
+ * Le rognage et la découpe sont appliqués à la LIVRAISON via les transformations
+ * d'URL (voir buildVideoStickerUrl) — pas besoin de traiter la vidéo localement.
+ */
+export async function uploadVideoToCloudinary(file: File, onProgress?: (pct: number) => void): Promise<string> {
+  if (!file || !(file instanceof Blob)) {
+    throw new Error('Fichier vidéo invalide.');
+  }
+  if (file.type && !file.type.startsWith('video/')) {
+    throw new Error('Le fichier doit être une vidéo.');
+  }
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error('La vidéo ne doit pas dépasser 30 Mo.');
+  }
+  const { cloudName, uploadPreset } = await getCloudinaryConfig();
+  try {
+    return await postVideoToCloudinary(file, cloudName, uploadPreset, onProgress);
+  } catch (e: any) {
+    const msg = String(e?.message || '');
+    if (/réseau|délai/i.test(msg)) {
+      onProgress?.(0);
+      return await postVideoToCloudinary(file, cloudName, uploadPreset, onProgress);
+    }
+    throw e;
+  }
+}
+
 /**
  * Envoie une image et renvoie son URL sécurisée.
  * @param onProgress callback de progression (0..100), optionnel.
