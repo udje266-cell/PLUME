@@ -33,9 +33,12 @@ import {
   BookOpen,
   Sticker
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
+import { getCroppedImageFile } from '../utils/cropImage';
 import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
 
@@ -210,6 +213,11 @@ export default function MessagesView({
   const [uploadingSticker, setUploadingSticker] = useState(false);
   const stickerFileRef = useRef<HTMLInputElement>(null);
   const [mobileShowThread, setMobileShowThread] = useState(false);
+  // Rognage du sticker à créer (modale react-easy-crop, format carré).
+  const [stickerCropSrc, setStickerCropSrc] = useState<string | null>(null);
+  const [stickerCrop, setStickerCrop] = useState({ x: 0, y: 0 });
+  const [stickerZoom, setStickerZoom] = useState(1);
+  const [stickerCroppedPixels, setStickerCroppedPixels] = useState<Area | null>(null);
 
   // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
   const sendSticker = (value: string) => {
@@ -222,19 +230,35 @@ export default function MessagesView({
     setShowStickers(false);
   };
 
-  const handleCreateSticker = async (file: File | null) => {
+  // Étape 1 : on charge l'image choisie et on ouvre la modale de rognage.
+  const handleCreateSticker = (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('Choisis une image.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStickerCropSrc(reader.result as string);
+      setStickerCrop({ x: 0, y: 0 });
+      setStickerZoom(1);
+      setStickerCroppedPixels(null);
+    };
+    reader.readAsDataURL(file);
+    if (stickerFileRef.current) stickerFileRef.current.value = '';
+  };
+
+  // Étape 2 : on rogne (carré), on téléverse, et on enregistre le sticker.
+  const confirmStickerCrop = async () => {
+    if (!stickerCropSrc || !stickerCroppedPixels) return;
     setUploadingSticker(true);
     try {
-      const url = await uploadImageToCloudinary(file);
+      const cropped = await getCroppedImageFile(stickerCropSrc, stickerCroppedPixels, 'sticker.jpg');
+      const url = await uploadImageToCloudinary(cropped);
       addCustomSticker(url);
       setCustomStickers(getCustomStickers());
+      setStickerCropSrc(null);
     } catch (e: any) {
-      alert(e?.message || "Échec de l'envoi du sticker.");
+      alert(e?.message || "Échec de la création du sticker.");
     } finally {
       setUploadingSticker(false);
-      if (stickerFileRef.current) stickerFileRef.current.value = '';
     }
   };
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -628,12 +652,19 @@ export default function MessagesView({
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
-                        {lastMsg?.senderId === currentUser.id && (
-                          <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
-                        )}
-                        <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
-                      </p>
+                      {typingUserIds?.has(partner.id) ? (
+                        <p className="text-[11px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
+                          <Feather className="w-3.5 h-3.5 animate-feather-write" />
+                          <span>écrit…</span>
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
+                          {lastMsg?.senderId === currentUser.id && (
+                            <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
+                          )}
+                          <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
+                        </p>
+                      )}
                       
                       {unreadCount > 0 && (
                         <span className="bg-purple-600 text-white font-black text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0">
@@ -1329,6 +1360,50 @@ export default function MessagesView({
                 Créer le cercle de lecture
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE : ROGNAGE DU STICKER (format carré) */}
+      {stickerCropSrc && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col p-4 animate-fade-in">
+          <div className="flex-1 relative max-w-md w-full mx-auto rounded-2xl overflow-hidden bg-zinc-900">
+            <Cropper
+              image={stickerCropSrc}
+              crop={stickerCrop}
+              zoom={stickerZoom}
+              aspect={1}
+              cropShape="rect"
+              showGrid={false}
+              onCropChange={setStickerCrop}
+              onZoomChange={setStickerZoom}
+              onCropComplete={(_, pixels) => setStickerCroppedPixels(pixels)}
+            />
+          </div>
+          <div className="max-w-md w-full mx-auto mt-3 space-y-3">
+            <input
+              type="range" min={1} max={3} step={0.01}
+              value={stickerZoom}
+              onChange={(e) => setStickerZoom(Number(e.target.value))}
+              className="w-full accent-purple-600"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStickerCropSrc(null)}
+                className="flex-1 py-2.5 rounded-xl bg-zinc-700 text-white font-bold text-xs uppercase tracking-wider"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmStickerCrop}
+                disabled={uploadingSticker || !stickerCroppedPixels}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider"
+              >
+                {uploadingSticker ? 'Création…' : 'Créer le sticker'}
+              </button>
+            </div>
           </div>
         </div>
       )}

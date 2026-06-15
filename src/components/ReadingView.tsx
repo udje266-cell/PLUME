@@ -666,47 +666,58 @@ export default function ReadingView({
   const chapterIdxRef = useRef(activeChapterIndex);
   useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
   useEffect(() => {
-    const scrollEl = getScrollParent(readerRootRef.current);
-    const metrics = () => {
-      if (scrollEl) {
-        const max = scrollEl.scrollHeight - scrollEl.clientHeight;
-        return { ratio: max > 0 ? scrollEl.scrollTop / max : 0 };
+    // Calcule le ratio (0..1) de défilement à partir de l'ÉLÉMENT qui a défilé
+    // (capté en phase de capture sur document, donc peu importe que ce soit la
+    // fenêtre ou un conteneur interne).
+    const ratioFromTarget = (t: EventTarget | null): number => {
+      const docMax = document.documentElement.scrollHeight - window.innerHeight;
+      const winRatio = docMax > 0 ? window.scrollY / docMax : 0;
+      if (t && t instanceof HTMLElement && typeof t.scrollTop === 'number' && t.scrollHeight > t.clientHeight) {
+        const max = t.scrollHeight - t.clientHeight;
+        const r = max > 0 ? t.scrollTop / max : 0;
+        // On prend le plus pertinent : l'élément défilé, sinon la fenêtre.
+        return Math.max(r, winRatio);
       }
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      return { ratio: max > 0 ? window.scrollY / max : 0 };
+      return winRatio;
     };
+
     let timer: any = null;
-    const onScroll = () => {
+    const onScroll = (e: Event) => {
       if (timer) return;
+      const target = e.target;
       timer = setTimeout(() => {
         timer = null;
-        const ratio = Math.min(1, Math.max(0, metrics().ratio));
+        const ratio = Math.min(1, Math.max(0, ratioFromTarget(target)));
         const total = Math.max(1, story.chapters.length);
         const percent = Math.round(((chapterIdxRef.current + ratio) / total) * 100);
         setReadPercent(percent);
-        if (!isOwnStory) saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
-      }, 350);
+        if (!isOwnStory) {
+          saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
+        }
+      }, 300);
     };
-    const target: any = scrollEl || window;
-    target.addEventListener('scroll', onScroll, { passive: true });
+    // Capture-phase sur document : capte le scroll de N'IMPORTE quel conteneur.
+    document.addEventListener('scroll', onScroll, true);
 
     // Reprise de la position au premier affichage de ce livre.
     if (!restoredScrollRef.current) {
       restoredScrollRef.current = true;
       const saved = getBookProgress(currentUser.id, story.id);
       if (saved && saved.scrollRatio > 0.01) {
+        // Délai pour laisser le contenu se rendre, puis on restaure sur le bon
+        // conteneur (détecté à ce moment-là) ET la fenêtre, par sécurité.
         setTimeout(() => {
-          if (scrollEl) {
-            const max = scrollEl.scrollHeight - scrollEl.clientHeight;
-            scrollEl.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
-          } else {
-            const max = document.documentElement.scrollHeight - window.innerHeight;
-            window.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
+          const el = getScrollParent(readerRootRef.current);
+          if (el) {
+            const max = el.scrollHeight - el.clientHeight;
+            if (max > 0) el.scrollTo({ top: max * saved.scrollRatio, behavior: 'auto' });
           }
-        }, 150);
+          const wmax = document.documentElement.scrollHeight - window.innerHeight;
+          if (wmax > 0) window.scrollTo({ top: wmax * saved.scrollRatio, behavior: 'auto' });
+        }, 280);
       }
     }
-    return () => { target.removeEventListener('scroll', onScroll); if (timer) clearTimeout(timer); };
+    return () => { document.removeEventListener('scroll', onScroll, true); if (timer) clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story.id]);
 
@@ -1807,7 +1818,7 @@ export default function ReadingView({
             </button>
 
             <span className="text-xs font-sans font-black uppercase tracking-widest px-4 py-1.5 bg-[#7C3AED]/10 text-[#7C3AED] dark:text-purple-400 rounded-full">
-              {Math.max(readPercent, Math.round((activeChapterIndex / story.chapters.length) * 100))}% de l'œuvre
+              {Math.min(100, Math.max(0, readPercent))}% de l'œuvre
             </span>
 
             <button
