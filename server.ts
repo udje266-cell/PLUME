@@ -489,6 +489,13 @@ export async function createServerInstance() {
     if (nd.conversationId) data.conversationId = String(nd.conversationId);
     if (nd.storyId) data.storyId = String(nd.storyId);
     if (nd.actorId) data.actorId = String(nd.actorId);
+    // Pour les messages : marqueur + expéditeur → la notification native peut
+    // proposer « Répondre » et « Marquer comme lu ».
+    if (String(notification?.type || '').toUpperCase() === 'MESSAGE') {
+      data.category = 'message';
+      if (nd.actorId) data.senderId = String(nd.actorId);
+      if (nd.actorName) data.senderName = String(nd.actorName);
+    }
     sendPushToUser(userId, {
       title: notification?.title || 'PLUME',
       body: notification?.message || '',

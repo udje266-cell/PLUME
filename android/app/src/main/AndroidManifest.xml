@@ -30,6 +30,20 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Service FCM personnalisé : notifications avec actions Répondre / Marquer lu. -->
+        <service
+            android:name=".PlumeMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Traite les actions de notification (réponse en ligne, marquer comme lu). -->
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->

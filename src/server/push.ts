@@ -60,12 +60,23 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     if (!devices.length) return;
     const tokens = devices.map((d) => d.token);
 
-    const res = await messaging.sendEachForMulticast({
+    // Les notifications de MESSAGE sont envoyées en DATA-ONLY : ainsi le service
+    // natif Android (PlumeMessagingService) est invoqué même app fermée et peut
+    // construire une notification avec les actions « Répondre » et « Marquer
+    // comme lu ». Les autres notifications utilisent le payload `notification`
+    // standard (affiché directement par le système).
+    const data: Record<string, string> = { ...(payload.data || {}), title: payload.title, body: payload.body };
+    const isMessage = data.category === 'message';
+    const message: any = {
       tokens,
-      notification: { title: payload.title, body: payload.body },
-      data: payload.data || {},
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'plume_default' } },
-    });
+      data,
+      android: { priority: 'high' as const },
+    };
+    if (!isMessage) {
+      message.notification = { title: payload.title, body: payload.body };
+      message.android.notification = { sound: 'default', channelId: 'plume_default' };
+    }
+    const res = await messaging.sendEachForMulticast(message);
 
     // Purge les jetons devenus invalides (app désinstallée, etc.).
     const stale: string[] = [];
