@@ -456,7 +456,11 @@ export default function App() {
   // comptes de démonstration/testeurs ont été retirés : l'app n'affiche plus que
   // de vrais utilisateurs.)
   const ensureSimulatorAccounts = (backendUsers: User[]): User[] => {
-    return backendUsers.map(u => mergeLocalUserEdit(u, true));
+    // On filtre toute entrée invalide (null/undefined/sans id) : un seul élément
+    // corrompu ferait planter les rendus qui lisent `u.role` (écran noir).
+    return (Array.isArray(backendUsers) ? backendUsers : [])
+      .map(u => mergeLocalUserEdit(u, true))
+      .filter((u: any): u is User => !!u && !!u.id);
   };
 
   const getLikedStoriesStorageKey = (userId: string) => `plume_liked_stories_${userId}`;
@@ -1073,10 +1077,15 @@ export default function App() {
           const meRes = await fetch('/api/auth/me', { headers: authHeaders() });
           if (meRes.ok) {
             const me = mergeLocalUserEdit(await meRes.json(), true);
-            setCurrentUser(me);
-            localStorage.setItem('plume_current_user', JSON.stringify(me));
-            setIsAuthenticated(true);
-            return me;
+            if (me && me.id) {
+              setCurrentUser(me);
+              localStorage.setItem('plume_current_user', JSON.stringify(me));
+              setIsAuthenticated(true);
+              return me;
+            }
+            // Réponse inexploitable : on retombe sur l'utilisateur en cache si possible.
+            const cached = mergedUsers.find((u: User) => u.id === currentUser?.id);
+            if (cached) setCurrentUser(cached);
           } else if (meRes.status === 401) {
             localStorage.removeItem('plume_auth_token');
             setIsAuthenticated(false);
@@ -2692,6 +2701,26 @@ export default function App() {
               
             }}
           />
+        ) : !currentUser ? (
+          // Session « connectée » mais profil pas encore (re)chargé : on affiche
+          // un écran d'attente plutôt que de rendre l'app avec un utilisateur
+          // indéfini — c'était la cause de l'écran noir après connexion
+          // (MainNavigation/HomeView lisaient currentUser.role sur undefined).
+          <div className="min-h-screen flex flex-col items-center justify-center gap-5 p-8 text-center">
+            <div className="text-4xl animate-pulse">🪶</div>
+            <p className="text-sm font-bold text-gray-500 dark:text-gray-300">Chargement de votre profil…</p>
+            <button
+              onClick={() => {
+                localStorage.removeItem('plume_is_logged_in');
+                localStorage.removeItem('plume_current_user');
+                localStorage.removeItem('plume_auth_token');
+                setIsAuthenticated(false);
+              }}
+              className="text-xs font-black uppercase tracking-wider text-purple-600 bg-purple-500/10 px-4 py-2.5 rounded-xl hover:bg-purple-500/20"
+            >
+              Se reconnecter
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-screen">
             {/* Top Header navbar navigation */}

@@ -207,7 +207,7 @@ export default function HomeView({
     .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 
   // 5. "Nouveaux auteurs" (comptes de rôle Auteur récemment actifs)
-  const authorsList = allUsers.filter(u => u.role === 'Auteur' && u.id !== currentUser.id);
+  const authorsList = allUsers.filter(u => u && u.role === 'Auteur' && u.id !== currentUser.id);
 
   // Header quick share links
   const handleCopyLink = (story: Story) => {
@@ -238,8 +238,8 @@ export default function HomeView({
 
       {/* SECTION: À LA UNE (mises en avant par l'administration) */}
       {(() => {
-        const featuredStories = stories.filter((s) => s.featured && s.status === 'Publié');
-        const featuredUsers = allUsers.filter((u) => u.featured && u.id !== currentUser.id);
+        const featuredStories = stories.filter((s) => s && s.featured && s.status === 'Publié');
+        const featuredUsers = allUsers.filter((u) => u && u.featured && u.id !== currentUser.id);
         if (!featuredStories.length && !featuredUsers.length) return null;
         return (
           <section className="space-y-3">
