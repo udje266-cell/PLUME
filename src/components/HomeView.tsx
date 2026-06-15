@@ -245,6 +245,53 @@ export default function HomeView({
         </div>
       </header>
 
+      {/* SECTION: À LA UNE (mises en avant par l'administration) */}
+      {(() => {
+        const featuredStories = stories.filter((s) => s.featured && s.status === 'Publié');
+        const featuredUsers = allUsers.filter((u) => u.featured && u.id !== currentUser.id);
+        if (!featuredStories.length && !featuredUsers.length) return null;
+        return (
+          <section className="space-y-3">
+            <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/40 dark:border-amber-900/20">
+              <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 fill-amber-500/20" />
+                <span>À la une</span>
+              </h3>
+              <span className="text-[9px] font-mono text-amber-600 bg-amber-500/10 px-2 py-1 rounded-full uppercase font-bold">Sélection</span>
+            </div>
+
+            {featuredStories.length > 0 && (
+              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+                {featuredStories.map((story) => (
+                  <div key={story.id} className="w-40 flex-shrink-0">
+                    <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer ring-2 ring-amber-400/40">
+                      <img src={story.cover} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <span className="absolute top-1 left-1 text-[8px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded uppercase shadow flex items-center gap-0.5"><Sparkles className="w-2.5 h-2.5" />À la une</span>
+                    </div>
+                    <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-xs font-black text-gray-950 dark:text-gray-50 line-clamp-1 cursor-pointer hover:text-purple-600">{story.title}</h4>
+                    <p className="text-[10px] text-gray-400 line-clamp-1">Par {story.authorName}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {featuredUsers.length > 0 && (
+              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+                {featuredUsers.map((u) => (
+                  <div key={u.id} onClick={() => onViewProfile?.(u.id)} className="w-24 flex-shrink-0 flex flex-col items-center text-center cursor-pointer">
+                    <div className="relative">
+                      <img src={u.avatar || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))} alt={u.username} className="w-16 h-16 rounded-full object-cover ring-2 ring-amber-400/50" referrerPolicy="no-referrer" />
+                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase shadow">À la une</span>
+                    </div>
+                    <span className="mt-2 text-[11px] font-black text-gray-950 dark:text-gray-50 truncate w-full">{u.username}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })()}
+
       {/* SECTION: LIVRES TÉLÉCHARGÉS (disponibles hors ligne) */}
       {offlineBooks.length > 0 && (
         <section className="space-y-3">

@@ -2369,6 +2369,40 @@ export default function App() {
     }
   };
 
+  // Mise en avant (admin) d'un COMPTE.
+  const handleToggleUserFeatured = async (userId: string) => {
+    const target = allUsers.find((u) => u.id === userId);
+    if (!target) return;
+    const next = !target.featured;
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ id: userId, featured: next }),
+      });
+      if (!res.ok) { alert('Mise en avant impossible.'); return; }
+      const updated = await res.json();
+      setAllUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, featured: updated.featured } : u)));
+      alert(next ? 'Compte mis en avant ✨' : 'Compte retiré de la une.');
+    } catch { alert('Erreur de connexion.'); }
+  };
+
+  // Mise en avant (admin) d'un RÉCIT.
+  const handleToggleStoryFeatured = async (storyId: string) => {
+    const target = stories.find((s) => s.id === storyId);
+    if (!target) return;
+    const next = !target.featured;
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, {
+        method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ ...target, featured: next }),
+      });
+      if (!res.ok) { alert('Mise en avant impossible.'); return; }
+      const updated = await res.json();
+      setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, featured: updated.featured } : s)));
+      alert(next ? 'Récit mis en avant ✨' : 'Récit retiré de la une.');
+    } catch { alert('Erreur de connexion.'); }
+  };
+
   const handleBanUser = async (userId: string) => {
     // Suspension RÉELLE côté serveur : bloque la connexion et dépublie les
     // récits (réversible). Sans cet appel, un compte « banni » réapparaîtrait
@@ -2707,6 +2741,7 @@ export default function App() {
                   story={selectedStoryForReading}
                   onBack={() => setSelectedStoryForReading(null)}
                   currentUser={currentUser!}
+                  onToggleFeatured={handleToggleStoryFeatured}
                   onFollowAuthor={handleFollowAuthor}
                   comments={comments}
                   onAddComment={handleAddComment}
@@ -2848,6 +2883,7 @@ export default function App() {
                       onToggleUserVerification={handleToggleUserVerification}
                       onBanUser={handleBanUser}
                       onUnbanUser={handleUnbanUser}
+                      onToggleUserFeatured={handleToggleUserFeatured}
                       onDeleteStory={handleDeleteStory}
                       onDismissFlag={handleDismissFlag}
                       onDismissUserFlag={handleDismissUserFlag}

@@ -1565,6 +1565,7 @@ export async function createServerInstance() {
       if (isAdmin) {
         data.isFlagged = user.isFlagged;
         data.flagReason = user.flagReason;
+        if (user.featured !== undefined) data.featured = Boolean(user.featured);
       }
 
       const updatedUser = await prisma.user.update({
@@ -1951,6 +1952,7 @@ export async function createServerInstance() {
       if (isAdmin) {
         data.isFlagged = story.isFlagged;
         data.flagReason = story.flagReason;
+        if (story.featured !== undefined) data.featured = Boolean(story.featured);
       }
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },

@@ -45,6 +45,7 @@ interface ReadingViewProps {
   story: Story;
   onBack: () => void;
   currentUser: User;
+  onToggleFeatured?: (storyId: string) => void;
   onFollowAuthor: (authorId: string) => void;
   comments: Comment[];
   onAddComment: (chapterId: string, content: string) => void;
@@ -444,6 +445,7 @@ export default function ReadingView({
   story,
   onBack,
   currentUser,
+  onToggleFeatured,
   onFollowAuthor,
   comments,
   onAddComment,
@@ -1352,6 +1354,21 @@ export default function ReadingView({
 
             {/* Top Toolbar controls */}
             <div className="flex items-center space-x-1.5">
+
+              {/* Mise en avant (administrateur uniquement) */}
+              {currentUser.role === 'Administrateur' && onToggleFeatured && (
+                <button
+                  onClick={() => onToggleFeatured(story.id)}
+                  className={`p-2.5 rounded-xl border transition ${
+                    story.featured
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-500'
+                      : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-amber-500'
+                  }`}
+                  title={story.featured ? 'Retirer de la une' : 'Mettre ce récit en avant'}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+              )}
 
               {/* Téléchargement hors-ligne */}
               <button

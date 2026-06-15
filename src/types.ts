@@ -25,6 +25,7 @@ export interface User {
   isFlagged?: boolean;
   flagReason?: string;
   isBanned?: boolean;
+  featured?: boolean;
   readerXp?: number;
   authorXp?: number;
   showPalmares?: boolean;
@@ -113,6 +114,7 @@ export interface Story {
   rating: number;
   isFlagged: boolean;
   flagReason?: string;
+  featured?: boolean;
   ageRating?: 'all' | '12' | '16' | '18';
 }
 

@@ -17,7 +17,8 @@ import {
   Award,
   SlidersHorizontal,
   FolderLock,
-  RotateCcw
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
 import { User, Story } from '../types';
 import { displayRole } from '../utils/role';
@@ -28,6 +29,7 @@ interface AdminDashboardProps {
   allUsers: User[];
   stories: Story[];
   onToggleUserVerification: (userId: string) => void;
+  onToggleUserFeatured?: (userId: string) => void;
   onBanUser: (userId: string) => void;
   onUnbanUser: (userId: string) => void;
   onDeleteStory: (storyId: string) => void;
@@ -40,6 +42,7 @@ export default function AdminDashboard({
   allUsers,
   stories,
   onToggleUserVerification,
+  onToggleUserFeatured,
   onBanUser,
   onUnbanUser,
   onDeleteStory,
@@ -367,7 +370,23 @@ export default function AdminDashboard({
 
                   {/* Operational controls */}
                   <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                    
+
+                    {/* Mise en avant du compte */}
+                    {onToggleUserFeatured && user.id !== currentUser.id && (
+                      <button
+                        onClick={() => onToggleUserFeatured(user.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${
+                          user.featured
+                            ? 'bg-amber-500 text-white border-amber-500'
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-600 hover:bg-amber-500/20'
+                        }`}
+                        title="Mettre ce compte en avant"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{user.featured ? 'À la une ✓' : 'À la une'}</span>
+                      </button>
+                    )}
+
                     {(user.role === 'Auteur' || user.isVerified) ? (
                       <button
                         id={`toggle-verification-${user.id}`}

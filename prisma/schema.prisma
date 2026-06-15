@@ -35,6 +35,8 @@ model User {
   flagReason        String?
   // Compte suspendu par un administrateur : bloque la connexion (réversible).
   isBanned          Boolean  @default(false)
+  // Compte mis en avant par un administrateur (visibilité accrue).
+  featured          Boolean  @default(false)
   // Système de niveaux (XP) : deux jauges séparées (lecteur / auteur).
   readerXp          Int      @default(0)
   authorXp          Int      @default(0)
@@ -105,6 +107,7 @@ model Story {
   rating         Float       @default(0)
   isFlagged      Boolean     @default(false)
   flagReason     String?
+  featured       Boolean     @default(false)
   ageRating      String      @default("ALL")
 
   authorId       String
