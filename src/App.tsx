@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { 
   Sparkles, 
@@ -22,14 +22,16 @@ import {
 import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
 import MainNavigation from './components/MainNavigation';
 import LateralMenu from './components/LateralMenu';
-// Vues lourdes chargées À LA DEMANDE (code-splitting) → démarrage plus rapide :
-// seules HomeView/AuthView (premier écran) restent dans le bundle initial.
-const ExplorerView = lazy(() => import('./components/ExplorerView'));
-const ReadingView = lazy(() => import('./components/ReadingView'));
-const WriteView = lazy(() => import('./components/WriteView'));
-const MessagesView = lazy(() => import('./components/MessagesView'));
-const ProfileView = lazy(() => import('./components/ProfileView'));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+// NB : vues importées en STATIQUE (un seul bundle). Le code-splitting (React.lazy
+// + import dynamique) s'est révélé incompatible avec certaines WebView Android de
+// l'APK (chunks non chargés → écran de lecture qui ne s'ouvre pas). La fiabilité
+// de la lecture prime sur le gain de démarrage.
+import ExplorerView from './components/ExplorerView';
+import ReadingView from './components/ReadingView';
+import WriteView from './components/WriteView';
+import MessagesView from './components/MessagesView';
+import ProfileView from './components/ProfileView';
+import AdminDashboard from './components/AdminDashboard';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
