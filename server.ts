@@ -824,6 +824,24 @@ export async function createServerInstance() {
   // actives (un même utilisateur peut avoir plusieurs onglets/appareils).
   // Mono-instance : suffisant pour le déploiement actuel.
   const onlineUsers = new Map<string, number>();
+
+  // Liste des membres d'un groupe (cache court) — utilisée par les relais
+  // socket (saisie/appels de groupe). SÉCURITÉ : on ne fait JAMAIS confiance aux
+  // memberIds fournis par le client (sinon un utilisateur pourrait envoyer de
+  // fausses notifications « écrit… » ou de faux appels à n'importe qui). On
+  // dérive toujours les membres de la base.
+  const groupMembersCache = new Map<string, { ids: string[]; exp: number }>();
+  const getGroupMemberIds = async (groupId: string): Promise<string[]> => {
+    const now = Date.now();
+    const cached = groupMembersCache.get(groupId);
+    if (cached && cached.exp > now) return cached.ids;
+    const g = await prisma.readingGroup
+      .findUnique({ where: { id: groupId }, select: { members: { select: { id: true } } } })
+      .catch(() => null);
+    const ids = g ? g.members.map((m) => m.id) : [];
+    groupMembersCache.set(groupId, { ids, exp: now + 30_000 });
+    return ids;
+  };
   const markOnline = (userId: string) => {
     const n = (onlineUsers.get(userId) || 0) + 1;
     onlineUsers.set(userId, n);
@@ -897,15 +915,21 @@ export async function createServerInstance() {
       if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
     });
 
-    // Saisie dans un GROUPE : relayée à tous les membres sauf l'expéditeur.
-    socket.on('group_typing', (p: { groupId: string; memberIds: string[]; senderName?: string }) => {
-      if (!authUserId || !Array.isArray(p?.memberIds)) return;
-      p.memberIds.filter((id) => id !== authUserId).forEach((id) =>
+    // Saisie dans un GROUPE : relayée aux VRAIS membres (issus de la base), et
+    // seulement si l'expéditeur est lui-même membre. On ignore les memberIds du
+    // client (anti-usurpation / anti-spam de fausses notifications).
+    socket.on('group_typing', async (p: { groupId: string; senderName?: string }) => {
+      if (!authUserId || !p?.groupId) return;
+      const members = await getGroupMemberIds(p.groupId);
+      if (!members.includes(authUserId)) return;
+      members.filter((id) => id !== authUserId).forEach((id) =>
         socket.to(`user:${id}`).emit('group_typing', { groupId: p.groupId, senderId: authUserId, senderName: p.senderName }));
     });
-    socket.on('group_stop_typing', (p: { groupId: string; memberIds: string[] }) => {
-      if (!authUserId || !Array.isArray(p?.memberIds)) return;
-      p.memberIds.filter((id) => id !== authUserId).forEach((id) =>
+    socket.on('group_stop_typing', async (p: { groupId: string }) => {
+      if (!authUserId || !p?.groupId) return;
+      const members = await getGroupMemberIds(p.groupId);
+      if (!members.includes(authUserId)) return;
+      members.filter((id) => id !== authUserId).forEach((id) =>
         socket.to(`user:${id}`).emit('group_stop_typing', { groupId: p.groupId, senderId: authUserId }));
     });
 
@@ -964,8 +988,13 @@ export async function createServerInstance() {
     });
 
     // ----- Appels de GROUPE (maillage WebRTC, audio) -----
-    socket.on('group_call:join', (p: { groupId: string; memberIds?: string[] }) => {
+    // SÉCURITÉ : seuls les MEMBRES du groupe (vérifiés en base) peuvent rejoindre
+    // et déclencher des invitations ; la liste invitée est dérivée de la base,
+    // jamais des memberIds du client (anti-faux appels).
+    socket.on('group_call:join', async (p: { groupId: string }) => {
       if (!authUserId || !p?.groupId) return;
+      const members = await getGroupMemberIds(p.groupId);
+      if (!members.includes(authUserId)) return;
       let set = groupCallParticipants.get(p.groupId);
       if (!set) { set = new Set(); groupCallParticipants.set(p.groupId, set); }
       // Liste des participants DÉJÀ en appel envoyée à l'arrivant (il créera les
@@ -973,8 +1002,8 @@ export async function createServerInstance() {
       socket.emit('group_call:participants', { groupId: p.groupId, userIds: Array.from(set) });
       set.add(authUserId);
       set.forEach((id) => { if (id !== authUserId) io.to(`user:${id}`).emit('group_call:participant_joined', { groupId: p.groupId, userId: authUserId }); });
-      // Sonnerie : invite les membres du groupe (qui ne sont pas déjà en appel).
-      (p.memberIds || []).filter((id) => id !== authUserId && !set!.has(id)).forEach((id) => {
+      // Sonnerie : invite les MEMBRES (issus de la base) qui ne sont pas déjà en appel.
+      members.filter((id) => id !== authUserId && !set!.has(id)).forEach((id) => {
         io.to(`user:${id}`).emit('group_call:invite', { groupId: p.groupId, from: authUserId });
         pushIncomingCall(id, p.groupId).catch(() => {});
       });
@@ -2939,6 +2968,7 @@ export async function createServerInstance() {
         where: { id: req.params.id },
         data: { members: { connect: ids.map((id) => ({ id })) } },
       });
+      groupMembersCache.delete(req.params.id); // invalide le cache des relais socket
       res.json(await broadcastGroupUpdate(req.params.id));
     } catch (error) {
       console.error(error);
@@ -2959,6 +2989,7 @@ export async function createServerInstance() {
         where: { id: req.params.id },
         data: { members: { disconnect: { id: req.params.userId } } },
       });
+      groupMembersCache.delete(req.params.id); // invalide le cache des relais socket
       await broadcastGroupUpdate(req.params.id);
       // Prévient l'utilisateur retiré pour qu'il enlève le groupe de sa liste.
       io.to(`user:${req.params.userId}`).emit('group_removed', { groupId: req.params.id });
