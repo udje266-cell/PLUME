@@ -637,6 +637,21 @@ export async function createServerInstance() {
     next();
   });
 
+  // ── En-têtes de sécurité (durcissement, sans dépendance type helmet) ────────
+  // Protège contre le MIME-sniffing, le clickjacking et les fuites de referrer.
+  // Pas de CSP stricte ici (risquerait de casser l'app/Cloudinary) ; HSTS en prod.
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(self), camera=()');
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+    }
+    next();
+  });
+
   // ── Rate limiting simple en mémoire (par IP) ───────────────────────────────
   // Protège les routes sensibles (login, OTP, reset) contre le brute-force et le
   // spam. Note : en mémoire uniquement — pour du multi-instance, utiliser Redis.
