@@ -37,6 +37,7 @@ import GroupCallOverlay from './components/GroupCallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
 import { GroupCallManager } from './utils/groupCall';
 import { startRingtone, stopRingtone } from './utils/ringtone';
+import { enqueueAction, flushQueue, queueLength, onQueueChange } from './utils/offlineQueue';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
@@ -382,6 +383,27 @@ export default function App() {
   // gardé en mémoire et envoyé en en-tête pour la session active. Le token
   // n'est jamais écrit dans localStorage (atténuation XSS).
   const authHeaders = (extra: Record<string, string> = {}) => sharedAuthHeaders(extra);
+
+  // Synchronisation serveur d'une action IDEMPOTENTE, tolérante au hors-ligne :
+  // si le réseau est absent ou que la requête échoue, on met l'action en file
+  // (offlineQueue) ; elle sera rejouée automatiquement au retour de la connexion.
+  // `key` fusionne les intentions contraires (ex. like puis unlike du même récit).
+  const mutateServer = (
+    method: 'POST' | 'PUT' | 'DELETE',
+    path: string,
+    body?: any,
+    key?: string,
+  ) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      enqueueAction({ method, path, body, key });
+      return;
+    }
+    fetch(path, {
+      method,
+      headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => enqueueAction({ method, path, body, key }));
+  };
 
   // Progression de certification d'auteur calculée par le serveur (source de
   // vérité du badge), pour que ProfileView affiche un pourcentage cohérent.
@@ -915,16 +937,26 @@ export default function App() {
   // Détection hors-ligne : on prévient l'utilisateur quand le réseau tombe
   // (l'app reste utilisable en lecture grâce aux livres téléchargés + caches).
   const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [pendingActions, setPendingActions] = useState<number>(() => queueLength());
   useEffect(() => {
-    const goOnline = () => setIsOffline(false);
+    const goOnline = () => { setIsOffline(false); flushQueue(); };
     const goOffline = () => setIsOffline(true);
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
+    // Suit le nombre d'actions en attente (pour le bandeau) + rejeu au démarrage.
+    const off = onQueueChange(setPendingActions);
+    flushQueue();
     return () => {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
+      off();
     };
   }, []);
+
+  // Rejeu de la file dès que la session est prête (token disponible).
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.id) flushQueue();
+  }, [isAuthenticated, currentUser?.id]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
@@ -1585,6 +1617,17 @@ export default function App() {
       return;
     }
 
+    // Hors-ligne : on garde le suivi optimiste et on met l'action en file
+    // (rejouée au retour du réseau) plutôt que de l'annuler.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      enqueueAction({
+        method: isCurrentlyFollowing ? 'DELETE' : 'POST',
+        path: `/api/users/${authorId}/follow`,
+        key: `follow:${authorId}`,
+      });
+      return;
+    }
+
     // Authenticated: Sync with server!
     fetch(`/api/users/${authorId}/follow`, {
       method: isCurrentlyFollowing ? 'DELETE' : 'POST',
@@ -1729,12 +1772,8 @@ export default function App() {
       });
     }
 
-    fetch(`/api/stories/${storyId}/favorite`, {
-      method: hasFavorited ? 'DELETE' : 'POST',
-      headers: authHeaders(),
-    }).catch(() => {
-      // Si cette route n'existe pas encore côté serveur, le PUT de syncStoryMetricsToServer garde déjà le compteur favoritesCount et favoritedBy à jour.
-    });
+    // Tolérant au hors-ligne : rejoué au retour du réseau (clé = fav:<story>).
+    mutateServer(hasFavorited ? 'DELETE' : 'POST', `/api/stories/${storyId}/favorite`, undefined, `fav:${storyId}`);
   };
 
   // Like / unlike a story. One user = one like per story.
@@ -1824,12 +1863,8 @@ export default function App() {
       });
     }
 
-    fetch(`/api/stories/${storyId}/like`, {
-      method: hasLiked ? 'DELETE' : 'POST',
-      headers: authHeaders(),
-    }).catch(() => {
-      // Si cette route n'existe pas encore côté serveur, le PUT de syncStoryMetricsToServer garde déjà le compteur likes et likedBy à jour.
-    });
+    // Tolérant au hors-ligne : rejoué au retour du réseau (clé = like:<story>).
+    mutateServer(hasLiked ? 'DELETE' : 'POST', `/api/stories/${storyId}/like`, undefined, `like:${storyId}`);
   };
 
   const handleToggleCurrentlyReading = (storyId: string) => {
@@ -2013,12 +2048,8 @@ export default function App() {
       return nextComments;
     });
 
-    fetch(`/api/comments/${commentId}/like`, {
-      method: hasLiked ? 'DELETE' : 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-    }).catch((e) => {
-      console.warn('[PLUME] Like commentaire non synchronisé côté serveur, état local conservé :', e);
-    });
+    // Tolérant au hors-ligne : rejoué au retour du réseau (clé = clike:<id>).
+    mutateServer(hasLiked ? 'DELETE' : 'POST', `/api/comments/${commentId}/like`, undefined, `clike:${commentId}`);
   };
 
   const handleAddReply = (commentId: string, content: string) => {
@@ -2766,6 +2797,13 @@ export default function App() {
       {isOffline && (
         <div className="fixed top-0 inset-x-0 z-[2147482000] bg-amber-500 text-black text-[11px] font-black uppercase tracking-wider text-center py-1.5 shadow" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           Hors ligne — lecture des livres téléchargés disponible
+          {pendingActions > 0 && ` · ${pendingActions} action${pendingActions > 1 ? 's' : ''} en attente`}
+        </div>
+      )}
+      {/* De retour en ligne mais file non vide : synchronisation en cours. */}
+      {!isOffline && pendingActions > 0 && (
+        <div className="fixed top-0 inset-x-0 z-[2147482000] bg-purple-600 text-white text-[11px] font-black uppercase tracking-wider text-center py-1.5 shadow" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          Synchronisation… {pendingActions} action{pendingActions > 1 ? 's' : ''} en attente
         </div>
       )}
 
