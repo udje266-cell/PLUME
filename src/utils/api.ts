@@ -21,8 +21,17 @@
  */
 
 import { getAuthToken } from './auth';
+import { Capacitor } from '@capacitor/core';
 
-export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+// URL du backend de production (publique, déjà dans .env.example). Elle sert de
+// REPLI pour l'application native lorsque VITE_API_URL n'a pas été injecté au
+// build : sans elle, l'APK appellerait `https://localhost/api/...` (l'appareil
+// lui-même, où aucun backend ne tourne) et la connexion serait IMPOSSIBLE.
+// En web (servi same-origin par Express), on garde une base vide → `/api` relatif.
+const DEFAULT_NATIVE_API_BASE = 'https://plume-app-fudd.onrender.com';
+const envApiBase = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
+export const API_BASE = envApiBase || (Capacitor.isNativePlatform() ? DEFAULT_NATIVE_API_BASE : '');
 
 /** Construit une URL absolue vers le backend pour un chemin `/api/...`. */
 export function apiUrl(path: string): string {
