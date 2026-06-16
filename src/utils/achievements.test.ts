@@ -42,12 +42,6 @@ describe('achievements and certifications utility', () => {
       expect(stats).toEqual(INITIAL_STATS);
     });
 
-    it('should return custom preset stats for user_reader', () => {
-      const stats = getUserStats('user_reader');
-      expect(stats.chaptersRead).toBe(105);
-      expect(stats.wordsWritten).toBe(0);
-    });
-
     it('should NOT fabricate preset stats from role alone (real users)', () => {
       // Un vrai utilisateur (id non démo) avec un rôle ne doit pas hériter des
       // statistiques fictives : on retombe sur les stats initiales neutres.
@@ -56,16 +50,12 @@ describe('achievements and certifications utility', () => {
       expect(stats.chaptersRead).not.toBe(105);
     });
 
-    it('should return custom preset stats for user_author', () => {
-      const stats = getUserStats('user_author');
-      expect(stats.wordsWritten).toBe(85000);
-      expect(stats.chaptersPublished).toBe(12);
-    });
-
-    it('should return custom preset stats for user_mixed', () => {
-      const stats = getUserStats('user_mixed');
-      expect(stats.chaptersRead).toBe(31);
-      expect(stats.wordsWritten).toBe(4800);
+    it('should no longer fabricate stats for the removed demo accounts', () => {
+      // Les comptes de démonstration (user_reader/user_author/user_mixed) ont été
+      // retirés : ces identifiants ne doivent plus produire de stats fictives.
+      for (const id of ['user_reader', 'user_author', 'user_mixed']) {
+        expect(getUserStats(id)).toEqual(INITIAL_STATS);
+      }
     });
 
     it('should return stored stats from localStorage if they exist', () => {

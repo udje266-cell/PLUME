@@ -620,4 +620,61 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.error).toBe('Session invalide');
     });
   });
+
+  // Flux exact de l'APK : pas de cookie cross-origin → l'app s'authentifie
+  // uniquement avec le token Bearer renvoyé par /login. On verrouille ce
+  // round-trip pour éviter toute régression de connexion en natif.
+  describe('Auth round-trip natif (APK : login → Bearer → /auth/me)', () => {
+    const password = 'safe-password-123';
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const mockUser = {
+      id: 'native-user',
+      email: 'native@example.com',
+      username: 'nativeuser',
+      passwordHash,
+      role: 'AUTEUR',
+      gender: 'FEMME',
+      createdAt: new Date('2026-01-01'),
+      followers: [],
+      following: [],
+      blockedUsers: [],
+    };
+
+    it('le token renvoyé par /login authentifie ensuite /auth/me (Bearer)', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
+
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ email: mockUser.email, password })
+        .expect(200);
+
+      const token = login.body.token;
+      expect(token).toBeTruthy();
+
+      const me = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(me.body.id).toBe(mockUser.id);
+      expect(me.body.username).toBe('nativeuser');
+    });
+
+    it('/auth/me renvoie 401 (pas 200 nul) si le compte du token n’existe plus', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(null as any);
+      const token = jwt.sign({ userId: 'ghost' }, JWT_SECRET, { expiresIn: '1h' });
+
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+
+      expect(res.body.error).toBeDefined();
+    });
+
+    it('/auth/me renvoie 401 sans aucun token', async () => {
+      const res = await request(app).get('/api/auth/me').expect(401);
+      expect(res.body.error).toBe('Non connecté');
+    });
+  });
 });
