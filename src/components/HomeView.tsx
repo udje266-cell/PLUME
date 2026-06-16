@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
 import { getDownloadedBooks, removeDownload } from '../utils/offline';
+import { optimizedImage } from '../utils/imageUrl';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
@@ -256,7 +257,7 @@ export default function HomeView({
                 {featuredStories.map((story) => (
                   <div key={story.id} className="w-40 flex-shrink-0">
                     <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer ring-2 ring-amber-400/40">
-                      <img src={story.cover} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={optimizedImage(story.cover, 220)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       <span className="absolute top-1 left-1 text-[8px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded uppercase shadow flex items-center gap-0.5"><Sparkles className="w-2.5 h-2.5" />À la une</span>
                     </div>
                     <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-xs font-black text-gray-950 dark:text-gray-50 line-clamp-1 cursor-pointer hover:text-purple-600">{story.title}</h4>
@@ -271,7 +272,7 @@ export default function HomeView({
                 {featuredUsers.map((u) => (
                   <div key={u.id} onClick={() => onViewProfile?.(u.id)} className="w-24 flex-shrink-0 flex flex-col items-center text-center cursor-pointer">
                     <div className="relative">
-                      <img src={u.avatar || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))} alt={u.username} className="w-16 h-16 rounded-full object-cover ring-2 ring-amber-400/50" referrerPolicy="no-referrer" />
+                      <img src={optimizedImage(u.avatar, 64, { square: true }) || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))} alt={u.username} className="w-16 h-16 rounded-full object-cover ring-2 ring-amber-400/50" referrerPolicy="no-referrer" />
                       <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase shadow">À la une</span>
                     </div>
                     <span className="mt-2 text-[11px] font-black text-gray-950 dark:text-gray-50 truncate w-full">{u.username}</span>
@@ -298,7 +299,7 @@ export default function HomeView({
                   className="aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer bg-gray-100 dark:bg-zinc-900 border border-emerald-500/20 relative group"
                 >
                   {book.cover && (
-                    <img src={book.cover} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={optimizedImage(book.cover, 220)} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   )}
                   <span className="absolute top-1 left-1 text-[7px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded uppercase shadow">Hors ligne</span>
                   <button
@@ -335,7 +336,7 @@ export default function HomeView({
                 className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-100 dark:border-purple-900/15 hover:bg-purple-500/5 dark:hover:bg-purple-950/10 cursor-pointer transition-all duration-300 shadow-sm group relative"
               >
                 <img 
-                  src={story.cover} 
+                  src={optimizedImage(story.cover, 220)} 
                   alt={story.title} 
                   className="w-12 h-18 rounded-lg object-cover flex-shrink-0 shadow-sm border border-gray-150/40"
                   referrerPolicy="no-referrer"
@@ -423,7 +424,7 @@ export default function HomeView({
                   className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer group"
                 >
                   <img 
-                    src={story.cover} 
+                    src={optimizedImage(story.cover, 220)} 
                     alt={story.title} 
                     className="w-full h-full object-cover group-hover:scale-103 transition-transform" 
                     referrerPolicy="no-referrer"
@@ -544,7 +545,7 @@ export default function HomeView({
                   className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col items-center text-center transition-all hover:border-purple-500/30"
                 >
                   <img
-                    src={person.avatar || 'https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(person.username)}
+                    src={optimizedImage(person.avatar, 64, { square: true }) || 'https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(person.username)}
                     alt={person.username}
                     onClick={() => onViewProfile?.(person.id)}
                     className="w-14 h-14 rounded-full object-cover ring-2 ring-purple-500/15 cursor-pointer"
@@ -607,7 +608,7 @@ export default function HomeView({
               </div>
 
               <img 
-                src={story.cover} 
+                src={optimizedImage(story.cover, 220)} 
                 alt={story.title} 
                 className="w-10 h-14 rounded-lg object-cover flex-shrink-0 cursor-pointer"
                 onClick={() => onSelectStory(story)}
@@ -662,7 +663,7 @@ export default function HomeView({
               className="p-3.5 bg-[#FCFBFF] dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl cursor-pointer text-left group hover:scale-[1.01] transition-transform shadow-xs"
             >
               <img 
-                src={story.cover} 
+                src={optimizedImage(story.cover, 220)} 
                 alt={story.title} 
                 className="w-full h-28 object-cover rounded-xl shadow-xs" 
                 referrerPolicy="no-referrer"
@@ -721,7 +722,7 @@ export default function HomeView({
                   title="Consulter le profil"
                 >
                   <img 
-                    src={author.avatar} 
+                    src={optimizedImage(author.avatar, 64, { square: true })} 
                     alt={author.username} 
                     className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-600/10 group-hover:scale-105 transition duration-150"
                     referrerPolicy="no-referrer"

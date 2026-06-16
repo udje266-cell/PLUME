@@ -22,6 +22,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { Story, User } from '../types';
+import { optimizedImage } from '../utils/imageUrl';
 import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
 
@@ -379,7 +380,7 @@ export default function ExplorerView({
                 className="flex items-center gap-3 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-150/50 dark:border-purple-900/15 p-2.5 hover:shadow-md transition cursor-pointer"
               >
                 <img
-                  src={u.avatar}
+                  src={optimizedImage(u.avatar, 64, { square: true })}
                   alt={u.username}
                   className="w-10 h-10 rounded-full object-cover bg-zinc-200 dark:bg-zinc-800 flex-shrink-0"
                 />
@@ -430,7 +431,7 @@ export default function ExplorerView({
                 className="relative aspect-[2/3] w-full bg-zinc-100 dark:bg-zinc-900 cursor-pointer overflow-hidden"
               >
                 <img 
-                  src={story.cover} 
+                  src={optimizedImage(story.cover, 240)} 
                   alt={story.title} 
                   className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform" 
                   referrerPolicy="no-referrer"
@@ -483,7 +484,7 @@ export default function ExplorerView({
                 {/* Author consultation clickable button (Satisfies: Consulter un auteur) */}
                 <div className="flex items-center space-x-1.5 w-fit">
                   <img 
-                    src={story.authorAvatar} 
+                    src={optimizedImage(story.authorAvatar, 48, { square: true })} 
                     alt={story.authorName} 
                     onClick={() => setViewedAuthor(story)}
                     className="w-4 h-4 rounded-full object-cover ring-1 ring-purple-600/20 cursor-pointer hover:scale-110 transition-transform" 
@@ -529,7 +530,7 @@ export default function ExplorerView({
             </button>
 
             <img 
-              src={viewedAuthor.authorAvatar} 
+              src={optimizedImage(viewedAuthor.authorAvatar, 96, { square: true })} 
               alt={viewedAuthor.authorName} 
               className="w-16 h-16 rounded-full object-cover ring-4 ring-purple-600/10 mx-auto"
               referrerPolicy="no-referrer"
