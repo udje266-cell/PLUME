@@ -912,6 +912,20 @@ export default function App() {
     return () => stopRingtone();
   }, [callStatus, groupCallInvite]);
 
+  // Détection hors-ligne : on prévient l'utilisateur quand le réseau tombe
+  // (l'app reste utilisable en lecture grâce aux livres téléchargés + caches).
+  const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
     // Clé par utilisateur, avec migration de l'ancienne clé globale `plume_favorites`.
@@ -2747,6 +2761,13 @@ export default function App() {
       {/* Background ambient lighting blur spots (desktop only) */}
       <div className="hidden md:block absolute -left-16 -top-16 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
       <div className="hidden md:block absolute -right-16 -bottom-16 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
+
+      {/* Bandeau HORS-LIGNE : visible en haut dès que le réseau tombe. */}
+      {isOffline && (
+        <div className="fixed top-0 inset-x-0 z-[2147482000] bg-amber-500 text-black text-[11px] font-black uppercase tracking-wider text-center py-1.5 shadow" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          Hors ligne — lecture des livres téléchargés disponible
+        </div>
+      )}
 
       {/* Main Responsive Mobile-First Centered Container */}
       <div className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">
