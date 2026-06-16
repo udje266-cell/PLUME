@@ -36,6 +36,7 @@ import CallOverlay from './components/CallOverlay';
 import GroupCallOverlay from './components/GroupCallOverlay';
 import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall';
 import { GroupCallManager } from './utils/groupCall';
+import { startRingtone, stopRingtone } from './utils/ringtone';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
@@ -901,6 +902,15 @@ export default function App() {
     setGroupCallId(null);
     setGroupCallParticipants([]);
   };
+
+  // Sonnerie + vibration tant qu'un appel ENTRANT n'est pas pris/refusé (1:1 ou
+  // groupe). S'arrête dès que l'appel est accepté, refusé ou terminé.
+  useEffect(() => {
+    const incoming = callStatus === 'incoming' || !!groupCallInvite;
+    if (incoming) startRingtone();
+    else stopRingtone();
+    return () => stopRingtone();
+  }, [callStatus, groupCallInvite]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser?.id) return ['story_cosmos_1'];
