@@ -708,6 +708,12 @@ export async function createServerInstance() {
     max: 5,
     message: "Trop de demandes de code. Réessayez dans quelques minutes.",
   });
+  // Télémétrie d'erreurs : on borne le débit pour éviter le spam de logs.
+  const clientErrorLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 20,
+    message: 'Trop de rapports d’erreur.',
+  });
 
   function createToken(userId: string) {
     return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
@@ -1735,6 +1741,24 @@ export async function createServerInstance() {
   // Sonde de santé ultra-légère (aucun accès base) : utilisée par le keep-alive
   // (auto-ping + workflow GitHub) pour empêcher la mise en veille du plan gratuit.
   app.get('/healthz', (_req, res) => res.status(200).type('text/plain').send('ok'));
+
+  // Télémétrie d'erreurs client : l'app (ErrorBoundary + handlers globaux)
+  // remonte ici les crashs JS. On les trace dans les logs serveur (visibles sur
+  // Render) → on détecte les écrans noirs/plantages SANS dépendre d'une capture.
+  app.post('/api/client-error', clientErrorLimiter, (req: any, res) => {
+    const b = req.body || {};
+    const clip = (v: any, n: number) => String(v ?? '').slice(0, n);
+    console.error('[CLIENT-ERROR]', JSON.stringify({
+      message: clip(b.message, 500),
+      url: clip(b.url, 300),
+      userId: clip(b.userId, 60),
+      info: clip(b.info, 1200),
+      stack: clip(b.stack, 2000),
+      ua: clip(b.ua, 200),
+      at: new Date().toISOString(),
+    }));
+    res.status(204).end();
+  });
 
   // Search
   // Échappe les métacaractères LIKE (\ % _) saisis par l'utilisateur pour qu'ils

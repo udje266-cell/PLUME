@@ -5,6 +5,7 @@ import './utils/api';
 import { initNative } from './utils/native';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { reportClientError } from './utils/reportError';
 import './index.css';
 
 // Initialisation native (splash, barre d'état, safe-areas) — no-op en web.
@@ -32,8 +33,14 @@ function showFatal(message: string) {
   const pre = root.querySelector('pre');
   if (pre) pre.textContent = message;
 }
-window.addEventListener('error', (e) => showFatal(String(e?.error?.stack || e?.message || e)));
-window.addEventListener('unhandledrejection', (e) => showFatal(String((e as any)?.reason?.stack || (e as any)?.reason || 'Promesse rejetée')));
+window.addEventListener('error', (e) => {
+  reportClientError(e?.error || e?.message, 'window.error');
+  showFatal(String(e?.error?.stack || e?.message || e));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  reportClientError((e as any)?.reason, 'unhandledrejection');
+  showFatal(String((e as any)?.reason?.stack || (e as any)?.reason || 'Promesse rejetée'));
+});
 
 try {
   createRoot(document.getElementById('root')!).render(

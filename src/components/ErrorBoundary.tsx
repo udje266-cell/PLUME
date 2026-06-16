@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { reportClientError } from '../utils/reportError';
 
 interface State {
   error: Error | null;
@@ -26,6 +27,8 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
     // Trace complète en console (visible via `chrome://inspect` / logcat).
     console.error('[PLUME] Erreur non interceptée :', error, info?.componentStack);
     this.setState({ info: info?.componentStack || '' });
+    // Remontée serveur : on détecte le crash dans les logs sans capture.
+    reportClientError(error, info?.componentStack || '');
   }
 
   private handleReload = () => {
