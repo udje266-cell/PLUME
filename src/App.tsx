@@ -2590,32 +2590,19 @@ export default function App() {
       url.includes('/api/auth/me');
 
     window.fetch = async (input, init) => {
-      try {
-        const response = await originalFetch(input, init);
-        if (response.status === 401) {
-          const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-          // Un 401 isolé NE doit PAS casser une session valide : une requête
-          // bancale ou une course juste après la connexion suffisait sinon à
-          // déconnecter (boucle de login). On VÉRIFIE donc la session via
-          // /auth/me (source de vérité) avant de déconnecter pour de bon.
-          if (!ignore401(urlStr) && isAuthenticatedRef.current) {
-            try {
-              const check = await originalFetch('/api/auth/me', { headers: authHeaders() });
-              if (check.status === 401 || check.status === 403) {
-                console.warn('[AUTH] Session réellement expirée → déconnexion.');
-                handleLogout();
-                alert("Votre session a expiré. Veuillez vous reconnecter.");
-              }
-              // Sinon : la session est valide, le 401 était transitoire → on ignore.
-            } catch {
-              // Réseau indisponible : on NE déconnecte pas (évite les faux positifs).
-            }
-          }
-        }
-        return response;
-      } catch (error) {
-        throw error;
+      const response = await originalFetch(input, init);
+      // IMPORTANT : on NE déconnecte JAMAIS automatiquement sur un 401 reçu en
+      // cours d'usage. C'était la cause de la boucle de connexion : un seul 401
+      // transitoire (requête bancale, serveur froid, course juste après le
+      // login) suffisait à détruire une session pourtant valide. La validité de
+      // session est vérifiée UNIQUEMENT au démarrage (bootstrap + filet /auth/me)
+      // et lors d'une déconnexion explicite par l'utilisateur. Ici, on se
+      // contente de tracer le 401 ; la requête concernée échoue simplement.
+      if (response.status === 401) {
+        const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        if (!ignore401(urlStr)) console.warn('[AUTH] 401 sur', urlStr, '(ignoré, pas de déconnexion auto).');
       }
+      return response;
     };
     return () => {
       window.fetch = originalFetch;
