@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { 
   Sparkles, 
@@ -22,12 +22,14 @@ import {
 import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
 import MainNavigation from './components/MainNavigation';
 import LateralMenu from './components/LateralMenu';
-import ExplorerView from './components/ExplorerView';
-import ReadingView from './components/ReadingView';
-import WriteView from './components/WriteView';
-import MessagesView from './components/MessagesView';
-import ProfileView from './components/ProfileView';
-import AdminDashboard from './components/AdminDashboard';
+// Vues lourdes chargées À LA DEMANDE (code-splitting) → démarrage plus rapide :
+// seules HomeView/AuthView (premier écran) restent dans le bundle initial.
+const ExplorerView = lazy(() => import('./components/ExplorerView'));
+const ReadingView = lazy(() => import('./components/ReadingView'));
+const WriteView = lazy(() => import('./components/WriteView'));
+const MessagesView = lazy(() => import('./components/MessagesView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
@@ -2840,6 +2842,11 @@ export default function App() {
             {/* Main scrollable body container */}
             <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 pt-2 scrollbar-none scroll-smooth">
 
+              {/* Frontière de chargement pour les vues découpées (lazy). */}
+              <Suspense fallback={(
+                <div className="flex items-center justify-center py-24 text-3xl animate-pulse" aria-label="Chargement">🪶</div>
+              )}>
+
               {/* SPECIAL SCREEN: Reading pane overlay taking precedence */}
               {selectedStoryForReading ? (
                 <ReadingView
@@ -2998,6 +3005,7 @@ export default function App() {
                 </>
               )}
 
+              </Suspense>
             </PullToRefresh>
           </div>
         )}
