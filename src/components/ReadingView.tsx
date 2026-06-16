@@ -600,8 +600,15 @@ export default function ReadingView({
     };
   }, []);
 
-  const activeChapter = story.chapters[activeChapterIndex] || story.chapters[0];
-  const isFollowing = currentUser.following.includes(story.authorId);
+  // Chapitre actif robuste : une œuvre SANS chapitre publié arrive avec
+  // `chapters: []` (chapitres brouillons filtrés côté serveur pour les lecteurs).
+  // On fournit alors un chapitre de repli pour ne JAMAIS planter (écran de
+  // lecture qui ne s'ouvre pas), et on affiche un état vide explicite.
+  const hasChapters = Array.isArray(story.chapters) && story.chapters.length > 0;
+  const activeChapter: Chapter = story.chapters?.[activeChapterIndex] || story.chapters?.[0] || {
+    id: '__empty__', title: '', content: '', publishDate: '', isPublished: false, views: 0, reads: 0,
+  };
+  const isFollowing = (currentUser.following || []).includes(story.authorId);
 
   const isOwnStory = story.authorId === currentUser.id;
 
@@ -1724,7 +1731,19 @@ export default function ReadingView({
 
         {/* 4. MAIN READING PAPER PAD WITH ADVANCED CONFIGURATIONS */}
         <main className={`p-6 md:p-12 rounded-[2.5rem] border shadow-md transition-all duration-700 ${themeClasses[readingTheme]} ${isImmersive ? 'ring-0 border-none bg-transparent shadow-none py-16' : ''}`}>
-          
+
+          {!hasChapters && (
+            <div className="text-center py-16 px-4">
+              <div className="text-4xl mb-3">📖</div>
+              <h2 className="text-lg font-serif font-black mb-2">Aucun chapitre publié</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
+                {isOwnStory
+                  ? "Cette œuvre n'a pas encore de chapitre publié. Ajoute et publie un chapitre depuis l'onglet Écriture."
+                  : "Cette œuvre n'a pas encore de chapitre publié. Reviens bientôt !"}
+              </p>
+            </div>
+          )}
+
           {/* Chapter headers */}
           <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
             <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
