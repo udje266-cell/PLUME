@@ -29,6 +29,7 @@ import {
 import { User, Story, Chapter } from '../types';
 import { getDownloadedBooks, removeDownload } from '../utils/offline';
 import { optimizedImage } from '../utils/imageUrl';
+import { Skeleton } from './Skeleton';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
@@ -83,12 +84,15 @@ export default function HomeView({
 
   // Suggestions de personnes aux goûts proches (PLUME = aussi pour se faire des amis).
   const [suggestedPeople, setSuggestedPeople] = useState<(User & { sharedGenres?: string[] })[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   useEffect(() => {
     let cancelled = false;
+    setLoadingSuggestions(true);
     fetch('/api/suggestions/people', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => { if (!cancelled && Array.isArray(data)) setSuggestedPeople(data); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingSuggestions(false); });
     return () => { cancelled = true; };
     // Recalcule quand l'utilisateur change ou suit/défollow (following évolue).
   }, [currentUser.id, (currentUser.following || []).length]);
@@ -524,7 +528,7 @@ export default function HomeView({
       </section>
 
       {/* SECTION: LECTEURS AUX GOÛTS PROCHES (se faire des amis) */}
-      {suggestedPeople.length > 0 && (
+      {(loadingSuggestions || suggestedPeople.length > 0) && (
         <section className="space-y-4">
           <div className="flex justify-between items-center pb-1.5 border-b border-gray-100 dark:border-zinc-900">
             <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center space-x-1.5">
@@ -536,6 +540,18 @@ export default function HomeView({
             </span>
           </div>
 
+          {loadingSuggestions && suggestedPeople.length === 0 ? (
+            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col items-center gap-2">
+                  <Skeleton className="w-16 h-16 rounded-full" />
+                  <Skeleton className="w-20 h-3" />
+                  <Skeleton className="w-14 h-2.5" />
+                  <Skeleton className="w-full h-7 rounded-lg mt-1" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
             {suggestedPeople.map((person) => {
               const isFollowing = (currentUser.following || []).includes(person.id);
@@ -580,6 +596,7 @@ export default function HomeView({
               );
             })}
           </div>
+          )}
         </section>
       )}
 
