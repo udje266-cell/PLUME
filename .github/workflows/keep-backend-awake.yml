@@ -15,8 +15,11 @@ name: keep-backend-awake
 
 on:
   schedule:
-    # Toutes les 10 minutes (heure UTC). 5 min est le minimum autorisé par GitHub.
-    - cron: '*/10 * * * *'
+    # Toutes les 5 minutes (minimum GitHub). GitHub espace souvent les crons en
+    # période de charge : viser 5 min maximise les chances de réveil. Le keep-alive
+    # PRINCIPAL reste l'auto-ping interne du serveur (voir server.ts) ; ce cron
+    # n'est qu'un filet secondaire qui peut aussi RÉVEILLER un service endormi.
+    - cron: '*/5 * * * *'
   workflow_dispatch: {} # permet aussi un déclenchement manuel
 
 jobs:
@@ -25,7 +28,7 @@ jobs:
     steps:
       - name: Ping du backend
         run: |
-          URL="${{ vars.BACKEND_URL || 'https://plume-app-fudd.onrender.com' }}/api/config"
+          URL="${{ vars.BACKEND_URL || 'https://plume-app-fudd.onrender.com' }}/healthz"
           echo "Ping $URL"
           # -m 90 : laisse le temps à un éventuel réveil à froid de répondre.
           code=$(curl -s -m 90 -o /dev/null -w "%{http_code}" "$URL" || echo "000")

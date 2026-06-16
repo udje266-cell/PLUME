@@ -1732,6 +1732,10 @@ export async function createServerInstance() {
     });
   });
 
+  // Sonde de santé ultra-légère (aucun accès base) : utilisée par le keep-alive
+  // (auto-ping + workflow GitHub) pour empêcher la mise en veille du plan gratuit.
+  app.get('/healthz', (_req, res) => res.status(200).type('text/plain').send('ok'));
+
   // Search
   // Échappe les métacaractères LIKE (\ % _) saisis par l'utilisateur pour qu'ils
   // soient traités littéralement (le caractère d'échappement est le backslash).
@@ -3430,6 +3434,22 @@ if (process.env.NODE_ENV !== 'test') {
       console.log(`[PLUME App] Backend + Socket.io en écoute sur http://0.0.0.0:${PORT}`);
       ensureAdminAccount().catch((e) => console.error('[ADMIN] erreur :', e));
     });
+
+    // Anti-veille (plan gratuit Render) : tant que le service est ÉVEILLÉ, il se
+    // pingue lui-même via son URL PUBLIQUE toutes les ~13 min. Render compte cet
+    // appel entrant et remet le minuteur d'inactivité (15 min) à zéro → le
+    // service ne s'endort plus. Bien plus fiable que le cron GitHub (souvent
+    // retardé/sauté). Aucune dépendance externe ni configuration requise :
+    // Render fournit automatiquement RENDER_EXTERNAL_URL.
+    const publicUrl = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+    if (publicUrl && process.env.NODE_ENV === 'production' && typeof fetch === 'function') {
+      const KEEPALIVE_MS = 13 * 60 * 1000;
+      setInterval(() => {
+        fetch(`${publicUrl}/healthz`, { method: 'GET' })
+          .then((r) => console.log(`[KEEPALIVE] auto-ping ${publicUrl}/healthz → ${r.status}`))
+          .catch((e) => console.warn('[KEEPALIVE] auto-ping échoué :', e?.message || e));
+      }, KEEPALIVE_MS).unref?.();
+    }
 
     // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
     // nouvelles connexions puis on libère Prisma et Redis pour ne pas fuiter de
