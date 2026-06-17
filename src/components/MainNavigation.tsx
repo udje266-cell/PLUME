@@ -13,24 +13,26 @@ import {
   Menu, 
   Sun, 
   Moon, 
-  ShieldCheck, 
-  Wifi, 
-  Battery, 
+  ShieldCheck,
+  Wifi,
+  Battery,
   Signal,
   Bell,
   Heart,
   MessageCircle,
   Users,
   Send,
-  Star
+  Star,
+  Trophy,
+  Feather
 } from 'lucide-react';
 import { User, UserRole, AppNotification } from '../types';
 import Logo from './Logo';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MainNavigationProps {
-  activeTab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin';
-  onChangeTab: (tab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin') => void;
+  activeTab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
+  onChangeTab: (tab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements') => void;
   currentUser: User;
   onOpenSidebar: () => void;
   darkMode: boolean;
@@ -107,15 +109,46 @@ export default function MainNavigation({
     return () => clearInterval(timer);
   }, []);
 
-  // Bottom action tabs matching premium design
-  const tabs = [
+  // Barre du bas : Accueil · Succès · [Écrire centré] · Message · Profil.
+  // L'« Explorer » est devenu la « Bibliothèque », ouverte depuis la barre de
+  // recherche de l'accueil (plus dans la barre du bas). Le bouton central
+  // « Écrire » est mis en avant (rond surélevé).
+  const leftTabs = [
     { id: 'home' as const, label: 'Accueil', icon: <Home className="w-5 h-5" /> },
-    { id: 'explore' as const, label: 'Explorer', icon: <Search className="w-5 h-5" /> },
-    ...(currentUser.role !== 'Lecteur' ? [{ id: 'write' as const, label: 'Écrire', icon: <PenTool className="w-5 h-5" /> }] : []),
-    { id: 'messages' as const, label: 'Messages', icon: <MessageSquare className="w-5 h-5" /> },
-    ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', icon: <ShieldCheck className="w-5 h-5 text-purple-600 dark:text-purple-400" /> }] : []),
-    { id: 'profile' as const, label: 'Profil', icon: <UserIcon className="w-5 h-5" /> },
+    { id: 'achievements' as const, label: 'Succès', icon: <Trophy className="w-5 h-5" /> },
   ];
+  const rightTabs = [
+    { id: 'messages' as const, label: 'Message', icon: <MessageSquare className="w-5 h-5" /> },
+    { id: 'profile' as const, label: 'Profil', icon: <UserIcon className="w-5 h-5" /> },
+    ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', icon: <ShieldCheck className="w-5 h-5" /> }] : []),
+  ];
+
+  const renderTab = (tab: { id: any; label: string; icon: React.ReactNode }) => {
+    const isSelected = activeTab === tab.id;
+    return (
+      <button
+        key={tab.id}
+        id={`nav-tab-${tab.id}`}
+        onClick={() => onChangeTab(tab.id)}
+        className={`relative flex flex-col items-center justify-center p-1.5 focus:outline-none transition-all cursor-pointer ${
+          isSelected ? 'text-[#7C3AED] dark:text-purple-400 scale-105' : 'text-gray-400 dark:text-gray-500'
+        }`}
+      >
+        <div className="relative">
+          {tab.icon}
+          {tab.id === 'messages' && unreadMessagesCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-3.5 px-0.75 rounded-full bg-purple-600 text-white text-[8px] font-black flex items-center justify-center border border-white dark:border-black">
+              {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+            </span>
+          )}
+        </div>
+        <span className="text-[9px] mt-1 font-bold font-sans tracking-wide">{tab.label}</span>
+        {isSelected && (
+          <span className="absolute -bottom-1.5 w-1.5 h-1.5 rounded-full bg-[#7C3AED] dark:bg-purple-400" />
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="w-full flex flex-col z-30 select-none">
@@ -290,36 +323,28 @@ export default function MainNavigation({
         </div>
       </header>
 
-      {/* STICKY BOTTOM TAB NAVIGATION BAR */}
-      <nav className="fixed md:absolute bottom-0 inset-x-0 bg-white/95 dark:bg-black/95 backdrop-blur-md border-t border-gray-100 dark:border-purple-900/15 pb-3 pt-2.5 px-3 z-40 flex flex-col transition-colors">
-        <div className="flex items-center justify-around">
-          {tabs.map((tab) => {
-            const isSelected = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                id={`nav-tab-${tab.id}`}
-                onClick={() => onChangeTab(tab.id)}
-                className={`relative flex flex-col items-center justify-center p-1.5 focus:outline-none transition-all cursor-pointer ${
-                  isSelected ? 'text-[#7C3AED] dark:text-purple-400 scale-105' : 'text-gray-400 dark:text-gray-500'
-                }`}
-              >
-                <div className="relative">
-                  {tab.icon}
-                  {/* Visual trigger indicator for new messages */}
-                  {tab.id === 'messages' && unreadMessagesCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-3.5 px-0.75 rounded-full bg-purple-600 text-white text-[8px] font-black flex items-center justify-center border border-white dark:border-black">
-                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[9px] mt-1 font-bold font-sans tracking-wide">{tab.label}</span>
-                {isSelected && (
-                  <span className="absolute -bottom-1.5 w-1.5 h-1.5 rounded-full bg-[#7C3AED] dark:bg-purple-400" />
-                )}
-              </button>
-            );
-          })}
+      {/* STICKY BOTTOM TAB NAVIGATION BAR (Écrire centré et surélevé) */}
+      <nav className="fixed md:absolute bottom-0 inset-x-0 bg-white/95 dark:bg-black/95 backdrop-blur-md border-t border-gray-100 dark:border-purple-900/15 pb-3 pt-2.5 px-3 z-40 transition-colors">
+        <div className="flex items-end justify-around">
+          {leftTabs.map((tab) => renderTab(tab))}
+
+          {/* Bouton central « Écrire » mis en avant. Pour un Lecteur, il invite à
+              passer Auteur (redirection gérée en amont si besoin). */}
+          <button
+            id="nav-tab-write"
+            onClick={() => onChangeTab(canWrite || isAdmin ? 'write' : 'profile')}
+            className="relative -mt-7 flex flex-col items-center focus:outline-none cursor-pointer"
+            aria-label="Écrire"
+          >
+            <span className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/30 border-4 border-white dark:border-black transition-transform active:scale-95 ${
+              activeTab === 'write' ? 'bg-purple-700' : 'bg-gradient-to-br from-purple-600 to-fuchsia-600'
+            }`}>
+              <Feather className="w-6 h-6 text-white" />
+            </span>
+            <span className={`text-[9px] mt-1 font-black uppercase tracking-wide ${activeTab === 'write' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}>Écrire</span>
+          </button>
+
+          {rightTabs.map((tab) => renderTab(tab))}
         </div>
       </nav>
 

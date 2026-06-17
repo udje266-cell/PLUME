@@ -32,6 +32,7 @@ import WriteView from './components/WriteView';
 import MessagesView from './components/MessagesView';
 import ProfileView from './components/ProfileView';
 import AdminDashboard from './components/AdminDashboard';
+import AchievementsView from './components/AchievementsView';
 import HomeView from './components/HomeView';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
@@ -1017,7 +1018,7 @@ export default function App() {
   });
 
   // UI state variables
-  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements'>('home');
   const [activeInterlocutorId, setActiveInterlocutorId] = useState<string>(() => {
     if (!currentUser?.id) return 'user_author';
     const scopedKey = getActiveInterlocutorStorageKey(currentUser.id);
@@ -1105,7 +1106,7 @@ export default function App() {
 
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('plume_dark_mode');
-    return saved ? JSON.parse(saved) : true; // Default to eye-safe dark theme
+    return saved ? JSON.parse(saved) : false; // Thème CLAIR par défaut (choix produit).
   });
 
   // Gestion du bouton retour physique Android (déclenché depuis utils/native).
@@ -2965,6 +2966,11 @@ export default function App() {
                       onFollowAuthor={handleFollowAuthor}
                       onOpenDiscussion={handleOpenDiscussion}
                       onViewProfile={handleViewUserProfile}
+                      onOpenLibrary={(query) => {
+                        if (query) setActiveFilter({ type: 'search', value: query });
+                        setActiveTab('explore');
+                      }}
+                      onStartWriting={() => setActiveTab(currentUser?.role !== 'Lecteur' ? 'write' : 'profile')}
                     />
                   )}
 
@@ -2978,6 +2984,10 @@ export default function App() {
                       onOpenDiscussion={handleOpenDiscussion}
                       onViewProfile={handleViewUserProfile}
                     />
+                  )}
+
+                  {activeTab === 'achievements' && (
+                    <AchievementsView currentUser={currentUser} />
                   )}
 
                   {activeTab === 'write' && currentUser?.role !== 'Lecteur' && (

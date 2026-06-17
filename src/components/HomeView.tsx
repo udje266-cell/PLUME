@@ -20,9 +20,11 @@ import {
   FileText, 
   Eye, 
   MessageCircle, 
-  Compass, 
-  Copy, 
-  Send, 
+  Compass,
+  Copy,
+  Search,
+  PenTool,
+  Send,
   X as CloseIcon,
   Check
 } from 'lucide-react';
@@ -54,6 +56,8 @@ interface HomeViewProps {
   onFollowAuthor: (authorId: string) => void;
   onOpenDiscussion: (partnerId: string) => void;
   onViewProfile?: (userId: string) => void;
+  onOpenLibrary?: (query?: string) => void; // ouvre la Bibliothèque (ex-Explorer)
+  onStartWriting?: () => void;               // ouvre l'écriture / création
 }
 
 export default function HomeView({
@@ -67,11 +71,14 @@ export default function HomeView({
   onToggleFavorite,
   onFollowAuthor,
   onOpenDiscussion,
-  onViewProfile
+  onViewProfile,
+  onOpenLibrary,
+  onStartWriting
 }: HomeViewProps) {
-  
+
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
+  const [searchText, setSearchText] = useState('');
 
   // Livres téléchargés (disponibles hors ligne). Se met à jour quand on
   // télécharge / retire un livre ailleurs dans l'app.
@@ -231,14 +238,26 @@ export default function HomeView({
   return (
     <div className="px-4 py-4 space-y-6 animate-fade-in text-left select-none pb-28">
       
-      {/* Dynamic Header greeting */}
-      <header className="pb-4 border-b border-gray-100 dark:border-purple-900/10 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-gray-950 dark:text-white flex items-center space-x-1.5">
-            <span>Archipel Plume</span>
-            <Sparkles className="w-4 h-4 text-purple-600 fill-purple-600/10" />
-          </h1>
-        </div>
+      {/* En-tête : titre + barre de recherche (ouvre la Bibliothèque). */}
+      <header className="space-y-3 pb-1">
+        <h1 className="text-xl font-black tracking-tight text-gray-950 dark:text-white flex items-center space-x-1.5">
+          <Sparkles className="w-5 h-5 text-purple-600 fill-purple-600/15" />
+          <span>Archipel Plume</span>
+        </h1>
+        <form
+          onSubmit={(e) => { e.preventDefault(); onOpenLibrary?.(searchText.trim() || undefined); }}
+          className="relative"
+        >
+          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            onFocus={() => onOpenLibrary?.()}
+            placeholder="Rechercher un livre, un auteur, un genre…"
+            className="w-full bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-purple-500/40 rounded-2xl pl-10 pr-4 py-3 text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500/30 transition"
+          />
+        </form>
       </header>
 
       {/* SECTION: À LA UNE (mises en avant par l'administration) */}
@@ -385,6 +404,37 @@ export default function HomeView({
           })}
         </div>
       </section>
+
+      {/* SECTION : REPRENEZ VOTRE ÉCRITURE (auteurs) */}
+      {currentUser.role !== 'Lecteur' && (() => {
+        const myStories = stories.filter((s) => s.authorId === currentUser.id);
+        const latest = myStories.slice().sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())[0];
+        return (
+          <section className="rounded-2xl p-4 bg-gradient-to-br from-purple-600/10 to-fuchsia-600/5 border border-purple-500/20 flex items-center gap-4">
+            {latest ? (
+              <>
+                <img src={optimizedImage(latest.cover, 120)} alt={latest.title} className="w-14 h-20 rounded-lg object-cover flex-shrink-0 shadow" referrerPolicy="no-referrer" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Reprenez votre écriture</p>
+                  <h4 className="text-sm font-serif font-black text-gray-900 dark:text-white line-clamp-1 mt-0.5">{latest.title}</h4>
+                  <p className="text-[10px] text-gray-400">{latest.chapters?.length || 0} chapitre{(latest.chapters?.length || 0) > 1 ? 's' : ''}</p>
+                  <button onClick={() => onStartWriting?.()} className="mt-2 inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition">
+                    <PenTool className="w-3 h-3" /> Écrire
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1">
+                <p className="text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Une histoire à raconter ?</p>
+                <h4 className="text-sm font-serif font-black text-gray-900 dark:text-white mt-0.5">Commence ton premier livre</h4>
+                <button onClick={() => onStartWriting?.()} className="mt-2 inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition">
+                  <PenTool className="w-3 h-3" /> Créer un livre
+                </button>
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       {/* SECTION 2: POUR TOI (Personalized recommendations based on tags or category) */}
       <section className="space-y-3">

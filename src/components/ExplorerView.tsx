@@ -112,6 +112,9 @@ export default function ExplorerView({
     if (activeFilter) {
       if (activeFilter.type === 'genre') {
         setSelectedGenre(activeFilter.value);
+      } else if (activeFilter.type === 'search') {
+        // Requête transmise depuis la barre de recherche de l'accueil.
+        setSearchQuery(activeFilter.value);
       }
     }
   }, [activeFilter]);
@@ -225,7 +228,7 @@ export default function ExplorerView({
       <div className="pb-4 border-b border-gray-100 dark:border-purple-900/15">
         <h2 className="font-sans font-black text-lg tracking-tight text-gray-950 dark:text-white flex items-center space-x-2">
           <BookOpen className="w-5 h-5 text-purple-600" />
-          <span>Explorer l'Archipel</span>
+          <span>Bibliothèque</span>
         </h2>
         <p className="text-[11px] text-gray-400 mt-1">
           Barre de recherche intelligente, genres précis et sauvegarde de filtres.
