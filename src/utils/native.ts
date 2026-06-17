@@ -23,7 +23,11 @@ export async function applyStatusBarTheme(dark: boolean): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
+    // La WebView ne passe PLUS sous la barre d'etat : Android reserve l'espace
+    // -> plus aucun chevauchement avec l'heure / wifi / batterie.
+    await StatusBar.setOverlaysWebView({ overlay: false });
     await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
+    await StatusBar.setBackgroundColor({ color: dark ? '#000000' : '#FFFFFF' });
   } catch {
     /* plugin indisponible : on ignore */
   }
