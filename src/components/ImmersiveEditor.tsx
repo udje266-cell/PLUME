@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save } from 'lucide-react';
+import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X } from 'lucide-react';
 import { Story, Chapter } from '../types';
 
 interface ImmersiveEditorProps {
@@ -35,6 +35,149 @@ function plainTextOf(html: string): string {
   const d = document.createElement('div');
   d.innerHTML = html || '';
   return (d.textContent || '').trim();
+}
+
+/* ===========================================================================
+   MINI-IA D'ECRITURE — Decoupage intelligent d'un texte en paragraphes.
+   Moteur local (aucune cle API, fonctionne hors-ligne) : analyse de ponctuation
+   francaise, gestion des dialogues (tirets cadratins / guillemets), des
+   abreviations et des nombres, regroupement equilibre des phrases et passage a
+   la ligne sur les marqueurs de rupture narrative (temps, lieu, opposition).
+   =========================================================================== */
+
+const FR_ABBREVIATIONS = new Set([
+  'm', 'mm', 'mme', 'mmes', 'mlle', 'mlles', 'mr', 'dr', 'drs', 'pr', 'me', 'mgr',
+  'st', 'ste', 'sts', 'stes', 'vs', 'etc', 'cf', 'ex', 'p', 'pp', 'no', 'nos', 'n',
+  'art', 'env', 'av', 'bd', 'fbg', 'rte', 'tel', 'fig', 'al', 'ph', 'jc', 'apr',
+  'min', 'max', 'rd', 'bis', 'ch', 'vol', 'chap', 'cad', 'qqn', 'qqch', 'vol',
+]);
+
+// Marqueurs de RUPTURE : provoquent un nouveau paragraphe quand une phrase debute par eux.
+const FR_TRANSITIONS = [
+  'soudain', 'tout a coup', "tout d'un coup", 'tout d un coup', 'cependant', 'pourtant',
+  'neanmoins', 'toutefois', 'plus tard', 'le lendemain', 'la veille', 'le jour suivant',
+  'le surlendemain', 'quelques instants plus tard', 'quelques minutes plus tard',
+  'quelques heures plus tard', 'quelques jours plus tard', 'au meme moment', 'au meme instant',
+  'pendant ce temps', 'puis', 'ensuite', 'enfin', 'alors', 'aussitot', 'peu apres',
+  'le soir', 'le matin', 'la nuit', 'au matin', 'au soir', "c'est alors", 'c est alors',
+  'des lors', 'finalement', 'de retour', 'plus loin', 'au loin', 'dehors', 'a l interieur',
+  "a l'interieur", 'un instant plus tard', 'une fois', 'apres un moment', 'des le lendemain',
+];
+
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function escapeHtml(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// HTML de la zone editable -> texte brut en PRESERVANT les sauts de ligne
+// (chaque <div>/<p>/<br> devient un retour a la ligne).
+function htmlToTextWithBreaks(html: string): string {
+  const s = (html || '')
+    .replace(/<\/(div|p|h[1-6]|li)>/gi, '\n')
+    .replace(/<br\s*\/?>(?!$)/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  const d = document.createElement('div');
+  d.innerHTML = s;
+  return (d.textContent || '').replace(/ /g, ' ');
+}
+
+function isDialogueLine(s: string): boolean {
+  return /^\s*([—–-]\s|[«"])/.test(s);
+}
+
+function startsWithTransition(sentence: string): boolean {
+  const low = stripDiacritics(sentence.trim().toLowerCase());
+  return FR_TRANSITIONS.some((t) => {
+    const tt = stripDiacritics(t);
+    return low === tt || low.startsWith(tt + ' ') || low.startsWith(tt + ',') || low.startsWith(tt + "'") || low.startsWith(tt + '’');
+  });
+}
+
+// Decoupe un bloc narratif en phrases (ponctuation FR, gestion abreviations/nombres).
+function splitSentences(block: string): string[] {
+  const text = block.replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '.' || ch === '!' || ch === '?' || ch === '…') {
+      // Protege les decimales (3.14) et les abreviations (M. Dupont, etc.).
+      if (ch === '.') {
+        const prev = text[i - 1];
+        const nx = text[i + 1];
+        if (prev && /\d/.test(prev) && nx && /\d/.test(nx)) continue;
+        let k = i - 1; let w = '';
+        while (k >= 0 && /[A-Za-zÀ-ÿ]/.test(text[k])) { w = text[k] + w; k--; }
+        if (w && FR_ABBREVIATIONS.has(stripDiacritics(w.toLowerCase()))) continue;
+        if (w.length === 1 && /[A-ZÀ-Þ]/.test(w)) continue; // initiale (« J. »)
+      }
+      // Absorbe une grappe de ponctuation finale et les guillemets fermants.
+      let j = i;
+      while (j + 1 < text.length && '.!?…»"\')'.includes(text[j + 1])) j++;
+      const sep = text[j + 1];
+      if (sep === undefined) { out.push(text.slice(start).trim()); start = text.length; break; }
+      if (sep === ' ') {
+        const after = text[j + 2];
+        if (after && /[A-ZÀ-Þ0-9«—–"'(]/.test(after)) {
+          out.push(text.slice(start, j + 1).trim());
+          start = j + 2;
+          i = j + 1;
+        }
+      }
+    }
+  }
+  if (start < text.length) out.push(text.slice(start).trim());
+  return out.filter(Boolean);
+}
+
+// Regroupe des phrases en paragraphes equilibres (~2-4 phrases), nouveau
+// paragraphe sur marqueur de rupture ou au-dela d'une longueur confortable.
+function groupSentences(sentences: string[]): string[] {
+  const paras: string[] = [];
+  let buf: string[] = [];
+  let chars = 0;
+  const flush = () => { if (buf.length) { paras.push(buf.join(' ')); buf = []; chars = 0; } };
+  for (const s of sentences) {
+    const newTopic = buf.length > 0 && startsWithTransition(s);
+    const tooLong = buf.length >= 4 || chars > 320;
+    if (newTopic || tooLong) flush();
+    buf.push(s);
+    chars += s.length + 1;
+  }
+  flush();
+  return paras;
+}
+
+// Pipeline complet : respecte les coupures fortes (lignes vides) et les
+// dialogues, reforme le reste en paragraphes lisibles.
+function segmentIntoParagraphs(input: string): string[] {
+  const out: string[] = [];
+  const blocks = input.split(/\n\s*\n+/);
+  for (const block of blocks) {
+    const lines = block.split(/\n/).map((l) => l.trim()).filter(Boolean);
+    let narrative: string[] = [];
+    const flushNarrative = () => {
+      if (!narrative.length) return;
+      out.push(...groupSentences(splitSentences(narrative.join(' '))));
+      narrative = [];
+    };
+    for (const line of lines) {
+      if (isDialogueLine(line)) { flushNarrative(); out.push(line); }
+      else narrative.push(line);
+    }
+    flushNarrative();
+  }
+  return out.filter(Boolean);
+}
+
+// Paragraphes -> HTML pour la zone editable (un <div> par paragraphe, ligne
+// vide entre chacun pour aerer la redaction ; rendu correct cote lecture).
+function paragraphsToEditorHtml(paras: string[]): string {
+  return paras.map((p) => `<div>${escapeHtml(p)}</div>`).join('<div><br></div>');
 }
 
 function useKeyboardHeight() {
@@ -63,6 +206,11 @@ export default function ImmersiveEditor({
   const [chromeVisible, setChromeVisible] = useState(true);
   const [showSommaire, setShowSommaire] = useState(false);
   const [wordCount, setWordCount] = useState(() => plainTextOf(chapter?.content || '').split(/\s+/).filter(Boolean).length);
+
+  // Mini-IA : decoupage du texte en paragraphes (apercu avant application).
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiParas, setAiParas] = useState<string[]>([]);
+  const [aiNote, setAiNote] = useState<string>('');
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
@@ -178,6 +326,36 @@ export default function ImmersiveEditor({
   const doUndo = () => { editorRef.current?.focus(); document.execCommand('undo'); onEditorInput(); };
   const doRedo = () => { editorRef.current?.focus(); document.execCommand('redo'); onEditorInput(); };
 
+  // Mini-IA : analyse le texte courant et propose un decoupage en paragraphes.
+  const runAIParagraphs = () => {
+    const raw = htmlToTextWithBreaks(editorRef.current?.innerHTML || '');
+    const text = raw.trim();
+    const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+    if (words < 25) {
+      setAiParas([]);
+      setAiNote("Ecris ou colle d'abord un texte un peu plus long (au moins ~25 mots) pour que l'assistant puisse le decouper.");
+      setAiOpen(true);
+      return;
+    }
+    const paras = segmentIntoParagraphs(text);
+    setAiParas(paras);
+    setAiNote(paras.length <= 1
+      ? "Le texte forme deja un seul bloc coherent : aucun decoupage supplementaire n'a ete trouve."
+      : `${paras.length} paragraphes proposes a partir de ${words} mots.`);
+    setAiOpen(true);
+  };
+
+  const applyAIParagraphs = () => {
+    if (!aiParas.length || !editorRef.current) { setAiOpen(false); return; }
+    const html = paragraphsToEditorHtml(aiParas);
+    editorRef.current.innerHTML = html;
+    contentRef.current = html;
+    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
   // Navigation entre chapitres (swipe horizontal).
   const idx = isNew ? story.chapters.length : story.chapters.findIndex((c) => c.id === createdIdRef.current);
   const goRelative = (dir: -1 | 1) => {
@@ -260,8 +438,52 @@ export default function ImmersiveEditor({
         <button onMouseDown={(e) => e.preventDefault()} onClick={insertSeparator} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Separateur"><Minus className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={doUndo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Annuler"><Undo2 className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={doRedo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Retablir"><Redo2 className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={runAIParagraphs} className="p-2 text-purple-600" aria-label="Assistant IA : decouper en paragraphes" title="Assistant IA : decouper en paragraphes"><Sparkles className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={() => { editorRef.current?.blur(); setChromeVisible(false); }} className="p-2 text-purple-600" aria-label="Immersion"><Maximize2 className="w-4 h-4" /></button>
       </div>
+
+      {aiOpen && (
+        <div className="fixed inset-0 z-[112] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setAiOpen(false)}>
+          <div
+            className="w-full max-w-xl mx-auto bg-white dark:bg-[#0E0E14] rounded-3xl overflow-hidden flex flex-col max-h-[82vh] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="shrink-0 px-4 py-3 flex items-center gap-2 border-b border-gray-100 dark:border-zinc-800">
+              <span className="w-7 h-7 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-serif font-black text-gray-900 dark:text-white leading-none">Assistant de mise en paragraphes</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>
+              </div>
+              <button onClick={() => setAiOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" aria-label="Fermer"><X className="w-4 h-4" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+              {aiParas.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+              ) : (
+                aiParas.map((p, i) => (
+                  <div key={i} className="flex gap-2.5">
+                    <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-purple-500/12 text-purple-600 dark:text-purple-300 text-[9px] font-black flex items-center justify-center">{i + 1}</span>
+                    <p className="flex-1 min-w-0 text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 break-words">{p}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {aiParas.length > 0 && (
+              <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                <button onClick={() => setAiOpen(false)} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Annuler</button>
+                <button onClick={applyAIParagraphs} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" /> Appliquer
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showSommaire && (
         <div className="fixed inset-0 z-[110] bg-black/40 flex items-end" onClick={() => setShowSommaire(false)}>
