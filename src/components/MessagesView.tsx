@@ -1317,7 +1317,7 @@ export default function MessagesView({
           })()}
 
           {/* ACTIVE CHAT WORKSPACE AREA */}
-          <div ref={scrollContainerRef} className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5" style={chatBgStyle}>
+          <div ref={scrollContainerRef} className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 overscroll-contain" style={{ ...chatBgStyle, WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', willChange: 'scroll-position' }}>
             {activeGroupId ? (
               // Group Thread messaging
               activeGroupMessages.length === 0 ? (
