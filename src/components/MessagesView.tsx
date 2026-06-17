@@ -516,7 +516,7 @@ export default function MessagesView({
     const el = messageInputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.height = Math.max(46, Math.min(el.scrollHeight, 130)) + 'px';
   };
   useEffect(() => { autoSizeMessageInput(); }, [messageText]);
 
@@ -864,10 +864,10 @@ export default function MessagesView({
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-1 sm:px-6 lg:px-8 py-5 md:py-8 lg:py-10 animate-fade-in text-left relative">
-      
-      {/* WhatsApp Layout Styled Container Card */}
-      <div className="bg-gray-50 dark:bg-black border border-gray-200/50 dark:border-purple-900/15 rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[80vh] min-h-[580px] md:h-[700px] shadow-2xl relative z-10">
+    <div className="max-w-6xl mx-auto px-0 sm:px-6 lg:px-8 pt-1 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
+
+      {/* WhatsApp Layout Uniform Container (no delimiting box) */}
+      <div className="bg-gray-50 dark:bg-black md:border md:border-gray-200/50 md:dark:border-purple-900/15 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[580px] md:h-[700px] md:shadow-2xl relative z-10">
         
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
         <div className={`md:col-span-4 bg-white dark:bg-[#0E0E14] flex flex-col border-r border-gray-200/90 dark:border-purple-900/15 ${
@@ -997,7 +997,10 @@ export default function MessagesView({
                         </p>
                       ) : (
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
-                          <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
+                          {lastMsg?.senderId === currentUser.id && !lastMsg?.deletedForEveryone && (
+                            <span className="shrink-0"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
+                          )}
+                          <span className="truncate">{lastMsg ? (lastMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
                         </p>
                       )}
                       
@@ -1248,7 +1251,7 @@ export default function MessagesView({
           })()}
 
           {/* ACTIVE CHAT WORKSPACE AREA */}
-          <div className="flex-1 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 max-h-[460px]" style={chatBgStyle}>
+          <div className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5" style={chatBgStyle}>
             {activeGroupId ? (
               // Group Thread messaging
               activeGroupMessages.length === 0 ? (
@@ -1621,7 +1624,7 @@ export default function MessagesView({
                       ref={messageInputRef}
                       rows={1}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                      className="flex-1 w-full min-w-0 resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-sm rounded-2xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-snug scrollbar-none"
+                      className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-relaxed scrollbar-none"
                       value={messageText}
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
