@@ -336,6 +336,130 @@ function suggestChapterTitles(input: string, fallbackIndex: number): string[] {
   return [...new Set(uniq)].slice(0, 5);
 }
 
+/* ===========================================================================
+   MINI-IA — ANALYSE DU TEXTE (locale, hors-ligne) pour aider les auteurs :
+   statistiques, phrases trop longues, mots repetes, adverbes, verbes faibles,
+   debuts de phrase repetitifs, richesse lexicale, et conseils concrets.
+   =========================================================================== */
+const FR_WEAK_VERBS = new Set([
+  'etre', 'est', 'sont', 'etait', 'etaient', 'sera', 'serait', 'suis', 'es', 'soit',
+  'avoir', 'a', 'ai', 'as', 'ont', 'avait', 'avaient', 'aura', 'aurait', 'avais',
+  'faire', 'fait', 'fais', 'font', 'faisait', 'faisaient', 'fera', 'ferait',
+  'dire', 'dit', 'dis', 'disent', 'disait', 'disaient', 'dira',
+  'aller', 'va', 'vais', 'vas', 'vont', 'allait', 'mettre', 'met', 'mit',
+  'chose', 'choses', 'truc', 'trucs', 'tres', 'vraiment',
+]);
+
+interface TextAnalysis {
+  words: number;
+  sentences: number;
+  paragraphs: number;
+  readingMin: number;
+  avgSentenceLen: number;
+  longSentences: { text: string; len: number }[];
+  repeatedWords: { word: string; count: number }[];
+  adverbCount: number;
+  weakVerbPct: number;
+  dialoguePct: number;
+  startRepeats: { word: string; count: number }[];
+  richnessPct: number;
+  tips: string[];
+}
+
+function wordTokens(s: string): string[] {
+  return (s.toLowerCase().match(/[a-zà-ÿ]+(?:[’'-][a-zà-ÿ]+)*/g) || []);
+}
+function deAccentKey(w: string): string {
+  return stripDiacritics(w.replace(/[’'-]/g, ''));
+}
+
+function analyzeText(input: string): TextAnalysis {
+  const text = input.replace(/\r/g, '').trim();
+  const paragraphs = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  const sentences = splitSentences(text.replace(/\n+/g, ' '));
+  const tokens = wordTokens(text);
+  const words = tokens.length;
+  const sentCount = Math.max(1, sentences.length);
+  const avgSentenceLen = words / sentCount;
+  const readingMin = Math.max(1, Math.round(words / 200));
+
+  // Mots de contenu repetes (>= 4 occurrences, hors mots-outils).
+  const freq = new Map<string, number>();
+  for (const w of tokens) {
+    const k = deAccentKey(w);
+    if (k.length < 4 || FR_STOPWORDS.has(stripDiacritics(w)) || FR_STOPWORDS.has(w)) continue;
+    freq.set(k, (freq.get(k) || 0) + 1);
+  }
+  const repeatedWords = [...freq.entries()].filter(([, n]) => n >= 4).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([word, count]) => ({ word, count }));
+
+  // Phrases trop longues (>= 30 mots).
+  const longSentences = sentences
+    .map((s) => ({ text: s, len: wordTokens(s).length }))
+    .filter((s) => s.len >= 30)
+    .sort((a, b) => b.len - a.len)
+    .slice(0, 3);
+
+  // Adverbes en « -ment ».
+  const adverbCount = tokens.filter((w) => /ment$/.test(w) && w.length > 5).length;
+
+  // Verbes / mots faibles.
+  const weakCount = tokens.filter((w) => FR_WEAK_VERBS.has(deAccentKey(w))).length;
+  const weakVerbPct = words ? (weakCount / words) * 100 : 0;
+
+  // Proportion de dialogue (lignes commençant par un tiret cadratin / guillemet).
+  const lines = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  const dialogueLines = lines.filter((l) => /^([—–-]\s|«)/.test(l)).length;
+  const dialoguePct = lines.length ? (dialogueLines / lines.length) * 100 : 0;
+
+  // Debuts de phrase repetitifs.
+  const startFreq = new Map<string, number>();
+  for (const s of sentences) {
+    const m = s.match(/[A-Za-zÀ-ÿ’'-]+/);
+    if (!m) continue;
+    const w = m[0].toLowerCase();
+    if (FR_STOPWORDS.has(stripDiacritics(w)) || FR_STOPWORDS.has(w)) continue;
+    startFreq.set(w, (startFreq.get(w) || 0) + 1);
+  }
+  const startRepeats = [...startFreq.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([word, count]) => ({ word, count }));
+
+  // Richesse lexicale (mots uniques / total).
+  const richnessPct = words ? (new Set(tokens.map(deAccentKey)).size / words) * 100 : 0;
+
+  const tips: string[] = [];
+  if (avgSentenceLen > 25) tips.push(`Phrases longues en moyenne (${avgSentenceLen.toFixed(0)} mots) : coupe-en quelques-unes pour le rythme.`);
+  if (longSentences.length) tips.push(`${longSentences.length} phrase(s) depassent 30 mots — a verifier.`);
+  if (repeatedWords.length) tips.push(`Mots repetes : « ${repeatedWords.slice(0, 3).map((r) => r.word).join(' », « ')} ». Varie le vocabulaire.`);
+  if (words > 60 && adverbCount / words > 0.04) tips.push(`Beaucoup d'adverbes en « -ment » (${adverbCount}) : prefere des verbes precis.`);
+  if (words > 60 && weakVerbPct > 12) tips.push(`Verbes faibles frequents (etre/avoir/faire/dire) : cherche des verbes d'action.`);
+  if (startRepeats.length) tips.push(`Plusieurs phrases commencent par « ${startRepeats[0].word} » — varie tes ouvertures.`);
+  if (words > 120 && richnessPct < 40) tips.push(`Richesse lexicale faible (${richnessPct.toFixed(0)} %) : diversifie ton vocabulaire.`);
+  if (!tips.length) tips.push('Texte equilibre — rien de majeur a signaler. Continue ainsi !');
+
+  return { words, sentences: sentCount, paragraphs: paragraphs.length, readingMin, avgSentenceLen, longSentences, repeatedWords, adverbCount, weakVerbPct, dialoguePct, startRepeats, richnessPct, tips };
+}
+
+// Resume EXTRACTIF (local) : on garde les phrases les plus representatives
+// (score = somme des frequences des mots de contenu, normalisee par longueur).
+function extractiveSummary(input: string, maxSentences = 3): string {
+  const text = input.replace(/\s+/g, ' ').trim();
+  const sentences = splitSentences(text);
+  if (sentences.length <= maxSentences) return sentences.join(' ');
+  const freq = new Map<string, number>();
+  for (const w of wordTokens(text)) {
+    const k = deAccentKey(w);
+    if (k.length < 4 || FR_STOPWORDS.has(stripDiacritics(w)) || FR_STOPWORDS.has(w)) continue;
+    freq.set(k, (freq.get(k) || 0) + 1);
+  }
+  const scored = sentences.map((s, i) => {
+    const toks = wordTokens(s);
+    let score = 0;
+    for (const w of toks) score += freq.get(deAccentKey(w)) || 0;
+    return { i, s, score: score / Math.sqrt(Math.max(4, toks.length)) };
+  });
+  const top = [...scored].sort((a, b) => b.score - a.score).slice(0, maxSentences).sort((a, b) => a.i - b.i);
+  return top.map((t) => t.s).join(' ');
+}
+
 function useKeyboardHeight() {
   const [h, setH] = useState(0);
   useEffect(() => {
@@ -363,40 +487,16 @@ export default function ImmersiveEditor({
   const [showSommaire, setShowSommaire] = useState(false);
   const [wordCount, setWordCount] = useState(() => plainTextOf(chapter?.content || '').split(/\s+/).filter(Boolean).length);
 
-  // Mini-IA : decoupage du texte en paragraphes (apercu avant application).
+  // Assistant d'ecriture LOCAL (hors-ligne) : decoupage, typographie, titres,
+  // analyse du texte et resume express.
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'rephrase' | 'summary'>('menu');
+  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'analyze' | 'summary'>('menu');
   const [aiParas, setAiParas] = useState<string[]>([]);
   const [aiNote, setAiNote] = useState<string>('');
   const [aiTypo, setAiTypo] = useState<string>('');
   const [aiTitles, setAiTitles] = useState<string[]>([]);
   const [aiResult, setAiResult] = useState<string>('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiOnline, setAiOnline] = useState<boolean | null>(null);
-
-  // Appel a l'assistant IA cote serveur (Claude). Leve une erreur si indisponible.
-  const callAI = async (task: 'titles' | 'rephrase' | 'summary', text: string): Promise<any> => {
-    const res = await fetch('/api/ai/assistant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task, text }),
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e?.error || 'ai_error');
-    }
-    return res.json();
-  };
-
-  // Disponibilite de l'IA (clé API serveur) — pour adapter les libellés.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/ai/status')
-      .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((d) => { if (!cancelled) setAiOnline(!!d.enabled); })
-      .catch(() => { if (!cancelled) setAiOnline(false); });
-    return () => { cancelled = true; };
-  }, []);
+  const [aiAnalysis, setAiAnalysis] = useState<TextAnalysis | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
@@ -570,32 +670,15 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Suggestions de titre de chapitre : IA en ligne si dispo, sinon moteur local.
-  const localTitles = () => suggestChapterTitles(currentEditorText(), story.chapters.length + (isNew ? 1 : 0) || 1);
-  const runAITitle = async () => {
+  // Suggestions de titre de chapitre (analyse locale : theme + personnages).
+  const runAITitle = () => {
     const text = currentEditorText();
-    setAiMode('title'); setAiTitles([]); setAiResult('');
-    if (text.trim().length < 20) {
-      setAiTitles(localTitles());
-      setAiNote("Ecris un peu plus de texte pour des suggestions plus fines.");
-      return;
-    }
-    setAiLoading(true);
-    setAiNote('Analyse du texte par l’IA…');
-    try {
-      const r = await callAI('titles', text);
-      if (Array.isArray(r.titles) && r.titles.length) {
-        setAiTitles(r.titles);
-        setAiNote('Propositions de l’IA — touche-en une pour l’adopter.');
-      } else {
-        throw new Error('empty');
-      }
-    } catch {
-      setAiTitles(localTitles());
-      setAiNote('Suggestions (moteur local) — touche-en une pour l’adopter.');
-    } finally {
-      setAiLoading(false);
-    }
+    const titles = suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1);
+    setAiTitles(titles);
+    setAiNote(text.trim().length < 20
+      ? "Ecris un peu plus de texte pour des suggestions plus fines."
+      : 'Touche une proposition pour l’adopter comme titre.');
+    setAiMode('title');
   };
 
   const applyAITitle = (t: string) => {
@@ -605,59 +688,30 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Reformulation IA d'un texte (amélioration sans changement de sens).
-  const runRephrase = async () => {
+  // Analyse du texte : statistiques + points d'amelioration concrets.
+  const runAnalyze = () => {
     const text = currentEditorText();
-    setAiMode('rephrase'); setAiResult('');
-    if (text.trim().length < 20) { setAiNote("Ecris d'abord un passage a reformuler."); return; }
-    setAiLoading(true);
-    setAiNote('Reformulation en cours…');
-    try {
-      const r = await callAI('rephrase', text);
-      const out = String(r.result || '').trim();
-      if (!out) throw new Error('empty');
-      setAiResult(out);
-      setAiNote('Proposition de l’IA — relis avant d’appliquer.');
-    } catch (e: any) {
-      setAiNote(e?.message === 'ai_unavailable'
-        ? "L’assistant IA n’est pas encore activé (clé API manquante côté serveur)."
-        : "L’assistant IA est momentanément indisponible. Réessaie plus tard.");
-    } finally {
-      setAiLoading(false);
+    if (text.trim().split(/\s+/).filter(Boolean).length < 30) {
+      setAiAnalysis(null);
+      setAiNote("Ecris au moins une trentaine de mots pour une analyse utile.");
+    } else {
+      setAiAnalysis(analyzeText(text));
+      setAiNote('');
     }
+    setAiMode('analyze');
   };
 
-  const applyRephrase = () => {
-    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
-    const html = paragraphsToEditorHtml(aiResult.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
-    editorRef.current.innerHTML = html;
-    contentRef.current = html;
-    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
-    setAiOpen(false);
-    scheduleSave();
-    wakeChrome();
-  };
-
-  // Résumé / accroche IA du chapitre.
-  const runSummary = async () => {
+  // Resume EXPRESS (extractif, local).
+  const runSummary = () => {
     const text = currentEditorText();
-    setAiMode('summary'); setAiResult('');
-    if (text.trim().length < 20) { setAiNote("Ecris d'abord un peu de texte."); return; }
-    setAiLoading(true);
-    setAiNote('Rédaction de l’accroche…');
-    try {
-      const r = await callAI('summary', text);
-      const out = String(r.result || '').trim();
-      if (!out) throw new Error('empty');
-      setAiResult(out);
-      setAiNote('Accroche proposée par l’IA.');
-    } catch (e: any) {
-      setAiNote(e?.message === 'ai_unavailable'
-        ? "L’assistant IA n’est pas encore activé (clé API manquante côté serveur)."
-        : "L’assistant IA est momentanément indisponible. Réessaie plus tard.");
-    } finally {
-      setAiLoading(false);
+    if (text.trim().split(/\s+/).filter(Boolean).length < 40) {
+      setAiResult('');
+      setAiNote("Ecris un peu plus de texte pour en extraire un resume.");
+    } else {
+      setAiResult(extractiveSummary(text, 3));
+      setAiNote('Resume construit a partir des phrases-cles de ton texte.');
     }
+    setAiMode('summary');
   };
 
   const applySummaryAtTop = () => {
@@ -776,8 +830,8 @@ export default function ImmersiveEditor({
                   {aiMode === 'menu' ? "Assistant d’écriture"
                     : aiMode === 'paragraphs' ? 'Découper en paragraphes'
                     : aiMode === 'typo' ? 'Typographie & ponctuation'
-                    : aiMode === 'rephrase' ? 'Reformuler le texte'
-                    : aiMode === 'summary' ? 'Résumé / accroche'
+                    : aiMode === 'analyze' ? 'Analyse du texte'
+                    : aiMode === 'summary' ? 'Résumé express'
                     : 'Titre du chapitre'}
                 </h3>
                 {aiMode !== 'menu' && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>}
@@ -809,23 +863,20 @@ export default function ImmersiveEditor({
                     <span className="block text-[10px] text-gray-400">Des titres de chapitre analysés à partir du contenu.</span>
                   </span>
                 </button>
-                <button onClick={runRephrase} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                <button onClick={runAnalyze} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Wand2 className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="text-[13px] font-black text-gray-900 dark:text-white flex items-center gap-1.5">Reformuler le texte <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white">IA</span></span>
-                    <span className="block text-[10px] text-gray-400">Améliore le style et la fluidité sans changer le sens.</span>
+                    <span className="block text-[13px] font-black text-gray-900 dark:text-white">Analyser le texte</span>
+                    <span className="block text-[10px] text-gray-400">Statistiques, phrases longues, répétitions, conseils d’écriture.</span>
                   </span>
                 </button>
                 <button onClick={runSummary} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Quote className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="text-[13px] font-black text-gray-900 dark:text-white flex items-center gap-1.5">Résumé / accroche <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white">IA</span></span>
-                    <span className="block text-[10px] text-gray-400">Une accroche courte et sans spoiler pour le chapitre.</span>
+                    <span className="block text-[13px] font-black text-gray-900 dark:text-white">Résumé express</span>
+                    <span className="block text-[10px] text-gray-400">Extrait les phrases-clés pour résumer ou faire une accroche.</span>
                   </span>
                 </button>
-                {aiOnline === false && (
-                  <p className="text-[9.5px] text-gray-400 px-1 pt-0.5 leading-relaxed">Les outils <span className="font-bold">IA</span> nécessitent une clé API côté serveur. En attendant, « Découper » et « Typographie » fonctionnent hors-ligne, et les titres utilisent le moteur local.</p>
-                )}
               </div>
             )}
 
@@ -875,62 +926,94 @@ export default function ImmersiveEditor({
             {/* TITRE */}
             {aiMode === 'title' && (
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-                {aiLoading ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-8 text-gray-400">
-                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                    <span className="text-[11px]">{aiNote}</span>
-                  </div>
+                {aiTitles.map((t, i) => (
+                  <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                    <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
+                    <Check className="w-4 h-4 text-purple-600 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ANALYSE DU TEXTE */}
+            {aiMode === 'analyze' && (
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                {!aiAnalysis ? (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
                 ) : (
-                  aiTitles.map((t, i) => (
-                    <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
-                      <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
-                      <Check className="w-4 h-4 text-purple-600 shrink-0" />
-                    </button>
-                  ))
+                  <>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { k: 'Mots', v: String(aiAnalysis.words) },
+                        { k: 'Phrases', v: String(aiAnalysis.sentences) },
+                        { k: 'Lecture', v: `${aiAnalysis.readingMin} min` },
+                        { k: 'Paragraphes', v: String(aiAnalysis.paragraphs) },
+                        { k: 'Phrase moy.', v: `${aiAnalysis.avgSentenceLen.toFixed(0)} mots` },
+                        { k: 'Richesse', v: `${aiAnalysis.richnessPct.toFixed(0)} %` },
+                        { k: 'Dialogue', v: `${aiAnalysis.dialoguePct.toFixed(0)} %` },
+                        { k: 'Adverbes -ment', v: String(aiAnalysis.adverbCount) },
+                        { k: 'Verbes faibles', v: `${aiAnalysis.weakVerbPct.toFixed(0)} %` },
+                      ].map((s) => (
+                        <div key={s.k} className="rounded-xl bg-gray-50 dark:bg-zinc-900 p-2 text-center">
+                          <div className="text-[13px] font-black text-purple-600 dark:text-purple-300 leading-none">{s.v}</div>
+                          <div className="text-[8.5px] text-gray-400 mt-1 uppercase tracking-wide">{s.k}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Conseils</h4>
+                      <ul className="space-y-1.5">
+                        {aiAnalysis.tips.map((t, i) => (
+                          <li key={i} className="flex gap-2 text-[12px] leading-snug text-gray-700 dark:text-gray-200">
+                            <span className="text-purple-600 shrink-0">›</span><span className="min-w-0">{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {aiAnalysis.repeatedWords.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Mots répétés</h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {aiAnalysis.repeatedWords.map((r) => (
+                            <span key={r.word} className="text-[11px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-300 font-bold">{r.word} · {r.count}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {aiAnalysis.longSentences.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Phrases les plus longues</h4>
+                        <ul className="space-y-1.5">
+                          {aiAnalysis.longSentences.map((s, i) => (
+                            <li key={i} className="text-[11.5px] leading-snug text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-zinc-900 rounded-lg p-2">
+                              <span className="text-[9px] font-black text-amber-600 mr-1">{s.len} mots</span>
+                              {s.text.length > 160 ? s.text.slice(0, 157) + '…' : s.text}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <button onClick={() => setAiMode('menu')} className="w-full py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider mt-1">Retour au menu</button>
+                  </>
                 )}
               </div>
             )}
 
-            {/* REFORMULATION (IA) */}
-            {aiMode === 'rephrase' && (
-              <>
-                <div className="flex-1 overflow-y-auto px-4 py-3">
-                  {aiLoading ? (
-                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-400">
-                      <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                      <span className="text-[11px]">{aiNote}</span>
-                    </div>
-                  ) : aiResult ? (
-                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiResult}</p>
-                  ) : (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
-                  )}
-                </div>
-                {!aiLoading && aiResult && (
-                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
-                    <button onClick={applyRephrase} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Remplacer</button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* RÉSUMÉ / ACCROCHE (IA) */}
+            {/* RÉSUMÉ EXPRESS (extractif local) */}
             {aiMode === 'summary' && (
               <>
                 <div className="flex-1 overflow-y-auto px-4 py-3">
-                  {aiLoading ? (
-                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-400">
-                      <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                      <span className="text-[11px]">{aiNote}</span>
-                    </div>
-                  ) : aiResult ? (
+                  {aiResult ? (
                     <p className="text-[13px] leading-relaxed text-gray-700 dark:text-gray-200 italic break-words">« {aiResult} »</p>
                   ) : (
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
                   )}
                 </div>
-                {!aiLoading && aiResult && (
+                {aiResult && (
                   <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
                     <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
                     <button onClick={applySummaryAtTop} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Insérer au début</button>
