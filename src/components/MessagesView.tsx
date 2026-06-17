@@ -52,8 +52,33 @@ import { VerifiedBadge } from './VerifiedBadge';
  *   • 1 plume violette  → message lu
  * Avec une petite animation amusante à l'apparition de chaque état.
  */
-function MessageTicks({ isDelivered, isRead, muted }: { isDelivered?: boolean; isRead?: boolean; muted?: boolean }) {
-  // `muted` = affiché sur un fond CLAIR (liste des discussions) : les plumes
+// Étiquette de séparateur de date (style Telegram) : Aujourd'hui / Hier / date.
+function daySeparatorLabel(dateStr?: string): string {
+  const d = new Date(dateStr || 0);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  const yest = new Date(); yest.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, today)) return "Aujourd'hui";
+  if (sameDay(d, yest)) return 'Hier';
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+}
+function isSameDay(a?: string, b?: string): boolean {
+  const x = new Date(a || 0), y = new Date(b || 0);
+  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
+}
+
+function DateSeparator({ date }: { date?: string }) {
+  return (
+    <div className="flex justify-center my-2">
+      <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-black/10 dark:bg-white/10 text-gray-600 dark:text-gray-300 backdrop-blur-sm">
+        {daySeparatorLabel(date)}
+      </span>
+    </div>
+  );
+}
+
+function MessageTicks({ isDelivered, isRead, muted }: { isDelivered?: boolean; isRead?: boolean; muted?: boolean }) {  // `muted` = affiché sur un fond CLAIR (liste des discussions) : les plumes
   // blanches y seraient invisibles → on utilise une teinte grise/violette.
   const plain = muted ? 'text-zinc-400 dark:text-zinc-500' : 'text-white';
   const faint = muted ? 'text-zinc-400 dark:text-zinc-500' : 'text-white/70';
@@ -1246,21 +1271,15 @@ export default function MessagesView({
                       key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
-                      <div className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-xl ${
-                        isSentByMe 
-                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-tr-none text-right' 
-                          : 'bg-black text-white rounded-tl-none border border-zinc-800 text-left'
+                      <div className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
+                        isSentByMe
+                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md text-right'
+                          : 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200/70 dark:border-zinc-700/50 text-left'
                       }`}>
-                        
-                        <span className={`absolute top-0 w-2 h-2 ${
-                          isSentByMe 
-                            ? 'right-[-5px] bg-purple-600 dark:bg-purple-700 rounded-bl-full' 
-                            : 'left-[-5px] bg-black rounded-br-full'
-                        }`}></span>
 
                         {/* Group member identifier tag top */}
                         {!isSentByMe && (
-                          <div className="flex items-center space-x-1 mb-1 border-b border-zinc-800 pb-0.5">
+                          <div className="flex items-center space-x-1 mb-1 border-b border-gray-200/70 dark:border-zinc-700/50 pb-0.5">
                             <img 
                               src={msg.senderAvatar} 
                               alt={msg.senderName} 
@@ -1317,20 +1336,24 @@ export default function MessagesView({
                   </p>
                 </div>
               ) : (
-                threadMessages.map((msg) => {
+                threadMessages.map((msg, mi) => {
                   if (deletedForMe.has(msg.id)) return null; // supprimé pour moi
                   const isSentByMe = msg.senderId === currentUser.id;
                   const isVoiceStr = msg.content.startsWith('[🎙️ Note Vocale');
                   const sticker = parseSticker(msg.content);
+                  const showDate = mi === 0 || !isSameDay(threadMessages[mi - 1]?.date, msg.date);
+                  const dateSep = showDate ? <DateSeparator date={msg.date} /> : null;
 
                   // Message supprimé pour tout le monde.
                   if (msg.deletedForEveryone) {
                     return (
-                      <div key={msg.id} className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+                      <React.Fragment key={msg.id}>{dateSep}
+                      <div className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
                         <div className="max-w-[80%] px-3 py-1.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 italic text-xs flex items-center gap-1.5">
                           <Trash2 className="w-3 h-3" /> Ce message a été supprimé
                         </div>
                       </div>
+                      </React.Fragment>
                     );
                   }
 
@@ -1338,7 +1361,8 @@ export default function MessagesView({
                   if (sticker) {
                     const savable = !isSentByMe && isStickerUrl(sticker) && !customStickers.includes(sticker);
                     return (
-                      <div key={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
+                      <React.Fragment key={msg.id}>{dateSep}
+                      <div className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
                         <div
                           className="relative group"
                           onTouchStart={() => startLongPress(msg)}
@@ -1368,13 +1392,14 @@ export default function MessagesView({
                           {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
                         </div>
                       </div>
+                      </React.Fragment>
                     );
                   }
 
                   const repliedMsg = msg.replyToId ? threadMessages.find((m) => m.id === msg.replyToId) : null;
                   return (
+                    <React.Fragment key={msg.id}>{dateSep}
                     <div
-                      key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
                       <div
@@ -1382,22 +1407,16 @@ export default function MessagesView({
                         onTouchEnd={cancelLongPress}
                         onTouchMove={cancelLongPress}
                         onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg); }}
-                        className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-1.5 shadow-sm rounded-xl ${
+                        className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
-                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-tr-none text-right'
-                          : 'bg-black text-white rounded-tl-none border border-zinc-800/85 text-left'
+                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md'
+                          : 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200/70 dark:border-zinc-700/50'
                       }`}>
-
-                        <span className={`absolute top-0 w-2 h-2 ${
-                          isSentByMe
-                            ? 'right-[-5px] bg-purple-600 dark:bg-purple-700 rounded-bl-full'
-                            : 'left-[-5px] bg-black rounded-br-full'
-                        }`}></span>
 
                         {/* Citation du message auquel on répond. */}
                         {repliedMsg && (
-                          <div className="mb-1 px-2 py-1 rounded-lg bg-white/15 border-l-2 border-white/50 text-left">
-                            <p className="text-[9px] font-black opacity-90 truncate">{repliedMsg.senderId === currentUser.id ? 'Vous' : (interlocutor?.username || 'Auteur')}</p>
+                          <div className={`mb-1 px-2 py-1 rounded-lg border-l-2 text-left ${isSentByMe ? 'bg-white/15 border-white/60' : 'bg-purple-500/10 border-purple-500'}`}>
+                            <p className={`text-[9px] font-black truncate ${isSentByMe ? 'opacity-90' : 'text-purple-600 dark:text-purple-400'}`}>{repliedMsg.senderId === currentUser.id ? 'Vous' : (interlocutor?.username || 'Auteur')}</p>
                             <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : repliedMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : repliedMsg.content}</p>
                           </div>
                         )}
@@ -1426,6 +1445,7 @@ export default function MessagesView({
 
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })
               )
