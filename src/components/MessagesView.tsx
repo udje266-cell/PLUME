@@ -535,6 +535,36 @@ export default function MessagesView({
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   // Recherche dans la liste des discussions / groupes.
   const [convSearch, setConvSearch] = useState('');
+  // Hauteur disponible pour le panneau messagerie : suit le viewport visible
+  // (clavier compris) afin que la zone de saisie ne disparaisse jamais.
+  const messagingCardRef = useRef<HTMLDivElement>(null);
+  const [messagingCardMaxH, setMessagingCardMaxH] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const compute = () => {
+      const el = messagingCardRef.current;
+      if (!el) return;
+      const vh = vv ? vv.height : window.innerHeight;
+      const top = el.getBoundingClientRect().top;
+      // Hauteur visible sous le haut de la carte, moins une petite marge.
+      const avail = Math.max(320, Math.round(vh - top - 6));
+      setMessagingCardMaxH(window.innerWidth >= 768 ? null : avail);
+    };
+    compute();
+    const t1 = setTimeout(compute, 150);
+    const t2 = setTimeout(compute, 400);
+    vv?.addEventListener('resize', compute);
+    vv?.addEventListener('scroll', compute);
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      clearTimeout(t1); clearTimeout(t2);
+      vv?.removeEventListener('resize', compute);
+      vv?.removeEventListener('scroll', compute);
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
+  }, []);
 
   // Modals state
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
@@ -935,7 +965,10 @@ export default function MessagesView({
     <div className="max-w-6xl mx-auto px-0 sm:px-6 lg:px-8 pt-0 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
 
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
-      <div className="bg-gray-50 dark:bg-black md:border md:border-gray-200/50 md:dark:border-purple-900/15 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[580px] md:h-[700px] md:shadow-2xl relative z-10">
+      <div
+        ref={messagingCardRef}
+        style={messagingCardMaxH ? { height: messagingCardMaxH, minHeight: 0 } : undefined}
+        className="bg-gray-50 dark:bg-black md:border md:border-gray-200/50 md:dark:border-purple-900/15 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
         
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
         <div className={`md:col-span-4 bg-white dark:bg-[#0E0E14] flex flex-col border-r border-gray-200/90 dark:border-purple-900/15 ${
