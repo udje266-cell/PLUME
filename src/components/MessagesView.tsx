@@ -520,6 +520,9 @@ export default function MessagesView({
   const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
   // Un message peut être modifié s'il est à moi, en texte, et envoyé il y a < 5 min.
   const canEdit = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && !parseSticker(m.content) && !m.content.startsWith('[🎙️ Note Vocale') && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 5 * 60 * 1000);
+  // « Supprimer pour tout le monde » : possible uniquement sur ses propres
+  // messages et dans les 6 minutes suivant l'envoi.
+  const canDeleteForEveryone = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 6 * 60 * 1000);
   const startReply = (m: Message) => { setReplyTo(m); setEditingMsg(null); setActionMsg(null); messageInputRef.current?.focus(); };
   const startEdit = (m: Message) => { setEditingMsg(m); setReplyTo(null); setMessageText(m.content); setActionMsg(null); setTimeout(() => messageInputRef.current?.focus(), 0); };
   // Ajuste la hauteur du champ message (retour à la ligne automatique, jusqu'à
@@ -2056,7 +2059,7 @@ export default function MessagesView({
             <button onClick={() => deleteForMe(actionMsg.id)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
               <Trash2 className="w-4 h-4 text-gray-500" /><span className="text-sm font-bold">Supprimer pour moi</span>
             </button>
-            {actionMsg.senderId === currentUser.id && !actionMsg.deletedForEveryone && (
+            {canDeleteForEveryone(actionMsg) && (
               <button onClick={() => { onDeleteMessageForEveryone?.(actionMsg.id); setActionMsg(null); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
                 <Trash2 className="w-4 h-4 text-red-500" /><span className="text-sm font-bold text-red-500">Supprimer pour tout le monde</span>
               </button>

@@ -2867,6 +2867,10 @@ export async function createServerInstance() {
       const msg = await prisma.message.findUnique({ where: { id: req.params.id }, include: { conversation: { include: { participants: { select: { id: true } } } } } });
       if (!msg) return res.status(404).json({ error: 'Message introuvable' });
       if (msg.senderId !== req.user.id) return res.status(403).json({ error: 'Action interdite' });
+      // « Supprimer pour tout le monde » limite a 6 minutes apres l'envoi.
+      if (Date.now() - new Date(msg.createdAt).getTime() > 6 * 60 * 1000) {
+        return res.status(403).json({ error: 'Delai depasse (6 min) pour supprimer pour tout le monde' });
+      }
       const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: true } });
       msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
       res.json(updated);
