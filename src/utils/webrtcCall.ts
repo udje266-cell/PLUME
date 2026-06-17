@@ -87,7 +87,11 @@ export class CallManager {
   private async createPeer(): Promise<RTCPeerConnection> {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    // Réducteur de bruit parasite intégré (activé par défaut, ajustable en appel).
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { noiseSuppression: this.noiseReduction, echoCancellation: this.noiseReduction, autoGainControl: this.noiseReduction } as MediaTrackConstraints,
+      video: false,
+    });
     this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
 
     const remote = new MediaStream();
@@ -177,6 +181,20 @@ export class CallManager {
     if (!track) return false;
     track.enabled = !track.enabled;
     return !track.enabled;
+  }
+
+  // Réducteur de bruit parasite : activable/désactivable en cours d'appel.
+  private noiseReduction = true;
+  isNoiseReduction(): boolean { return this.noiseReduction; }
+  async setNoiseReduction(on: boolean): Promise<boolean> {
+    this.noiseReduction = on;
+    const track = this.localStream?.getAudioTracks()[0];
+    if (track) {
+      try {
+        await track.applyConstraints({ noiseSuppression: on, echoCancellation: on, autoGainControl: on } as MediaTrackConstraints);
+      } catch { /* certains appareils ne supportent pas l'ajustement a chaud */ }
+    }
+    return this.noiseReduction;
   }
 
   private micError(e: any): string {

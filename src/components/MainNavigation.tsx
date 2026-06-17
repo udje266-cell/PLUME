@@ -336,10 +336,10 @@ export default function MainNavigation({
             className="relative -mt-7 flex flex-col items-center focus:outline-none cursor-pointer"
             aria-label="Écrire"
           >
-            <span className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/30 border-4 border-white dark:border-black transition-transform active:scale-95 ${
-              activeTab === 'write' ? 'bg-purple-700' : 'bg-gradient-to-br from-purple-600 to-fuchsia-600'
-            }`}>
-              <Feather className="w-6 h-6 text-white" />
+            <span className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-lg shadow-purple-600/30 border-4 border-white dark:border-black transition-transform active:scale-95 ${
+              activeTab === 'write' ? 'ring-2 ring-purple-400' : ''
+            } bg-gradient-to-br from-purple-600 to-fuchsia-600`}>
+              <img src="/plume-icon.png" alt="Écrire" className="w-full h-full object-cover" draggable={false} />
             </span>
             <span className={`text-[9px] mt-1 font-black uppercase tracking-wide ${activeTab === 'write' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}>Écrire</span>
           </button>

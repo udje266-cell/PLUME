@@ -545,6 +545,26 @@ const user = freshViewedUser || freshCurrentUser;
   // y compris les badges cachés qui conservent leur apparence « ??? »).
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
 
+  // Étagère à 3 trophées mis en avant sur le profil (choisis par l'utilisateur).
+  const showcaseKey = `plume_showcase_${currentUser.id}`;
+  const [showcase, setShowcase] = useState<(string | null)[]>(() => {
+    try {
+      const raw = localStorage.getItem(showcaseKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return [arr[0] || null, arr[1] || null, arr[2] || null];
+    } catch { return [null, null, null]; }
+  });
+  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const setShowcaseSlot = (slot: number, achId: string | null) => {
+    setShowcase((prev) => {
+      const next = [...prev];
+      next[slot] = achId;
+      try { localStorage.setItem(showcaseKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    setPickerSlot(null);
+  };
+
   // Settings Panel States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedRoleType, setSelectedRoleType] = useState<UserRole>(currentUser.role);
@@ -1726,131 +1746,88 @@ const user = freshViewedUser || freshCurrentUser;
         );
       })()}
 
-      {/* COMPACT & ELEGANT ACCOMPLISHMENTS CARD DISPLAY */}
-      {canSeePalmares && (() => {
+      {/* ÉTAGÈRE À TROPHÉES : 3 succès mis en avant, choisis par l'utilisateur. */}
+      {isOwnProfile && (() => {
         const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
-        // Le propriétaire/administrateur débloque tous les accomplissements.
         const ownerAllUnlocked = currentUser.role === 'Administrateur';
-        const rAchievements = generateReaderAchievements(uStats, currentUser.id, ownerAllUnlocked);
-        const aAchievements = generateAuthorAchievements(uStats, currentUser.id, ownerAllUnlocked);
-        
-        const unlockedR = rAchievements.filter(a => a.isUnlocked).length;
-        // La certification d'auteur est calculée par le serveur (source du badge) :
-        // on l'utilise si disponible pour rester cohérent, sinon repli local. Le
-        // propriétaire/administrateur affiche toujours 100 % (statut plein).
-        const unlockedA = ownerAllUnlocked
-          ? aAchievements.filter(a => a.isUnlocked).length
-          : (authorCertification ? authorCertification.authorUnlocked : aAchievements.filter(a => a.isUnlocked).length);
-
-        const pctR = Math.round((unlockedR / 125) * 100);
-        const pctA = ownerAllUnlocked
-          ? 100
-          : (authorCertification ? authorCertification.authorPercent : Math.round((unlockedA / 100) * 100));
-
-        const isReader = currentUser.role === 'Lecteur';
-        const isAuthor = currentUser.role === 'Auteur';
-        const isMixedOrAdmin = !isReader && !isAuthor;
-
-        const totalObtained = isReader ? unlockedR : isAuthor ? unlockedA : (unlockedR + unlockedA);
-        const totalPossible = isReader ? 125 : isAuthor ? 100 : 225;
+        const allAch = [
+          ...generateReaderAchievements(uStats, currentUser.id, ownerAllUnlocked),
+          ...generateAuthorAchievements(uStats, currentUser.id, ownerAllUnlocked),
+        ];
+        const unlocked = allAch.filter((a) => a.isUnlocked);
+        const byId = (id: string | null) => (id ? allAch.find((a) => a.id === id) || null : null);
 
         return (
-          <div className="bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl space-y-4 font-sans text-left shadow-lg">
-            <div className="flex justify-between items-center pb-2 border-b border-zinc-100 dark:border-zinc-800">
+          <div className="bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl space-y-3 font-sans text-left shadow-lg">
+            <div className="flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                <Trophy className="w-4 h-4 text-purple-600 fill-purple-600/5 shrink-0" />
-                <span className="font-bold text-[10px] uppercase tracking-wider text-zinc-700 dark:text-zinc-300">Mon Palmarès Littéraire</span>
+                <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+                <span className="font-bold text-[10px] uppercase tracking-wider text-zinc-700 dark:text-zinc-300">Mes trophées</span>
               </div>
-              <span className="text-[10px] font-mono font-black text-purple-600 dark:text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-full">
-                {totalObtained} / {totalPossible} Obtenus
-              </span>
+              {isOwnProfile && <span className="text-[9px] text-zinc-400">Touche un emplacement pour choisir</span>}
             </div>
 
-            {/* Grid of progress indicators */}
-            <div className={`grid grid-cols-1 ${isMixedOrAdmin ? 'md:grid-cols-2' : ''} gap-4`}>
-              {/* Reader Progression */}
-              {(isReader || isMixedOrAdmin) && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[11px] font-bold">
-                    <span className="text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                      <BookOpen className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                      <span>Progression Lecteur</span>
-                    </span>
-                    <span className="text-purple-600 dark:text-purple-400 font-mono">{unlockedR} / 125 ({pctR}%)</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-850 h-2 rounded-full overflow-hidden border border-zinc-200/40 dark:border-zinc-800/20">
-                    <div 
-                      className="bg-purple-600 h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${Math.min(100, pctR)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-zinc-400">
-                    <span>Certification : 80% débloqués (100)</span>
-                    <span>{pctR >= 80 ? '✓ Requis atteint' : `Encore ${Math.max(0, 100 - unlockedR)}`}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Author Progression */}
-              {(isAuthor || isMixedOrAdmin) && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[11px] font-bold">
-                    <span className="text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                      <PenTool className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                      <span>Progression Auteur</span>
-                    </span>
-                    <span className="text-purple-600 dark:text-purple-400 font-mono">{unlockedA} / 100 ({pctA}%)</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-850 h-2 rounded-full overflow-hidden border border-zinc-200/40 dark:border-zinc-800/20">
-                    <div 
-                      className="bg-purple-600 h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${Math.min(100, pctA)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-zinc-400">
-                    <span>Certification : 80% débloqués (80)</span>
-                    <span>{pctA >= 80 ? '✓ Requis atteint' : `Encore ${Math.max(0, 80 - unlockedA)}`}</span>
-                  </div>
-                </div>
-              )}
+            {/* Étagère à 3 emplacements */}
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2].map((slot) => {
+                const ach = byId(showcase[slot]);
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    disabled={!isOwnProfile}
+                    onClick={() => isOwnProfile && setPickerSlot(slot)}
+                    className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center p-2 text-center transition ${
+                      ach
+                        ? 'border-amber-400/50 bg-gradient-to-br from-amber-400/15 to-orange-500/5'
+                        : 'border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40'
+                    } ${isOwnProfile ? 'active:scale-95' : ''}`}
+                  >
+                    {ach ? (
+                      <>
+                        <Trophy className="w-6 h-6 text-amber-500 mb-1" />
+                        <span className="text-[9px] font-black text-gray-800 dark:text-gray-100 leading-tight line-clamp-2">{ach.title}</span>
+                      </>
+                    ) : (
+                      <span className="text-2xl text-zinc-300 dark:text-zinc-700 font-black">+</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Certification and Actions bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-2 border-t border-zinc-100 dark:border-zinc-850/50">
-              <div className="flex items-center space-x-2 text-[10px] text-zinc-500">
-                <Award className="w-4 h-4 text-purple-500 shrink-0" />
-                <span>
-                  {currentUser.isVerified ? (
-                    <span className="text-blue-500 font-bold bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/15 flex items-center gap-1.5">
-                      <VerifiedBadge size="xs" /> Verified (Authenticité littéraire de l'archipel)
-                    </span>
-                  ) : currentUser.role === 'Auteur' ? (
-                    <span className="text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
-                      Progression vers la certification ({pctA}% / 80%)
-                    </span>
+            {/* Sélecteur de trophée (parmi les succès débloqués). */}
+            {pickerSlot !== null && (
+              <div className="fixed inset-0 z-[120] bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPickerSlot(null)}>
+                <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl p-4 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-serif font-black text-sm">Choisir un trophée</h3>
+                    {showcase[pickerSlot] && (
+                      <button onClick={() => setShowcaseSlot(pickerSlot, null)} className="text-red-500 text-xs font-bold">Retirer</button>
+                    )}
+                  </div>
+                  {unlocked.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-8 text-center">Aucun trophée débloqué pour le moment. Continue ton aventure !</p>
                   ) : (
-                    <span className="text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
-                      Accomplissements actifs · certification réservée aux auteurs
-                    </span>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {unlocked.map((a) => (
+                        <button
+                          key={a.id}
+                          onClick={() => setShowcaseSlot(pickerSlot, a.id)}
+                          className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-purple-500/10 text-left"
+                        >
+                          <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-black text-gray-900 dark:text-white truncate">{a.title}</span>
+                            <span className="block text-[10px] text-gray-400 truncate">{a.realDesc}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </span>
+                </div>
               </div>
-
-              <div className="flex justify-end">
-                <button
-                  id="profile-see-all-achievements"
-                  onClick={() => {
-                    const primaryTab = currentUser.role === 'Auteur' ? 'author' : 'reader';
-                    setAchievementsTab(primaryTab);
-                    setShowAllAchievements(true);
-                  }}
-                  className="w-full sm:w-auto px-4 py-2 border border-purple-500/20 bg-zinc-50 hover:bg-purple-600 hover:text-white dark:bg-zinc-900 dark:hover:bg-purple-600 text-purple-600 dark:text-purple-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer focus:outline-none"
-                >
-                  <span>Gérer & voir tout</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         );
       })()}

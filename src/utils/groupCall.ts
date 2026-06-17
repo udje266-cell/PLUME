@@ -87,7 +87,10 @@ export class GroupCallManager {
   async join(groupId: string, memberIds: string[]) {
     if (this.groupId) return;
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } as MediaTrackConstraints,
+        video: false,
+      });
     } catch (e: any) {
       this.cb.onError(e?.name === 'NotAllowedError' ? 'Accès au micro refusé.' : "Impossible de démarrer l'appel de groupe.");
       return;

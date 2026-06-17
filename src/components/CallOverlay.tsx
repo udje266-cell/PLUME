@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Waves } from 'lucide-react';
 import type { CallStatus, CallPeer } from '../utils/webrtcCall';
 
 interface CallOverlayProps {
@@ -19,13 +19,15 @@ interface CallOverlayProps {
   onReject: () => void;
   onHangup: () => void;
   onToggleMute: () => boolean;
+  onToggleNoise?: (on: boolean) => void;
 }
 
 export default function CallOverlay({
-  status, peer, remoteStream, onAccept, onReject, onHangup, onToggleMute,
+  status, peer, remoteStream, onAccept, onReject, onHangup, onToggleMute, onToggleNoise,
 }: CallOverlayProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [muted, setMuted] = useState(false);
+  const [noiseOn, setNoiseOn] = useState(true);
   const [seconds, setSeconds] = useState(0);
 
   // Branche le flux audio distant sur l'élément <audio>.
@@ -43,7 +45,7 @@ export default function CallOverlay({
     return () => clearInterval(t);
   }, [status]);
 
-  useEffect(() => { if (status === 'idle') setMuted(false); }, [status]);
+  useEffect(() => { if (status === 'idle') { setMuted(false); setNoiseOn(true); } }, [status]);
 
   if (status === 'idle' || status === 'ended') return null;
 
@@ -106,6 +108,18 @@ export default function CallOverlay({
                 aria-label={muted ? 'Réactiver le micro' : 'Couper le micro'}
               >
                 {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              </button>
+            )}
+            {status === 'connected' && (
+              <button
+                id="call-noise-btn"
+                onClick={() => { const next = !noiseOn; setNoiseOn(next); onToggleNoise?.(next); }}
+                className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition ${noiseOn ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-zinc-700 text-white hover:bg-zinc-600'}`}
+                aria-label={noiseOn ? 'Désactiver le réducteur de bruit' : 'Activer le réducteur de bruit'}
+                title={noiseOn ? 'Réducteur de bruit : activé' : 'Réducteur de bruit : désactivé'}
+              >
+                <Waves className="w-6 h-6" />
+                {!noiseOn && <span className="absolute inset-0 m-auto w-7 h-0.5 bg-white rotate-45 rounded" />}
               </button>
             )}
             <button

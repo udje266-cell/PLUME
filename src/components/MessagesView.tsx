@@ -628,7 +628,10 @@ export default function MessagesView({
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Réducteur de bruit parasite intégré (suppression de bruit + écho + gain auto).
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } as MediaTrackConstraints,
+      });
       audioStreamRef.current = stream;
       audioChunksRef.current = [];
       const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'

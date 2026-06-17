@@ -3102,6 +3102,7 @@ export default function App() {
           onReject={() => callManagerRef.current?.reject()}
           onHangup={() => callManagerRef.current?.end()}
           onToggleMute={() => callManagerRef.current?.toggleMute() ?? false}
+          onToggleNoise={(on) => { callManagerRef.current?.setNoiseReduction(on); }}
         />
 
         {/* APPEL DE GROUPE — surcouche (invitation + appel en cours) */}
