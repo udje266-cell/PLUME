@@ -241,29 +241,99 @@ const FR_STOPWORDS = new Set([
   'tout', 'tous', 'toute', 'toutes', 'comme', 'si', 'y', 'lui', 'me', 'te', 'cela', 'ca', 'ça',
 ]);
 
+// Lexiques THEMATIQUES : label = mot-titre ; "de" = forme genitive correcte
+// (genre/elision gere a la main) ; cues = indices a reperer dans le texte.
+const FR_THEMES: { label: string; de: string; cues: string[] }[] = [
+  { label: 'Trahison', de: 'de la trahison', cues: ['trahi', 'trahison', 'mensonge', 'mentir', 'traitre', 'traître', 'duperie', 'complot'] },
+  { label: 'Vengeance', de: 'de la vengeance', cues: ['vengeance', 'venger', 'represaille', 'représaille', 'punir', 'chatiment', 'châtiment'] },
+  { label: 'Amour', de: 'de l’amour', cues: ['amour', 'aimer', 'aimait', 'baiser', 'coeur', 'cœur', 'passion', 'tendresse', 'desir', 'désir', 'amoureux', 'amoureuse'] },
+  { label: 'Deuil', de: 'du deuil', cues: ['mort', 'mourir', 'mourut', 'deuil', 'tombe', 'cadavre', 'funeraille', 'funéraille', 'disparu', 'larmes', 'pleurer'] },
+  { label: 'Peur', de: 'de la peur', cues: ['peur', 'terreur', 'effroi', 'angoisse', 'cauchemar', 'horreur', 'trembler', 'frayeur', 'panique'] },
+  { label: 'Secret', de: 'du secret', cues: ['secret', 'cacher', 'cachait', 'dissimuler', 'mystere', 'mystère', 'enigme', 'énigme', 'verite', 'vérité', 'reveler', 'révéler'] },
+  { label: 'Exil', de: 'de l’exil', cues: ['exil', 'fuir', 'fuite', 'depart', 'départ', 'voyage', 'quitter', 'errance', 'frontiere', 'frontière'] },
+  { label: 'Guerre', de: 'de la guerre', cues: ['guerre', 'bataille', 'combat', 'soldat', 'armee', 'armée', 'sang', 'epee', 'épée', 'ennemi'] },
+  { label: 'Pouvoir', de: 'du pouvoir', cues: ['roi', 'reine', 'trone', 'trône', 'pouvoir', 'couronne', 'royaume', 'empire', 'regner', 'régner'] },
+  { label: 'Nuit', de: 'de la nuit', cues: ['nuit', 'ombre', 'tenebre', 'ténèbre', 'obscurite', 'obscurité', 'lune', 'minuit', 'sombre'] },
+  { label: 'Espoir', de: 'de l’espoir', cues: ['espoir', 'esperer', 'espérer', 'lumiere', 'lumière', 'aube', 'renaitre', 'renaître', 'avenir', 'reve', 'rêve', 'promesse'] },
+  { label: 'Famille', de: 'de la famille', cues: ['pere', 'père', 'mere', 'mère', 'fils', 'frere', 'frère', 'soeur', 'sœur', 'famille', 'enfant', 'heritage', 'héritage'] },
+];
+
+function titleCase(w: string): string {
+  return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+}
+
 function suggestChapterTitles(input: string, fallbackIndex: number): string[] {
   const text = input.replace(/\s+/g, ' ').trim();
-  const out: string[] = [];
-  if (text) {
-    // 1) Debut de la premiere phrase (max ~7 mots).
-    const firstSentence = (text.split(/[.!?…]/)[0] || '').trim();
-    if (firstSentence) {
-      const words = firstSentence.split(' ').slice(0, 7).join(' ');
-      out.push(words.charAt(0).toUpperCase() + words.slice(1));
-    }
-    // 2) Mots-cles les plus frequents (hors mots-outils).
-    const freq = new Map<string, number>();
-    for (const raw of text.toLowerCase().split(/[^a-zà-ÿ]+/)) {
-      if (raw.length < 4 || FR_STOPWORDS.has(raw)) continue;
-      freq.set(raw, (freq.get(raw) || 0) + 1);
-    }
-    const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([w]) => w.charAt(0).toUpperCase() + w.slice(1));
-    if (top.length) out.push(top.join(' & '));
+  if (!text) return [`Chapitre ${fallbackIndex}`];
+
+  const sentences = text.split(/(?<=[.!?…])\s+/).map((s) => s.trim()).filter(Boolean);
+  const firstSentence = sentences[0] || text;
+  const lastSentence = sentences[sentences.length - 1] || '';
+
+  // --- Mots de contenu ponderes (frequence + bonus 1re / derniere phrase) ---
+  const weight = new Map<string, number>();
+  const firstLower = firstSentence.toLowerCase();
+  const lastLower = lastSentence.toLowerCase();
+  for (const raw of text.split(/[^A-Za-zÀ-ÿ]+/)) {
+    const w = raw.toLowerCase();
+    if (w.length < 4 || FR_STOPWORDS.has(w)) continue;
+    let inc = 1;
+    if (firstLower.includes(w)) inc += 1;
+    if (lastLower.includes(w)) inc += 1;
+    weight.set(w, (weight.get(w) || 0) + inc);
   }
-  // 3) Repli numerote.
-  out.push(`Chapitre ${fallbackIndex}`);
-  // Distinct + non vides.
-  return [...new Set(out.map((t) => t.trim()).filter(Boolean))].slice(0, 3);
+  const ranked = [...weight.entries()].sort((a, b) => b[1] - a[1]).map(([w]) => w);
+
+  // --- Noms propres (mot capitalise EN MILIEU de phrase) = personnages / lieux ---
+  const properFreq = new Map<string, number>();
+  for (const s of sentences) {
+    s.split(/\s+/).forEach((tok, i) => {
+      const clean = tok.replace(/[^A-Za-zÀ-ÿ’'-]/g, '');
+      if (i === 0 || clean.length < 3) return; // ignore le 1er mot (debut de phrase)
+      if (/^[A-ZÀ-Þ][a-zà-ÿ’'-]+$/.test(clean) && !FR_STOPWORDS.has(clean.toLowerCase())) {
+        properFreq.set(clean, (properFreq.get(clean) || 0) + 1);
+      }
+    });
+  }
+  const names = [...properFreq.entries()].sort((a, b) => b[1] - a[1]).map(([w]) => w);
+
+  // --- Theme dominant (comptage d'indices lexicaux) ---
+  const lowAll = text.toLowerCase();
+  let theme: { label: string; de: string } | null = null;
+  let bestScore = 0;
+  for (const t of FR_THEMES) {
+    let sc = 0;
+    for (const cue of t.cues) {
+      const m = lowAll.match(new RegExp(`\\b${cue}`, 'g'));
+      if (m) sc += m.length;
+    }
+    if (sc > bestScore) { bestScore = sc; theme = t; }
+  }
+
+  const key = ranked[0] ? titleCase(ranked[0]) : '';
+  const key2 = ranked[1] ? titleCase(ranked[1]) : '';
+  const name = names[0] || '';
+  const name2 = names[1] || '';
+
+  // --- Composition via patrons litteraires (grammaticalement surs) ---
+  const out: string[] = [];
+  if (theme && name) out.push(`${name}, ${theme.label.toLowerCase() === 'amour' ? 'l’heure ' : 'le poids '}${theme.de}`);
+  if (theme) out.push(`L’ombre ${theme.de}`);
+  if (name) out.push(`Le secret de ${name}`);
+  if (theme) out.push(theme.label);
+  if (theme) out.push(`Au nom ${theme.de}`);
+  if (name && name2) out.push(`${name} & ${name2}`);
+  // « Le jour ou … » construit a partir de la 1re phrase.
+  const clause = firstSentence.replace(/[.!?…]+$/, '').split(/\s+/).slice(0, 7).join(' ').toLowerCase();
+  if (clause.split(' ').length >= 3) out.push(`Le jour où ${clause}`);
+  if (key && theme && key.toLowerCase() !== theme.label.toLowerCase()) out.push(`${key} ${theme.de}`);
+  if (key && key2) out.push(`${key} et ${key2.toLowerCase()}`);
+  if (key) out.push(key);
+
+  const cleaned = out.map((t) => t.trim()).filter((t) => t.length >= 3 && t.length <= 52);
+  const uniq = [...new Set(cleaned)].slice(0, 5);
+  uniq.push(`Chapitre ${fallbackIndex}`);
+  return [...new Set(uniq)].slice(0, 5);
 }
 
 function useKeyboardHeight() {
