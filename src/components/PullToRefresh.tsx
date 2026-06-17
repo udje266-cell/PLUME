@@ -25,11 +25,26 @@ export default function PullToRefresh({ onRefresh, className = '', children }: P
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Y a-t-il, entre la cible touchée et la racine, une zone qui défile
+  // verticalement (ex. le fil de discussion) ? Si oui, on laisse CETTE zone
+  // gérer le geste et on n'active pas le tirer-pour-rafraîchir : plus de
+  // conflit qui empêche de remonter dans les messages.
+  const touchInsideInnerScroller = (target: EventTarget | null, root: HTMLElement): boolean => {
+    let el = target as HTMLElement | null;
+    while (el && el !== root) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) return true;
+      el = el.parentElement;
+    }
+    return false;
+  };
+
   const onTouchStart = (e: React.TouchEvent) => {
     const el = ref.current;
     if (!el || refreshing) { pulling.current = false; return; }
-    // On ne démarre le geste que si on est tout en haut du contenu.
-    if (el.scrollTop <= 0) {
+    // Le geste ne démarre QUE si on est tout en haut de la page ET que le doigt
+    // n'est pas posé dans une sous-zone défilante (le fil de messages, etc.).
+    if (el.scrollTop <= 0 && !touchInsideInnerScroller(e.target, el)) {
       startY.current = e.touches[0].clientY;
       pulling.current = true;
     } else {
