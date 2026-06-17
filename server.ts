@@ -2973,6 +2973,35 @@ export async function createServerInstance() {
       await prisma.readingGroup.update({ where: { id: req.params.id }, data: { updatedAt: new Date() } });
       const serialized = serializeGroupMessage(message);
       group.members.forEach((m) => io.to(`user:${m.id}`).emit('new_group_message', serialized));
+
+      // Notification + push aux AUTRES membres (l'app peut etre fermee).
+      const gPreview = content.startsWith('[sticker]')
+        ? '🪶 Sticker'
+        : content.startsWith('[🎙️ Note Vocale')
+          ? '🎙️ Note vocale'
+          : (content.length > 140 ? content.slice(0, 137) + '…' : content);
+      await Promise.all(
+        group.members
+          .filter((m) => m.id !== req.user.id)
+          .map(async (m) => {
+            const notif = await prisma.notification.create({
+              data: {
+                userId: m.id,
+                type: 'MESSAGE' as any,
+                title: `👥 ${group.name}`,
+                message: `${req.user.username || 'Un membre'} : ${gPreview}`,
+                data: {
+                  actorId: req.user.id,
+                  actorName: req.user.username,
+                  groupId: group.id,
+                  excerpt: gPreview,
+                } as any,
+              },
+            });
+            notifyUser(m.id, notif);
+          })
+      );
+
       res.status(201).json(serialized);
     } catch (error) {
       console.error(error);

@@ -1327,6 +1327,20 @@ export default function App() {
     if (isAuthenticated) initPushNotifications().catch(() => {});
   }, [isAuthenticated]);
 
+  // Tap sur une notification push → ouvre la messagerie (et la conversation
+  // concernee si fournie). Emis par utils/push via un CustomEvent.
+  useEffect(() => {
+    const onPushOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      setActiveTab('messages');
+      if (d.conversationId) {
+        setActiveConversationId(String(d.conversationId));
+      }
+    };
+    window.addEventListener('plume:push-open', onPushOpen);
+    return () => window.removeEventListener('plume:push-open', onPushOpen);
+  }, []);
+
   // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
   // /api/users en échec au démarrage…). On (re)charge le profil directement via
   // /auth/me, indépendamment du reste du bootstrap, et on tranche toujours :

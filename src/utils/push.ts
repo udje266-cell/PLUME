@@ -50,6 +50,13 @@ export async function initPushNotifications(): Promise<void> {
       console.error('[PUSH] Erreur d’enregistrement FCM :', err);
     });
 
+    // Tap sur une notification (app fermée/en arriere-plan) → on demande a l'app
+    // d'ouvrir la conversation / le groupe concerne.
+    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const data = (action?.notification?.data || {}) as Record<string, string>;
+      window.dispatchEvent(new CustomEvent('plume:push-open', { detail: data }));
+    });
+
     // Lance l'enregistrement auprès de FCM.
     await PushNotifications.register();
   } catch (error) {
