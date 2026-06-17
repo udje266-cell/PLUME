@@ -546,8 +546,14 @@ export default function MessagesView({
       if (!el) return;
       const vh = vv ? vv.height : window.innerHeight;
       const top = el.getBoundingClientRect().top;
-      // Hauteur visible sous le haut de la carte, moins une petite marge.
-      const avail = Math.max(320, Math.round(vh - top - 6));
+      // Clavier ouvert ? (le viewport visible est nettement plus court que la
+      // fenetre). Dans ce cas la barre de navigation du bas est masquee.
+      const keyboardOpen = (window.innerHeight - vh) > 120;
+      // Hauteur de la barre de navigation du bas a NE PAS recouvrir, sinon le
+      // champ de saisie passe dessous et "disparait".
+      const navEl = document.getElementById('plume-bottom-nav');
+      const navH = !keyboardOpen && navEl ? navEl.offsetHeight : 0;
+      const avail = Math.max(320, Math.round(vh - top - navH - 6));
       setMessagingCardMaxH(window.innerWidth >= 768 ? null : avail);
     };
     compute();

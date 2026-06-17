@@ -324,7 +324,7 @@ export default function MainNavigation({
       </header>
 
       {/* STICKY BOTTOM TAB NAVIGATION BAR (Écrire centré et surélevé) */}
-      <nav className="fixed md:absolute bottom-0 inset-x-0 bg-white/95 dark:bg-black/95 backdrop-blur-md border-t border-gray-100 dark:border-purple-900/15 pb-3 pt-2.5 px-3 z-40 transition-colors">
+      <nav id="plume-bottom-nav" className="fixed md:absolute bottom-0 inset-x-0 bg-white/95 dark:bg-black/95 backdrop-blur-md border-t border-gray-100 dark:border-purple-900/15 pb-3 pt-2.5 px-3 z-40 transition-colors">
         <div className="flex items-end justify-around">
           {leftTabs.map((tab) => renderTab(tab))}
 
