@@ -968,15 +968,15 @@ export default function MessagesView({
       <div
         ref={messagingCardRef}
         style={messagingCardMaxH ? { height: messagingCardMaxH, minHeight: 0 } : undefined}
-        className="bg-gray-50 dark:bg-black md:border md:border-gray-200/50 md:dark:border-purple-900/15 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
-        
+        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
+
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
-        <div className={`md:col-span-4 bg-white dark:bg-[#0E0E14] flex flex-col border-r border-gray-200/90 dark:border-purple-900/15 ${
+        <div className={`md:col-span-4 bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
           mobileShowThread ? 'hidden md:flex' : 'flex'
         }`}>
           {/* Header with simply 'Messagerie' + sleek Action buttons */}
-          <div className="px-5 py-2.5 bg-gray-100/75 dark:bg-black/60 border-b border-gray-200/40 dark:border-purple-900/15 flex justify-between items-center">
-            <h2 className="text-base font-serif font-black tracking-tight text-gray-900 dark:text-white uppercase">
+          <div className="px-5 py-2.5 bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center">
+            <h2 className="text-base font-serif font-black tracking-tight text-[#7C3AED] dark:text-white uppercase">
               Messagerie
             </h2>
             
@@ -1002,7 +1002,7 @@ export default function MessagesView({
           </div>
 
           {/* Symmetrical interactive Tabs with sleek indicator lines */}
-          <div className="flex bg-gray-50 dark:bg-zinc-900/90 border-b border-gray-150 dark:border-zinc-805/45 text-xs font-semibold select-none">
+          <div className="flex bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 text-xs font-semibold select-none">
             <button 
               type="button"
               onClick={() => { setActiveTab('chats'); setActiveGroupId(null); }}
@@ -1028,16 +1028,16 @@ export default function MessagesView({
           </div>
 
           {/* Search bar inside current listing */}
-          <div className="p-2 border-b border-gray-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-            <div className="relative bg-gray-100/85 dark:bg-zinc-800 rounded-lg flex items-center px-3 py-1.5 border border-transparent">
-              <Search className="w-4 h-4 text-gray-400 shrink-0 mr-2.5" />
+          <div className="p-2 border-b border-gray-100 dark:border-zinc-900 bg-white dark:bg-black">
+            <div className="relative bg-gray-100/70 dark:bg-zinc-900 rounded-lg flex items-center px-3 py-1.5 border border-transparent">
+              <Search className="w-4 h-4 text-purple-400 dark:text-zinc-500 shrink-0 mr-2.5" />
               <input
                 id="whatsapp-search-input"
                 type="text"
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
                 placeholder={activeTab === 'chats' ? "Rechercher une discussion solo" : "Rechercher un groupe de lecture"}
-                className="w-full bg-transparent text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 border-none outline-none focus:ring-0 p-0"
+                className="w-full bg-transparent text-xs text-[#7C3AED] dark:text-white placeholder-purple-300 dark:placeholder-gray-500 border-none outline-none focus:ring-0 p-0"
               />
               {convSearch && (
                 <button onClick={() => setConvSearch('')} className="ml-2 shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Effacer">
@@ -1048,7 +1048,7 @@ export default function MessagesView({
           </div>
 
           {/* CONTACT & GROUPS DECK */}
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-800/40 bg-white dark:bg-zinc-900">
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-900 bg-white dark:bg-black">
             
             {/* Solo Discussions Deck View */}
             {activeTab === 'chats' && conversations.filter((conv) => {
@@ -1094,7 +1094,7 @@ export default function MessagesView({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-bold text-gray-900 dark:text-gray-50 flex items-center">
+                      <span className="text-xs font-bold text-[#7C3AED] dark:text-white flex items-center">
                         {partner.username}
                         {partner.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                       </span>
@@ -1159,7 +1159,7 @@ export default function MessagesView({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-serif font-black text-gray-900 dark:text-gray-50 truncate max-w-[140px] block">
+                      <span className="text-xs font-serif font-black text-[#7C3AED] dark:text-white truncate max-w-[140px] block">
                         {group.name}
                       </span>
                       <span className="text-[9px] text-gray-400 font-mono">
@@ -1184,7 +1184,7 @@ export default function MessagesView({
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW */}
-        <div className={`md:col-span-8 flex flex-col justify-between bg-gray-50/50 dark:bg-zinc-950/90 h-full overflow-hidden relative ${
+        <div className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
@@ -1231,7 +1231,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header */}
-          <div className="px-4 py-3 bg-[#0F0F14] text-white flex items-center justify-between border-b border-zinc-800/80 z-10 shrink-0">
+          <div className="px-4 py-3 bg-white dark:bg-black text-[#7C3AED] dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1240,7 +1240,7 @@ export default function MessagesView({
                   setActiveGroupId(null);
                   setActiveConversationId('');
                 }}
-                className="p-1.5 -ml-1.5 md:hidden hover:bg-zinc-800 rounded-full text-zinc-300 mr-1"
+                className="p-1.5 -ml-1.5 md:hidden hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full text-[#7C3AED] dark:text-white mr-1"
                 title="Retour à la liste"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -1256,7 +1256,7 @@ export default function MessagesView({
                       : <BookOpen className="w-5 h-5" />}
                   </div>
                   <div className="text-left min-w-0">
-                    <h4 className="text-xs font-serif font-black text-white leading-none truncate max-w-[190px]">
+                    <h4 className="text-xs font-serif font-black text-[#7C3AED] dark:text-white leading-none truncate max-w-[190px]">
                       {activeGroup?.name}
                     </h4>
                     <p className="text-[9px] text-[#A78BFA] font-bold mt-1.5 truncate max-w-[190px]">
@@ -1272,23 +1272,23 @@ export default function MessagesView({
                       src={interlocutor.avatar}
                       alt={interlocutor.username}
                       onClick={() => onViewProfile?.(interlocutor.id)}
-                      className="w-10 h-10 rounded-full object-cover border border-zinc-800 shrink-0 cursor-pointer hover:border-purple-500"
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-zinc-800 shrink-0 cursor-pointer hover:border-purple-500"
                       referrerPolicy="no-referrer"
                     />
                     {onlineUserIds.has(interlocutor.id) && (
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-zinc-900 rounded-full"></span>
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white dark:border-black rounded-full"></span>
                     )}
                   </div>
 
                   <div className="text-left min-w-0">
                     <h4
                       onClick={() => onViewProfile?.(interlocutor.id)}
-                      className="text-xs font-serif font-black text-white leading-none flex items-center cursor-pointer hover:text-purple-300 transition"
+                      className="text-xs font-serif font-black text-[#7C3AED] dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
                     >
                       <span>{interlocutor.username}</span>
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
-                    <p className="text-[10px] text-white/90 font-bold mt-1.5">
+                    <p className="text-[10px] text-purple-500/80 dark:text-white/80 font-bold mt-1.5">
                       {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'}
                     </p>
                   </div>
@@ -1300,7 +1300,7 @@ export default function MessagesView({
             <div className="flex items-center space-x-1 text-zinc-400 shrink-0">
               <button
                 type="button"
-                className="p-2 hover:bg-zinc-800 rounded-full transition text-[#7C3AED] dark:text-purple-400"
+                className="p-2 hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full transition text-[#7C3AED] dark:text-purple-400"
                 title={activeGroupId ? 'Lancer un appel de groupe' : 'Lancer un appel audio'}
                 onClick={() => {
                   if (activeGroupId) onStartGroupCall?.(activeGroupId, activeGroup?.members || []);
@@ -1311,7 +1311,7 @@ export default function MessagesView({
               </button>
               <button
                 type="button"
-                className="p-2 hover:bg-zinc-800 rounded-full transition text-[#7C3AED] dark:text-purple-400"
+                className="p-2 hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full transition text-[#7C3AED] dark:text-purple-400"
                 title="Fond de la discussion"
                 onClick={() => setShowBgPicker(true)}
               >
@@ -1376,7 +1376,7 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <Users className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Groupe de lecture sécurisé</h5>
+                  <h5 className="font-bold text-[#7C3AED] dark:text-white text-sm">Groupe de lecture sécurisé</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
                     Les membres de ce cercle de lecture peuvent tous échanger ici. Écrivez le premier message coopératif !
                   </p>
@@ -1394,7 +1394,7 @@ export default function MessagesView({
                       <div className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md text-right'
-                          : 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200/70 dark:border-zinc-700/50 text-left'
+                          : 'bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-bl-md border border-transparent text-left'
                       }`}>
 
                         {/* Group member identifier tag top */}
@@ -1450,7 +1450,7 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <MessageSquare className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Chiffrement de bout en bout</h5>
+                  <h5 className="font-bold text-[#7C3AED] dark:text-white text-sm">Chiffrement de bout en bout</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
                     Vos conversations privées sont locales et chiffrées. Échangez avec le romancier {interlocutor.username}.
                   </p>
@@ -1530,7 +1530,7 @@ export default function MessagesView({
                         className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md'
-                          : 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200/70 dark:border-zinc-700/50'
+                          : 'bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-bl-md border border-transparent'
                       }`}>
 
                         {/* Citation du message auquel on répond. */}
@@ -1573,9 +1573,9 @@ export default function MessagesView({
               {/* Indicateur « enregistre un audio… » (prioritaire) — privé ET groupe */}
               {(partnerRecording || groupRecordingName) && (
                 <div className="flex justify-start animate-fade-in mt-1">
-                  <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
-                    <Mic className="w-4 h-4 text-red-400 animate-pulse" />
-                    <span className="text-[10px] text-zinc-300 italic">
+                  <div className="bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                    <Mic className="w-4 h-4 text-red-500 animate-pulse" />
+                    <span className="text-[10px] text-purple-500 dark:text-zinc-300 italic">
                       {activeGroupId ? `${groupRecordingName} enregistre un audio…` : `${interlocutor.username} enregistre un audio…`}
                     </span>
                   </div>
@@ -1584,9 +1584,9 @@ export default function MessagesView({
               {/* Indicateur « en train d'écrire » (plume qui écrit) — privé ET groupe */}
               {!partnerRecording && !groupRecordingName && (partnerTyping || (activeGroupId && groupTyping?.[activeGroupId])) && (
                 <div className="flex justify-start animate-fade-in mt-1">
-                  <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
-                    <Feather className="w-4 h-4 text-purple-300 animate-feather-write" />
-                    <span className="text-[10px] text-zinc-300 italic">
+                  <div className="bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                    <Feather className="w-4 h-4 text-purple-500 dark:text-purple-300 animate-feather-write" />
+                    <span className="text-[10px] text-purple-500 dark:text-zinc-300 italic">
                       {activeGroupId ? `${groupTyping?.[activeGroupId]} écrit…` : `${interlocutor.username} écrit…`}
                     </span>
                   </div>
@@ -1596,7 +1596,7 @@ export default function MessagesView({
             </div>
 
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER */}
-            <div className="z-10 bg-gray-100/75 dark:bg-zinc-900/60 border-t border-gray-200/50 dark:border-zinc-800 p-2.5 shrink-0 space-y-2">
+            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2">
             
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {showEmojiPicker && (
@@ -1741,7 +1741,7 @@ export default function MessagesView({
                       ref={messageInputRef}
                       rows={1}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                      className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-relaxed scrollbar-none"
+                      className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-[#7C3AED] dark:text-white placeholder-purple-300 dark:placeholder-gray-500 leading-relaxed scrollbar-none"
                       value={messageText}
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
