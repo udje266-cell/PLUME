@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag } from 'lucide-react';
+import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag, Wand2, Quote } from 'lucide-react';
 import { Story, Chapter } from '../types';
 
 interface ImmersiveEditorProps {
@@ -365,11 +365,38 @@ export default function ImmersiveEditor({
 
   // Mini-IA : decoupage du texte en paragraphes (apercu avant application).
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title'>('menu');
+  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'rephrase' | 'summary'>('menu');
   const [aiParas, setAiParas] = useState<string[]>([]);
   const [aiNote, setAiNote] = useState<string>('');
   const [aiTypo, setAiTypo] = useState<string>('');
   const [aiTitles, setAiTitles] = useState<string[]>([]);
+  const [aiResult, setAiResult] = useState<string>('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiOnline, setAiOnline] = useState<boolean | null>(null);
+
+  // Appel a l'assistant IA cote serveur (Claude). Leve une erreur si indisponible.
+  const callAI = async (task: 'titles' | 'rephrase' | 'summary', text: string): Promise<any> => {
+    const res = await fetch('/api/ai/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, text }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e?.error || 'ai_error');
+    }
+    return res.json();
+  };
+
+  // Disponibilite de l'IA (clé API serveur) — pour adapter les libellés.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/ai/status')
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d) => { if (!cancelled) setAiOnline(!!d.enabled); })
+      .catch(() => { if (!cancelled) setAiOnline(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
@@ -543,17 +570,102 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Suggestions de titre de chapitre.
-  const runAITitle = () => {
+  // Suggestions de titre de chapitre : IA en ligne si dispo, sinon moteur local.
+  const localTitles = () => suggestChapterTitles(currentEditorText(), story.chapters.length + (isNew ? 1 : 0) || 1);
+  const runAITitle = async () => {
     const text = currentEditorText();
-    const titles = suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1);
-    setAiTitles(titles);
-    setAiNote(text ? 'Touche une proposition pour l’adopter comme titre.' : "Ecris un peu de texte pour de meilleures suggestions.");
-    setAiMode('title');
+    setAiMode('title'); setAiTitles([]); setAiResult('');
+    if (text.trim().length < 20) {
+      setAiTitles(localTitles());
+      setAiNote("Ecris un peu plus de texte pour des suggestions plus fines.");
+      return;
+    }
+    setAiLoading(true);
+    setAiNote('Analyse du texte par l’IA…');
+    try {
+      const r = await callAI('titles', text);
+      if (Array.isArray(r.titles) && r.titles.length) {
+        setAiTitles(r.titles);
+        setAiNote('Propositions de l’IA — touche-en une pour l’adopter.');
+      } else {
+        throw new Error('empty');
+      }
+    } catch {
+      setAiTitles(localTitles());
+      setAiNote('Suggestions (moteur local) — touche-en une pour l’adopter.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const applyAITitle = (t: string) => {
     setTitle(t);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
+  // Reformulation IA d'un texte (amélioration sans changement de sens).
+  const runRephrase = async () => {
+    const text = currentEditorText();
+    setAiMode('rephrase'); setAiResult('');
+    if (text.trim().length < 20) { setAiNote("Ecris d'abord un passage a reformuler."); return; }
+    setAiLoading(true);
+    setAiNote('Reformulation en cours…');
+    try {
+      const r = await callAI('rephrase', text);
+      const out = String(r.result || '').trim();
+      if (!out) throw new Error('empty');
+      setAiResult(out);
+      setAiNote('Proposition de l’IA — relis avant d’appliquer.');
+    } catch (e: any) {
+      setAiNote(e?.message === 'ai_unavailable'
+        ? "L’assistant IA n’est pas encore activé (clé API manquante côté serveur)."
+        : "L’assistant IA est momentanément indisponible. Réessaie plus tard.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applyRephrase = () => {
+    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
+    const html = paragraphsToEditorHtml(aiResult.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
+    editorRef.current.innerHTML = html;
+    contentRef.current = html;
+    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
+  // Résumé / accroche IA du chapitre.
+  const runSummary = async () => {
+    const text = currentEditorText();
+    setAiMode('summary'); setAiResult('');
+    if (text.trim().length < 20) { setAiNote("Ecris d'abord un peu de texte."); return; }
+    setAiLoading(true);
+    setAiNote('Rédaction de l’accroche…');
+    try {
+      const r = await callAI('summary', text);
+      const out = String(r.result || '').trim();
+      if (!out) throw new Error('empty');
+      setAiResult(out);
+      setAiNote('Accroche proposée par l’IA.');
+    } catch (e: any) {
+      setAiNote(e?.message === 'ai_unavailable'
+        ? "L’assistant IA n’est pas encore activé (clé API manquante côté serveur)."
+        : "L’assistant IA est momentanément indisponible. Réessaie plus tard.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applySummaryAtTop = () => {
+    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
+    const intro = `<div><i>${escapeHtml(aiResult)}</i></div><div><br></div>`;
+    editorRef.current.innerHTML = intro + editorRef.current.innerHTML;
+    contentRef.current = editorRef.current.innerHTML;
+    setWordCount(plainTextOf(contentRef.current).split(/\s+/).filter(Boolean).length);
     setAiOpen(false);
     scheduleSave();
     wakeChrome();
@@ -664,6 +776,8 @@ export default function ImmersiveEditor({
                   {aiMode === 'menu' ? "Assistant d’écriture"
                     : aiMode === 'paragraphs' ? 'Découper en paragraphes'
                     : aiMode === 'typo' ? 'Typographie & ponctuation'
+                    : aiMode === 'rephrase' ? 'Reformuler le texte'
+                    : aiMode === 'summary' ? 'Résumé / accroche'
                     : 'Titre du chapitre'}
                 </h3>
                 {aiMode !== 'menu' && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>}
@@ -692,9 +806,26 @@ export default function ImmersiveEditor({
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Tag className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-black text-gray-900 dark:text-white">Suggérer un titre</span>
-                    <span className="block text-[10px] text-gray-400">Propose des titres de chapitre à partir du contenu.</span>
+                    <span className="block text-[10px] text-gray-400">Des titres de chapitre analysés à partir du contenu.</span>
                   </span>
                 </button>
+                <button onClick={runRephrase} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Wand2 className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[13px] font-black text-gray-900 dark:text-white flex items-center gap-1.5">Reformuler le texte <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white">IA</span></span>
+                    <span className="block text-[10px] text-gray-400">Améliore le style et la fluidité sans changer le sens.</span>
+                  </span>
+                </button>
+                <button onClick={runSummary} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Quote className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[13px] font-black text-gray-900 dark:text-white flex items-center gap-1.5">Résumé / accroche <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white">IA</span></span>
+                    <span className="block text-[10px] text-gray-400">Une accroche courte et sans spoiler pour le chapitre.</span>
+                  </span>
+                </button>
+                {aiOnline === false && (
+                  <p className="text-[9.5px] text-gray-400 px-1 pt-0.5 leading-relaxed">Les outils <span className="font-bold">IA</span> nécessitent une clé API côté serveur. En attendant, « Découper » et « Typographie » fonctionnent hors-ligne, et les titres utilisent le moteur local.</p>
+                )}
               </div>
             )}
 
@@ -744,13 +875,68 @@ export default function ImmersiveEditor({
             {/* TITRE */}
             {aiMode === 'title' && (
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-                {aiTitles.map((t, i) => (
-                  <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
-                    <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
-                    <Check className="w-4 h-4 text-purple-600 shrink-0" />
-                  </button>
-                ))}
+                {aiLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-8 text-gray-400">
+                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                    <span className="text-[11px]">{aiNote}</span>
+                  </div>
+                ) : (
+                  aiTitles.map((t, i) => (
+                    <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                      <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
+                      <Check className="w-4 h-4 text-purple-600 shrink-0" />
+                    </button>
+                  ))
+                )}
               </div>
+            )}
+
+            {/* REFORMULATION (IA) */}
+            {aiMode === 'rephrase' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {aiLoading ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-400">
+                      <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                      <span className="text-[11px]">{aiNote}</span>
+                    </div>
+                  ) : aiResult ? (
+                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiResult}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  )}
+                </div>
+                {!aiLoading && aiResult && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applyRephrase} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Remplacer</button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* RÉSUMÉ / ACCROCHE (IA) */}
+            {aiMode === 'summary' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {aiLoading ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-400">
+                      <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                      <span className="text-[11px]">{aiNote}</span>
+                    </div>
+                  ) : aiResult ? (
+                    <p className="text-[13px] leading-relaxed text-gray-700 dark:text-gray-200 italic break-words">« {aiResult} »</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  )}
+                </div>
+                {!aiLoading && aiResult && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applySummaryAtTop} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Insérer au début</button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

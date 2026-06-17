@@ -33,6 +33,7 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
 import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
 import { levelFromXp } from './src/utils/leveling';
 import { sendPushToUser } from './src/server/push';
+import { aiEnabled, runWritingAssistant, type AiTask } from './src/server/ai';
 
 // Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
 // sans try/catch) ne doit jamais faire planter le process en production.
@@ -735,6 +736,12 @@ export async function createServerInstance() {
     windowMs: 60 * 1000,
     max: 40,
     message: 'Trop de recherches. Patiente quelques secondes.',
+  });
+  // Assistant IA : appels payants (LLM) -> debit borne par utilisateur/IP.
+  const aiLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 12,
+    message: "Trop de requetes a l'assistant IA. Patiente un instant.",
   });
 
   function createToken(userId: string) {
@@ -1876,6 +1883,31 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la recherche.' });
+    }
+  });
+
+  // ── Assistant d'ecriture IA ─────────────────────────────────────────────────
+  // Disponible uniquement si ANTHROPIC_API_KEY est defini (Render). Sinon 503 →
+  // le client retombe sur son moteur LOCAL. Reserve aux auteurs authentifies.
+  app.get('/api/ai/status', requireAuth, (_req: any, res) => {
+    res.json({ enabled: aiEnabled() });
+  });
+
+  app.post('/api/ai/assistant', requireAuth, aiLimiter, async (req: any, res) => {
+    try {
+      const task = String(req.body?.task || '') as AiTask;
+      const text = String(req.body?.text || '');
+      if (!['titles', 'rephrase', 'summary'].includes(task)) {
+        return res.status(400).json({ error: 'Tache inconnue.' });
+      }
+      if (!aiEnabled()) return res.status(503).json({ error: 'ai_unavailable' });
+      if (text.trim().length < 20) return res.status(400).json({ error: 'Texte trop court.' });
+      if (text.length > 30000) return res.status(413).json({ error: 'Texte trop long.' });
+      const out = await runWritingAssistant(task, text);
+      res.json(out);
+    } catch (error: any) {
+      console.error('[AI] assistant error:', error?.message || error);
+      res.status(502).json({ error: 'ai_error' });
     }
   });
 
