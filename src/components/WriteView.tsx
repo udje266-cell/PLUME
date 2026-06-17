@@ -32,6 +32,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { Story, Chapter, User, Comment } from '../types';
+import ImmersiveEditor from './ImmersiveEditor';
 import { GENRES, CATEGORIES, AMBIANCES, FORMATS, LANGUAGES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 
@@ -89,7 +90,7 @@ interface WriteViewProps {
   userStories: Story[];
   onCreateStory: (storyData: Partial<Story>) => void;
   onUpdateStory: (storyId: string, updatedStory: Partial<Story>) => void;
-  onAddChapter: (storyId: string, chapterData: Partial<Chapter>) => void;
+  onAddChapter: (storyId: string, chapterData: Partial<Chapter>) => Chapter | void;
   onUpdateChapter: (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => void;
   onDeleteChapter: (storyId: string, chapterId: string) => void;
   onDeleteStory: (storyId: string) => void;
@@ -134,10 +135,8 @@ export default function WriteView({
   const [croppedCoverPixels, setCroppedCoverPixels] = useState<Area | null>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
-  // Chapter editing screen
+  // Chapter editing screen (l'éditeur immersif gère titre/contenu en interne).
   const [editingChapterInStory, setEditingChapterInStory] = useState<{ story: Story; chapter: Chapter | null } | null>(null);
-  const [chapterTitle, setChapterTitle] = useState('');
-  const [chapterContent, setChapterContent] = useState('');
 
   const resetStoryForm = () => {
     setTitle('');
@@ -308,37 +307,9 @@ export default function WriteView({
     resetStoryForm();
   };
 
-  // Turn chapter form draft into reality
+  // Ouvre l'éditeur immersif (qui gère lui-même titre/contenu + auto-sauvegarde).
   const handleOpenChapterEditor = (story: Story, chapterToEdit: Chapter | null) => {
     setEditingChapterInStory({ story, chapter: chapterToEdit });
-    setChapterTitle(chapterToEdit ? chapterToEdit.title : `Chapitre ${story.chapters.length + 1} : `);
-    setChapterContent(chapterToEdit ? chapterToEdit.content : '');
-  };
-
-  const handleSaveChapter = () => {
-    if (!editingChapterInStory || !chapterTitle.trim() || !chapterContent.trim()) return;
-
-    const { story, chapter } = editingChapterInStory;
-
-    if (chapter) {
-      // Edit existing chapter
-      onUpdateChapter(story.id, chapter.id, {
-        title: chapterTitle,
-        content: chapterContent
-      });
-    } else {
-      // Adding new chapter
-      onAddChapter(story.id, {
-        title: chapterTitle,
-        content: chapterContent,
-        isPublished: true,
-        publishDate: new Date().toISOString(),
-        views: 0,
-        reads: 0
-      });
-    }
-
-    setEditingChapterInStory(null);
   };
 
   // Toggle book state Publié vs Brouillon
@@ -432,99 +403,23 @@ export default function WriteView({
 
       {/* Chapter editor overlay layout */}
       {editingChapterInStory ? (
-        <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/20 rounded-2xl p-6 md:p-8 shadow-xl max-w-4xl mx-auto text-left animation-fade-in animate-duration-300">
-          <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-            <div>
-              <span className="text-xs font-bold text-purple-600 block uppercase tracking-widest">
-                {editingChapterInStory.story.title}
-              </span>
-              <h2 className="text-xl md:text-2xl font-sans font-bold text-[#1F2937] dark:text-[#F5F5F5]">
-                {editingChapterInStory.chapter ? 'Modifier le chapitre' : 'Créer un nouveau chapitre'}
-              </h2>
-            </div>
-            <button
-              id="exit-chat-editor"
-              onClick={() => setEditingChapterInStory(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-purple-600 border border-gray-200 dark:border-gray-800 rounded-lg"
-            >
-              Fermer
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase text-gray-500 dark:text-gray-400 mb-1.5 matches-title">
-                Titre du Chapitre
-              </label>
-              <input
-                id="chapter-title-edit-input"
-                type="text"
-                value={chapterTitle}
-                onChange={(e) => setChapterTitle(e.target.value)}
-                placeholder="Ex. Chapitre 1 : Les Révélations Nocturnes"
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-[#ecebf6] dark:border-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-purple-600 text-gray-900 dark:text-white"
-              />
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
-                  Corps du Chapitre
-                </label>
-                <span className="text-[10px] text-gray-400 font-mono">
-                  Formatez en paragraphes pour un grand confort de lecture.
-                </span>
-              </div>
-              <textarea
-                id="chapter-content-edit-textarea"
-                rows={18}
-                value={chapterContent}
-                onChange={(e) => setChapterContent(e.target.value)}
-                placeholder="Écrivez le fil de votre histoire ici..."
-                className="w-full font-serif bg-gray-50 dark:bg-gray-900 border border-[#ecebf6] dark:border-gray-800 rounded-xl p-4 text-slate-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-purple-600 block leading-relaxed resize-y"
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-4">
-              {editingChapterInStory.chapter && (
-                <button
-                  id="delete-chapter-studio-btn"
-                  onClick={() => {
-                    if (confirm("Supprimer définitivement ce chapitre ?")) {
-                      onDeleteChapter(editingChapterInStory.story.id, editingChapterInStory.chapter!.id);
-                      setEditingChapterInStory(null);
-                    }
-                  }}
-                  className="flex items-center space-x-1.5 text-xs text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-950/10 px-4 py-2.5 rounded-xl font-bold transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Détruire</span>
-                </button>
-              )}
-
-              <div className="flex items-center justify-end space-x-2 ml-auto">
-                <button
-                  id="cancel-chapter-editor"
-                  onClick={() => setEditingChapterInStory(null)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                >
-                  Annuler
-                </button>
-                <button
-                  id="save-chapter-studio-btn"
-                  onClick={handleSaveChapter}
-                  disabled={!chapterTitle.trim() || !chapterContent.trim()}
-                  className={`flex items-center space-x-2 bg-purple-600 text-white rounded-xl px-5 py-2.5 text-xs font-bold hover:bg-purple-700 transition ${
-                    (!chapterTitle.trim() || !chapterContent.trim()) ? 'opacity-40 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Sauvegarder</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        (() => {
+          const freshStory = userStories.find((s) => s.id === editingChapterInStory.story.id) || editingChapterInStory.story;
+          return (
+            <ImmersiveEditor
+              key={editingChapterInStory.chapter?.id || 'new'}
+              story={freshStory}
+              chapter={editingChapterInStory.chapter}
+              fontFamily={currentUser.readingFontFamily}
+              fontSize={currentUser.readingFontSize}
+              onPersistNew={(data) => onAddChapter(editingChapterInStory.story.id, data)}
+              onPersistUpdate={(chId, data) => onUpdateChapter(editingChapterInStory.story.id, chId, data)}
+              onDelete={(chId) => onDeleteChapter(editingChapterInStory.story.id, chId)}
+              onClose={() => setEditingChapterInStory(null)}
+              onSwitchChapter={(target) => setEditingChapterInStory({ story: freshStory, chapter: target === 'new' ? null : target })}
+            />
+          );
+        })()
       ) : isCreatingStory ? (
         /* Create or Edit Book / Story Panel overlay screen */
         <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/20 rounded-2xl p-6 md:p-8 max-w-2xl mx-auto shadow-xl text-left animation-fade-in">

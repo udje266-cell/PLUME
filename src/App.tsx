@@ -2211,7 +2211,7 @@ export default function App() {
   };
 
   // Chapter integrations under stories
-  const handleAddChapter = (storyId: string, chapterData: Partial<Chapter>) => {
+  const handleAddChapter = (storyId: string, chapterData: Partial<Chapter>): Chapter => {
     // Increment author stats for achievements
     const wordCount = (chapterData.content || '').split(/\s+/).filter(Boolean).length;
     handleUpdateAndVerifyUserStats(st => {
@@ -2247,6 +2247,8 @@ export default function App() {
       }
       return s;
     }));
+
+    return newChapter; // l'éditeur immersif s'en sert pour passer en mode mise à jour
   };
 
   const handleUpdateChapter = (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => {
