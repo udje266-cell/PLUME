@@ -130,6 +130,11 @@ export default function App() {
   // « En train d'écrire » dans un GROUPE : groupId → nom de l'auteur.
   const [groupTyping, setGroupTyping] = useState<Record<string, string>>({});
   const groupTypingTimeoutsRef = useRef<Record<string, any>>({});
+  // « Enregistre un audio… » : indicateurs distincts du « écrit… ».
+  const [recordingUserIds, setRecordingUserIds] = useState<Set<string>>(new Set());
+  const recordingTimeoutsRef = useRef<Record<string, any>>({});
+  const [groupRecording, setGroupRecording] = useState<Record<string, string>>({});
+  const groupRecordingTimeoutsRef = useRef<Record<string, any>>({});
   // Passe à true une fois le token restauré (natif) → évite d'ouvrir le socket
   // temps réel sans authentification au démarrage de l'app.
   const [tokenRestored, setTokenRestored] = useState(false);
@@ -809,14 +814,25 @@ export default function App() {
       if (!prev.has(senderId)) return prev;
       const next = new Set(prev); next.delete(senderId); return next;
     });
-    socket.on('typing', ({ senderId }: { senderId: string }) => {
+    const clearRecording = (senderId: string) => setRecordingUserIds((prev) => {
+      if (!prev.has(senderId)) return prev;
+      const next = new Set(prev); next.delete(senderId); return next;
+    });
+    socket.on('typing', ({ senderId, kind }: { senderId: string; kind?: string }) => {
       if (!senderId) return;
+      if (kind === 'voice') {
+        setRecordingUserIds((prev) => prev.has(senderId) ? prev : new Set(prev).add(senderId));
+        clearTimeout(recordingTimeoutsRef.current[senderId]);
+        recordingTimeoutsRef.current[senderId] = setTimeout(() => clearRecording(senderId), 6000);
+        return;
+      }
       setTypingUserIds((prev) => prev.has(senderId) ? prev : new Set(prev).add(senderId));
       clearTimeout(typingTimeoutsRef.current[senderId]);
       typingTimeoutsRef.current[senderId] = setTimeout(() => clearTyping(senderId), 5000);
     });
-    socket.on('stop_typing', ({ senderId }: { senderId: string }) => {
+    socket.on('stop_typing', ({ senderId, kind }: { senderId: string; kind?: string }) => {
       if (!senderId) return;
+      if (kind === 'voice') { clearTimeout(recordingTimeoutsRef.current[senderId]); clearRecording(senderId); return; }
       clearTimeout(typingTimeoutsRef.current[senderId]);
       clearTyping(senderId);
     });
@@ -831,16 +847,25 @@ export default function App() {
     socket.on('group_removed', ({ groupId }: { groupId: string }) => {
       setGroups((prev) => prev.filter((g) => g.id !== groupId));
     });
-    socket.on('group_typing', ({ groupId, senderName }: { groupId: string; senderName?: string }) => {
+    socket.on('group_typing', ({ groupId, senderName, kind }: { groupId: string; senderName?: string; kind?: string }) => {
       if (!groupId) return;
+      if (kind === 'voice') {
+        setGroupRecording((prev) => ({ ...prev, [groupId]: senderName || 'Quelqu’un' }));
+        clearTimeout(groupRecordingTimeoutsRef.current[groupId]);
+        groupRecordingTimeoutsRef.current[groupId] = setTimeout(() => {
+          setGroupRecording((prev) => { const n = { ...prev }; delete n[groupId]; return n; });
+        }, 6000);
+        return;
+      }
       setGroupTyping((prev) => ({ ...prev, [groupId]: senderName || 'Quelqu’un' }));
       clearTimeout(groupTypingTimeoutsRef.current[groupId]);
       groupTypingTimeoutsRef.current[groupId] = setTimeout(() => {
         setGroupTyping((prev) => { const n = { ...prev }; delete n[groupId]; return n; });
       }, 5000);
     });
-    socket.on('group_stop_typing', ({ groupId }: { groupId: string }) => {
+    socket.on('group_stop_typing', ({ groupId, kind }: { groupId: string; kind?: string }) => {
       if (!groupId) return;
+      if (kind === 'voice') { clearTimeout(groupRecordingTimeoutsRef.current[groupId]); setGroupRecording((prev) => { const n = { ...prev }; delete n[groupId]; return n; }); return; }
       clearTimeout(groupTypingTimeoutsRef.current[groupId]);
       setGroupTyping((prev) => { const n = { ...prev }; delete n[groupId]; return n; });
     });
@@ -3022,7 +3047,11 @@ export default function App() {
                       onStartCall={handleStartCall}
                       onlineUserIds={onlineUserIds}
                       typingUserIds={typingUserIds}
+                      recordingUserIds={recordingUserIds}
+                      groupRecording={groupRecording}
                       onTyping={(receiverId, isTyping) => socketRef.current?.emit(isTyping ? 'typing' : 'stop_typing', { senderId: currentUser!.id, receiverId })}
+                      onVoiceRecording={(receiverId, isRec) => socketRef.current?.emit(isRec ? 'typing' : 'stop_typing', { senderId: currentUser!.id, receiverId, kind: 'voice' })}
+                      onGroupVoiceRecording={(groupId, memberIds, isRec) => socketRef.current?.emit(isRec ? 'group_typing' : 'group_stop_typing', { groupId, memberIds, senderName: currentUser!.username, kind: 'voice' })}
                       onViewProfile={handleViewUserProfile}
                       onSyncStickers={(stickers) => handleUpdateProfile({ customStickers: stickers })}
                       onSendMessage={handleSendMessage}

@@ -91,7 +91,11 @@ interface MessagesViewProps {
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
   typingUserIds?: Set<string>;
+  recordingUserIds?: Set<string>;
+  groupRecording?: Record<string, string>;
   onTyping?: (receiverId: string, isTyping: boolean) => void;
+  onVoiceRecording?: (receiverId: string, isRecording: boolean) => void;
+  onGroupVoiceRecording?: (groupId: string, memberIds: string[], isRecording: boolean) => void;
   onViewProfile?: (userId: string) => void;
   onSyncStickers?: (stickers: string[]) => void;
   onDeleteConversation: (conversationId: string) => void;
@@ -219,7 +223,11 @@ export default function MessagesView({
   onStartCall,
   onlineUserIds,
   typingUserIds,
+  recordingUserIds,
+  groupRecording,
   onTyping,
+  onVoiceRecording,
+  onGroupVoiceRecording,
   onViewProfile,
   onSyncStickers,
   onDeleteConversation,
@@ -510,6 +518,12 @@ export default function MessagesView({
     ?? currentUser;
   const activeGroup = groups.find(g => g.id === activeGroupId);
 
+  // Indique « enregistre un audio… » à l'interlocuteur / au groupe.
+  const emitRecording = (isRec: boolean) => {
+    if (activeGroupId) onGroupVoiceRecording?.(activeGroupId, activeGroup?.members || [], isRec);
+    else if (interlocutor) onVoiceRecording?.(interlocutor.id, isRec);
+  };
+
   // « En train d'écrire » : on prévient l'interlocuteur quand on tape, et on
   // arrête après une courte pause. (Conversations privées uniquement.)
   const typingStopRef = useRef<any>(null);
@@ -528,6 +542,8 @@ export default function MessagesView({
     typingStopRef.current = setTimeout(() => onTyping?.(interlocutor.id, false), 1500);
   };
   const partnerTyping = !activeGroupId && !!interlocutor && (typingUserIds?.has(interlocutor.id) ?? false);
+  const partnerRecording = !activeGroupId && !!interlocutor && (recordingUserIds?.has(interlocutor.id) ?? false);
+  const groupRecordingName = activeGroupId ? groupRecording?.[activeGroupId] : undefined;
 
   // Auto-scroll to bottom of discussion
   useEffect(() => {
@@ -672,6 +688,7 @@ export default function MessagesView({
       mediaRecorderRef.current = rec;
       rec.start();
       setIsRecording(true);
+      emitRecording(true);
     } catch {
       alert("Micro inaccessible. Autorise l'accès au microphone pour envoyer une note vocale.");
     }
@@ -690,10 +707,12 @@ export default function MessagesView({
     stopStream();
     setIsRecording(false);
     setRecordingSeconds(0);
+    emitRecording(false);
   };
 
   // Finalise : stoppe, téléverse, et envoie l'URL (privé OU groupe).
   const handleSendVoiceNote = () => {
+    emitRecording(false);
     const rec = mediaRecorderRef.current;
     if (!rec) { setIsRecording(false); return; }
     const finalSecs = recordingSeconds || 1;
@@ -917,9 +936,6 @@ export default function MessagesView({
                         </p>
                       ) : (
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
-                          {lastMsg?.senderId === currentUser.id && (
-                            <span className="mr-0.5"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
-                          )}
                           <span>{lastMsg ? (parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
                         </p>
                       )}
@@ -1345,8 +1361,19 @@ export default function MessagesView({
                 })
               )
             )}
+              {/* Indicateur « enregistre un audio… » (prioritaire) — privé ET groupe */}
+              {(partnerRecording || groupRecordingName) && (
+                <div className="flex justify-start animate-fade-in mt-1">
+                  <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                    <Mic className="w-4 h-4 text-red-400 animate-pulse" />
+                    <span className="text-[10px] text-zinc-300 italic">
+                      {activeGroupId ? `${groupRecordingName} enregistre un audio…` : `${interlocutor.username} enregistre un audio…`}
+                    </span>
+                  </div>
+                </div>
+              )}
               {/* Indicateur « en train d'écrire » (plume qui écrit) — privé ET groupe */}
-              {(partnerTyping || (activeGroupId && groupTyping?.[activeGroupId])) && (
+              {!partnerRecording && !groupRecordingName && (partnerTyping || (activeGroupId && groupTyping?.[activeGroupId])) && (
                 <div className="flex justify-start animate-fade-in mt-1">
                   <div className="bg-black dark:bg-zinc-800 text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
                     <Feather className="w-4 h-4 text-purple-300 animate-feather-write" />

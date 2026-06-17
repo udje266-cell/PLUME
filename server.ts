@@ -919,19 +919,19 @@ export async function createServerInstance() {
     // Saisie dans un GROUPE : relayée aux VRAIS membres (issus de la base), et
     // seulement si l'expéditeur est lui-même membre. On ignore les memberIds du
     // client (anti-usurpation / anti-spam de fausses notifications).
-    socket.on('group_typing', async (p: { groupId: string; senderName?: string }) => {
+    socket.on('group_typing', async (p: { groupId: string; senderName?: string; kind?: string }) => {
       if (!authUserId || !p?.groupId) return;
       const members = await getGroupMemberIds(p.groupId);
       if (!members.includes(authUserId)) return;
       members.filter((id) => id !== authUserId).forEach((id) =>
-        socket.to(`user:${id}`).emit('group_typing', { groupId: p.groupId, senderId: authUserId, senderName: p.senderName }));
+        socket.to(`user:${id}`).emit('group_typing', { groupId: p.groupId, senderId: authUserId, senderName: p.senderName, kind: p.kind }));
     });
-    socket.on('group_stop_typing', async (p: { groupId: string }) => {
+    socket.on('group_stop_typing', async (p: { groupId: string; kind?: string }) => {
       if (!authUserId || !p?.groupId) return;
       const members = await getGroupMemberIds(p.groupId);
       if (!members.includes(authUserId)) return;
       members.filter((id) => id !== authUserId).forEach((id) =>
-        socket.to(`user:${id}`).emit('group_stop_typing', { groupId: p.groupId, senderId: authUserId }));
+        socket.to(`user:${id}`).emit('group_stop_typing', { groupId: p.groupId, senderId: authUserId, kind: p.kind }));
     });
 
     // ----- Signalisation WebRTC (appels audio) -----
