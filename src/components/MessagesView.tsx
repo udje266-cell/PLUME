@@ -33,7 +33,8 @@ import {
   Headphones,
   BookOpen,
   Sticker,
-  Camera
+  Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -92,6 +93,7 @@ interface MessagesViewProps {
   typingUserIds?: Set<string>;
   onTyping?: (receiverId: string, isTyping: boolean) => void;
   onViewProfile?: (userId: string) => void;
+  onSyncStickers?: (stickers: string[]) => void;
   onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -219,6 +221,7 @@ export default function MessagesView({
   typingUserIds,
   onTyping,
   onViewProfile,
+  onSyncStickers,
   onDeleteConversation,
   onStartConversation,
   activeConversationId,
@@ -246,6 +249,34 @@ export default function MessagesView({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [customStickers, setCustomStickers] = useState<string[]>(() => getCustomStickers());
+
+  // Arrière-plan des discussions : 5 fonds prédéfinis (thème PLUME) + image perso.
+  const CHAT_BG_PRESETS: { id: string; label: string; css: string }[] = [
+    { id: 'plume', label: 'Violet', css: 'linear-gradient(160deg,#f5f3ff,#e9d5ff)' },
+    { id: 'parchemin', label: 'Parchemin', css: 'linear-gradient(160deg,#faf6ee,#efe2c9)' },
+    { id: 'nuit', label: 'Nuit étoilée', css: 'radial-gradient(circle at 30% 20%,#3b2f63,#15131f 70%)' },
+    { id: 'emeraude', label: 'Émeraude', css: 'linear-gradient(160deg,#ecfdf5,#bbf7d0)' },
+    { id: 'aube', label: 'Aube', css: 'linear-gradient(160deg,#fff1f2,#fbcfe8)' },
+  ];
+  const [chatBg, setChatBg] = useState<string>(() => { try { return localStorage.getItem('plume_chat_bg') || ''; } catch { return ''; } });
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const [uploadingBg, setUploadingBg] = useState(false);
+  const bgFileRef = useRef<HTMLInputElement>(null);
+  const applyChatBg = (val: string) => {
+    setChatBg(val);
+    try { val ? localStorage.setItem('plume_chat_bg', val) : localStorage.removeItem('plume_chat_bg'); } catch { /* ignore */ }
+    setShowBgPicker(false);
+  };
+  const handleBgUpload = async (file: File | null) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    setUploadingBg(true);
+    try { applyChatBg(await uploadImageToCloudinary(file)); }
+    catch (e: any) { alert(e?.message || "Échec de l'envoi du fond."); }
+    finally { setUploadingBg(false); if (bgFileRef.current) bgFileRef.current.value = ''; }
+  };
+  const chatBgStyle: React.CSSProperties = !chatBg ? {}
+    : chatBg.startsWith('http') ? { backgroundImage: `url(${chatBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : (() => { const p = CHAT_BG_PRESETS.find((x) => x.id === chatBg); return p ? { background: p.css } : {}; })();
   const [uploadingSticker, setUploadingSticker] = useState(false);
   const stickerFileRef = useRef<HTMLInputElement>(null);
   const [mobileShowThread, setMobileShowThread] = useState(false);
@@ -321,7 +352,7 @@ export default function MessagesView({
       const cropped = await getCroppedImageFile(stickerCropSrc, stickerCroppedPixels, 'sticker.jpg');
       const url = await uploadImageToCloudinary(cropped);
       addCustomSticker(url);
-      setCustomStickers(getCustomStickers());
+      setCustomStickers(getCustomStickers()); onSyncStickers?.(getCustomStickers());
       setStickerCropSrc(null);
     } catch (e: any) {
       alert(e?.message || "Échec de la création du sticker.");
@@ -393,7 +424,7 @@ export default function MessagesView({
         end: videoTrimEnd,
       });
       addCustomSticker(url);
-      setCustomStickers(getCustomStickers());
+      setCustomStickers(getCustomStickers()); onSyncStickers?.(getCustomStickers());
       cancelVideoSticker();
     } catch (e: any) {
       alert(e?.message || "Échec de la création du sticker vidéo.");
@@ -1081,6 +1112,14 @@ export default function MessagesView({
               >
                 <Phone className="w-4 h-4 scale-105" />
               </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-zinc-800 rounded-full transition text-[#7C3AED] dark:text-purple-400"
+                title="Fond de la discussion"
+                onClick={() => setShowBgPicker(true)}
+              >
+                <ImageIcon className="w-4 h-4" />
+              </button>
               {!activeGroupId && activeConversationId && (
                 <button
                   type="button"
@@ -1132,7 +1171,7 @@ export default function MessagesView({
           })()}
 
           {/* ACTIVE CHAT WORKSPACE AREA */}
-          <div className="flex-1 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 max-h-[460px]">
+          <div className="flex-1 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 max-h-[460px]" style={chatBgStyle}>
             {activeGroupId ? (
               // Group Thread messaging
               activeGroupMessages.length === 0 ? (
@@ -1246,7 +1285,7 @@ export default function MessagesView({
                           {savable && (
                             <button
                               type="button"
-                              onClick={() => { addCustomSticker(sticker); setCustomStickers(getCustomStickers()); }}
+                              onClick={() => { addCustomSticker(sticker); setCustomStickers(getCustomStickers()); onSyncStickers?.(getCustomStickers()); }}
                               className="absolute -bottom-1 -right-1 bg-purple-600 text-white rounded-full p-1 shadow-md active:scale-90 transition"
                               title="Enregistrer ce sticker"
                             >
@@ -1386,7 +1425,7 @@ export default function MessagesView({
                               ? <video src={url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
                               : <img src={url} alt="sticker" className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                           </button>
-                          <button type="button" onClick={() => { removeCustomSticker(url); setCustomStickers(getCustomStickers()); }} className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition" title="Supprimer">
+                          <button type="button" onClick={() => { removeCustomSticker(url); setCustomStickers(getCustomStickers()); onSyncStickers?.(getCustomStickers()); }} className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition" title="Supprimer">
                             <X className="w-2.5 h-2.5" />
                           </button>
                         </div>
@@ -1759,6 +1798,29 @@ export default function MessagesView({
           </div>
         );
       })()}
+
+      {/* MODALE : FOND DE LA DISCUSSION (5 fonds prédéfinis + image perso). */}
+      {showBgPicker && createPortal(
+        <div className="fixed inset-0 z-[2147483000] bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setShowBgPicker(false)}>
+          <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl p-4" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+            <h3 className="font-serif font-black text-sm mb-3">Fond de la discussion</h3>
+            <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleBgUpload(e.target.files?.[0] || null)} />
+            <div className="grid grid-cols-3 gap-2.5">
+              <button onClick={() => applyChatBg('')} className={`aspect-square rounded-2xl border-2 flex items-center justify-center text-[10px] font-black text-gray-500 ${!chatBg ? 'border-purple-600' : 'border-transparent'} bg-gray-100 dark:bg-zinc-800`}>Aucun</button>
+              {CHAT_BG_PRESETS.map((p) => (
+                <button key={p.id} onClick={() => applyChatBg(p.id)} className={`aspect-square rounded-2xl border-2 ${chatBg === p.id ? 'border-purple-600' : 'border-transparent'} flex items-end p-1.5`} style={{ background: p.css }}>
+                  <span className="text-[8px] font-black text-gray-700 bg-white/70 rounded px-1">{p.label}</span>
+                </button>
+              ))}
+              <button onClick={() => bgFileRef.current?.click()} disabled={uploadingBg} className={`aspect-square rounded-2xl border-2 border-dashed border-purple-400 flex flex-col items-center justify-center text-[9px] font-black text-purple-600 ${chatBg.startsWith('http') ? 'ring-2 ring-purple-600' : ''}`}>
+                <ImageIcon className="w-4 h-4 mb-0.5" />{uploadingBg ? 'Envoi…' : 'Mon image'}
+              </button>
+            </div>
+            <button onClick={() => setShowBgPicker(false)} className="mt-4 w-full py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black uppercase tracking-wider">Fermer</button>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* MODALE : ROGNAGE DU STICKER (format carré) — rendue via un portail sur
           document.body afin qu'aucun parent (transform/overflow d'une vue

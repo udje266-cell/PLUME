@@ -18,6 +18,7 @@ export interface User {
   isVerified: boolean;
   signUpDate: string;
   favoriteGenres: string[];
+  customStickers?: string[];
   birthDate?: string;
   gender?: 'Homme' | 'Femme';
   hasChangedRole?: boolean;

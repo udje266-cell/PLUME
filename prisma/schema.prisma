@@ -24,6 +24,9 @@ model User {
   avatar            String?
   // Bannière de profil persistée côté serveur (visible par toute la communauté).
   banner            String?
+  // Stickers personnalisés (JSON array d'URLs) — persistés pour survivre à une
+  // réinstallation de l'app.
+  customStickers    String?
   bio               String   @default("")
   isVerified        Boolean  @default(false)
   emailVerified     Boolean  @default(false)

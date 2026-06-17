@@ -41,6 +41,7 @@ import { CallManager, type CallStatus, type CallPeer } from './utils/webrtcCall'
 import { GroupCallManager } from './utils/groupCall';
 import { startRingtone, stopRingtone } from './utils/ringtone';
 import { enqueueAction, flushQueue, queueLength, onQueueChange } from './utils/offlineQueue';
+import { mergeServerStickers } from './utils/stickers';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
@@ -1279,6 +1280,12 @@ export default function App() {
       localStorage.removeItem('plume_current_user');
     }
   }, [currentUser]);
+
+  // Stickers persistés : on fusionne ceux du serveur dans le stockage local dès
+  // que le profil est charge -> ils reviennent apres une reinstallation.
+  useEffect(() => {
+    mergeServerStickers(currentUser?.customStickers);
+  }, [currentUser?.id, (currentUser?.customStickers || []).length]);
 
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
@@ -3017,6 +3024,7 @@ export default function App() {
                       typingUserIds={typingUserIds}
                       onTyping={(receiverId, isTyping) => socketRef.current?.emit(isTyping ? 'typing' : 'stop_typing', { senderId: currentUser!.id, receiverId })}
                       onViewProfile={handleViewUserProfile}
+                      onSyncStickers={(stickers) => handleUpdateProfile({ customStickers: stickers })}
                       onSendMessage={handleSendMessage}
                       onDeleteConversation={handleDeleteConversation}
                       onStartConversation={handleStartConversation}

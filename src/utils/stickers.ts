@@ -40,6 +40,22 @@ export function addCustomSticker(url: string): void {
   }
 }
 
+/**
+ * Fusionne les stickers persistés côté serveur dans le stockage local (union,
+ * sans doublon). Appelé au chargement du profil → les stickers reviennent après
+ * une réinstallation de l'app.
+ */
+export function mergeServerStickers(serverList: string[] | undefined): void {
+  if (!Array.isArray(serverList) || serverList.length === 0) return;
+  try {
+    const local = getCustomStickers();
+    const merged = Array.from(new Set([...serverList, ...local])).slice(0, 60);
+    localStorage.setItem(KEY, JSON.stringify(merged));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function removeCustomSticker(url: string): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(getCustomStickers().filter((u) => u !== url)));
