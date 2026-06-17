@@ -2229,7 +2229,7 @@ export default function App() {
       reads: 1
     };
 
-    setStories(stories.map(s => {
+    setStories(prev => prev.map(s => {
       if (s.id === storyId) {
         const updatedStory = {
           ...s,
@@ -2252,7 +2252,7 @@ export default function App() {
   };
 
   const handleUpdateChapter = (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => {
-    setStories(stories.map(s => {
+    setStories(prev => prev.map(s => {
       if (s.id === storyId) {
         const freshChapters = s.chapters.map(ch => ch.id === chapterId ? { ...ch, ...updatedChapter } : ch);
         const matchChapter = freshChapters.find(ch => ch.id === chapterId);

@@ -154,7 +154,7 @@ export default function MainNavigation({
     <div className="w-full flex flex-col z-30 select-none">
       
       {/* TOP ACTIONS APP HEADER */}
-      <header className="w-full bg-white/90 dark:bg-black/90 backdrop-blur-md border-b border-gray-150 dark:border-purple-900/10 transition-colors py-3 px-4">
+      <header className="w-full bg-white/90 dark:bg-black/90 backdrop-blur-md transition-colors py-3 px-4">
         <div className="flex items-center justify-between">
           
           {/* Left: Filter Toggle Button */}

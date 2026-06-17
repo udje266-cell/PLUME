@@ -79,6 +79,7 @@ export default function HomeView({
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [discoverTab, setDiscoverTab] = useState<'tendances' | 'nouveautes' | 'recommandes'>('tendances');
 
   // Livres téléchargés (disponibles hors ligne). Se met à jour quand on
   // télécharge / retire un livre ailleurs dans l'app.
@@ -436,64 +437,36 @@ export default function HomeView({
         </section>
       )}
 
-      {/* SECTION 1: CONTINUER LA LECTURE */}
+      {/* SECTION 1: CONTINUER LA LECTURE (cartes horizontales facon maquette) */}
       <section className="space-y-3">
-        <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400 flex items-center space-x-1.5">
-          <Clock className="w-3.5 h-3.5" />
-          <span>Continuer la lecture</span>
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-purple-600" />
+            <span>Continuer la lecture</span>
+          </h3>
+        </div>
 
-        <div className="space-y-3">
-          {displayOngoing.slice(0, 2).map((story) => {
-            const { percent, lastRead } = getStoryProgressInfo(story);
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+          {displayOngoing.slice(0, 6).map((story) => {
+            const { percent } = getStoryProgressInfo(story);
+            const readCh = story.chapters.filter((ch) => readChapters.includes(ch.id)).length;
             return (
-              <div 
-                key={story.id}
-                id={`ongoing-item-${story.id}`}
-                onClick={() => onSelectStory(story)}
-                className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-100 dark:border-purple-900/15 hover:bg-purple-500/5 dark:hover:bg-purple-950/10 cursor-pointer transition-all duration-300 shadow-sm group relative"
-              >
-                <img 
-                  src={optimizedImage(story.cover, 220)} 
-                  alt={story.title} 
-                  className="w-12 h-18 rounded-lg object-cover flex-shrink-0 shadow-sm border border-gray-150/40"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-serif font-black text-xs text-gray-900 dark:text-white line-clamp-1 truncate group-hover:text-[#7C3AED] dark:group-hover:text-purple-300 transition-colors">
-                    {story.title}
-                  </h4>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    Par{' '}
-                    <span 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onViewProfile) {
-                          onViewProfile(story.authorId);
-                        } else {
-                          onOpenDiscussion(story.authorId);
-                        }
-                      }}
-                      className="hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer font-bold transition-colors"
-                      title="Consulter le profil de l'auteur"
-                    >
-                      {story.authorName}
-                    </span>
-                  </p>
-                  
-                  {/* Progress section */}
-                  <div className="flex items-center justify-between text-[9px] uppercase font-bold text-gray-400 mt-2">
-                    <span className="text-[#7C3AED] dark:text-purple-400">{percent}% Lu</span>
-                    <span>Dernier : {lastRead}</span>
-                  </div>
-
-                  <div className="w-full bg-gray-200 dark:bg-zinc-800 h-1 rounded-full mt-1.5 overflow-hidden">
-                    <div 
-                      className="bg-purple-600 h-full rounded-full transition-all" 
-                      style={{ width: `${percent}%` }}
-                    />
+              <div key={story.id} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
+                <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
+                  <img src={optimizedImage(story.cover, 220)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
+                    <div className="h-full bg-purple-500" style={{ width: `${percent}%` }} />
                   </div>
                 </div>
+                <h4 className="mt-2 font-serif font-black text-[11px] text-gray-900 dark:text-white line-clamp-1">{story.title}</h4>
+                <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
+                <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">Chapitre {Math.max(1, readCh)} · {percent}%</p>
+                <button
+                  onClick={() => onSelectStory(story)}
+                  className="mt-2 w-full flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase tracking-wider py-1.5 rounded-lg transition"
+                >
+                  <BookOpen className="w-3 h-3" /> Reprendre
+                </button>
               </div>
             );
           })}
@@ -531,397 +504,66 @@ export default function HomeView({
         );
       })()}
 
-      {/* SECTION 2: POUR TOI (Personalized recommendations based on tags or category) */}
+      {/* SECTION 2: DECOUVRIR (onglets Tendances / Nouveautes / Recommandes) */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400 flex items-center space-x-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-            <span>Pour toi (Recommandations)</span>
-          </h3>
+        <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
+          <Compass className="w-4 h-4 text-purple-600" />
+          <span>Découvrir</span>
+        </h3>
 
-          {/* Curseur découverte ↔ pertinence : ajuste l'algorithme de diffusion. */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-[8px] font-bold uppercase tracking-wide text-gray-400" title="Davantage de récits qui collent à tes goûts">Pertinent</span>
-            <input
-              id="feed-discovery-slider"
-              type="range"
-              min={0}
-              max={1}
-              step={0.1}
-              value={discovery}
-              onChange={(e) => updateDiscovery(parseFloat(e.target.value))}
-              className="w-20 accent-purple-600 cursor-pointer"
-              aria-label="Curseur découverte / pertinence du fil Pour toi"
-              title="Glisse vers la découverte pour voir plus de nouveautés et de nouveaux auteurs"
-            />
-            <span className="text-[8px] font-bold uppercase tracking-wide text-gray-400" title="Davantage de nouveautés et de nouveaux auteurs">Découverte</span>
-          </div>
+        <div className="flex gap-2 text-[10px] font-black uppercase tracking-wide">
+          {([['tendances','Tendances'],['nouveautes','Nouveautés'],['recommandes','Recommandés']] as const).map(([id,label]) => (
+            <button
+              key={id}
+              onClick={() => setDiscoverTab(id)}
+              className={`px-3 py-1.5 rounded-full transition ${discoverTab === id ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500'}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
-          {displayForYou.map(({ story, reasons, isExploration }) => {
-            const isFav = favorites.includes(story.id);
-            const topReason = reasons[0];
-            return (
-              <div 
-                key={story.id} 
-                className="w-40 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col justify-between transition-all duration-300 hover:border-purple-500/30 relative"
-              >
-                {/* Image layout */}
-                <div 
-                  onClick={() => onSelectStory(story)}
-                  className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer group"
-                >
-                  <img 
-                    src={optimizedImage(story.cover, 220)} 
-                    alt={story.title} 
-                    className="w-full h-full object-cover group-hover:scale-103 transition-transform" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 right-1 flex flex-col items-end gap-1">
-                    <span className="text-[8px] bg-purple-600 text-white font-bold px-1.5 py-0.5 rounded uppercase shadow-sm">
-                      {story.genre.split(' ')[0]}
-                    </span>
-                    {story.ageRating && story.ageRating !== 'all' && (
-                      <span className="text-[7.5px] bg-red-650 text-white font-black px-1.5 py-0.5 rounded shadow-sm">
-                        {story.ageRating}+
-                      </span>
-                    )}
+        {(() => {
+          const list = discoverTab === 'tendances'
+            ? trendingStories
+            : discoverTab === 'nouveautes'
+              ? newsStories
+              : displayForYou.map((d) => d.story);
+          return (
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+              {list.slice(0, 12).map((story, i) => (
+                <div key={story.id} className="w-28 flex-shrink-0">
+                  <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
+                    <img src={optimizedImage(story.cover, 180)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>
                   </div>
-                </div>
-
-                {/* Cover info */}
-                <div className="text-left mt-2 space-y-1">
-                  {topReason && (
-                    <span
-                      className={`inline-flex items-center gap-0.5 text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
-                        isExploration
-                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-300'
-                      }`}
-                      title="Pourquoi ce récit t'est proposé"
-                    >
-                      {isExploration ? <Compass className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
-                      <span className="line-clamp-1">{topReason}</span>
-                    </span>
-                  )}
-                  <h4
-                    onClick={() => onSelectStory(story)}
-                    className="font-serif font-black text-xs text-gray-950 dark:text-gray-50 line-clamp-1 hover:text-purple-600 cursor-pointer"
-                  >
-                    {story.title}
-                  </h4>
-                  <p className="text-[10px] text-gray-400 line-clamp-1">
-                    Par{' '}
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onViewProfile) {
-                          onViewProfile(story.authorId);
-                        } else {
-                          onOpenDiscussion(story.authorId);
-                        }
-                      }}
-                      className="hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer font-bold transition-colors"
-                      title="Consulter le profil de l'auteur"
-                    >
-                      {story.authorName}
-                    </span>
-                  </p>
-                  {/* Vues + likes du récit */}
-                  <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400 pt-0.5">
-                    <span className="flex items-center gap-1" title="Vues">
-                      <Eye className="w-3 h-3 text-gray-500" />
-                      <span className="font-semibold">{formatStat(story.views)}</span>
-                    </span>
-                    <span className="flex items-center gap-1" title="J'aime">
-                      <Heart className="w-3 h-3 text-purple-500 fill-purple-500/10" />
-                      <span className="font-semibold">{formatStat(story.likes)}</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Card actions bottom */}
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-zinc-900">
-                  <button
-                    id={`home-fav-chk-${story.id}`}
-                    onClick={() => onToggleFavorite(story.id)}
-                    className={`p-1 rounded-lg border transition cursor-pointer ${
-                      isFav 
-                        ? 'bg-purple-600/10 text-purple-600 border-purple-500/20' 
-                        : 'bg-white dark:bg-black border-gray-200 dark:border-purple-900/25 text-gray-400 hover:text-purple-600 hover:bg-purple-500/5 shadow-xs'
-                    }`}
-                    title="Favoris / Bibliothèque"
-                  >
-                    <Star className={`w-3 h-3 ${isFav ? 'fill-purple-600 text-purple-650' : ''}`} />
-                  </button>
-
-                  <button
-                    id={`home-share-story-${story.id}`}
-                    onClick={() => setShareStory(story)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 transition"
-                    title="Partager"
-                  >
-                    <Share2 className="w-3 h-3" />
-                  </button>
-                </div>
-
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* SECTION: LECTEURS AUX GOÛTS PROCHES (se faire des amis) */}
-      {(loadingSuggestions || suggestedPeople.length > 0) && (
-        <section className="space-y-4">
-          <div className="flex justify-between items-center pb-1.5 border-b border-gray-100 dark:border-zinc-900">
-            <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center space-x-1.5">
-              <Users className="w-3.5 h-3.5 text-purple-600" />
-              <span>Lecteurs aux goûts proches</span>
-            </h3>
-            <span className="text-[9px] font-mono text-purple-600 bg-purple-500/10 px-2 py-1 rounded-full uppercase font-bold">
-              Se faire des amis
-            </span>
-          </div>
-
-          {loadingSuggestions && suggestedPeople.length === 0 ? (
-            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col items-center gap-2">
-                  <Skeleton className="w-16 h-16 rounded-full" />
-                  <Skeleton className="w-20 h-3" />
-                  <Skeleton className="w-14 h-2.5" />
-                  <Skeleton className="w-full h-7 rounded-lg mt-1" />
+                  <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-[10px] font-black text-gray-900 dark:text-white line-clamp-1 cursor-pointer">{story.title}</h4>
+                  <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
                 </div>
               ))}
+              {list.length === 0 && <p className="text-xs text-gray-400 py-6">Rien pour le moment.</p>}
             </div>
-          ) : (
-          <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
-            {suggestedPeople.map((person) => {
-              const isFollowing = (currentUser.following || []).includes(person.id);
-              return (
-                <div
-                  key={person.id}
-                  className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-3 flex flex-col items-center text-center transition-all hover:border-purple-500/30"
-                >
-                  <img
-                    src={optimizedImage(person.avatar, 64, { square: true }) || 'https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(person.username)}
-                    alt={person.username}
-                    onClick={() => onViewProfile?.(person.id)}
-                    className="w-14 h-14 rounded-full object-cover ring-2 ring-purple-500/15 cursor-pointer"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="mt-2 flex items-center gap-1 min-w-0">
-                    <span
-                      onClick={() => onViewProfile?.(person.id)}
-                      className="text-xs font-black text-gray-950 dark:text-gray-50 truncate cursor-pointer hover:text-purple-600"
-                    >
-                      {person.username}
-                    </span>
-                    {person.isVerified && <VerifiedBadge size="xs" />}
-                  </div>
-                  {person.sharedGenres && person.sharedGenres.length > 0 && (
-                    <p className="text-[8.5px] text-purple-600 dark:text-purple-300 font-bold mt-0.5 line-clamp-1">
-                      {person.sharedGenres.slice(0, 2).join(' · ')}
-                    </p>
-                  )}
-                  <button
-                    onClick={() => onFollowAuthor(person.id)}
-                    className={`mt-2 w-full py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition flex items-center justify-center gap-1 ${
-                      isFollowing
-                        ? 'bg-purple-500/10 text-purple-600 border border-purple-500/20'
-                        : 'bg-purple-600 text-white hover:bg-purple-700'
-                    }`}
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    {isFollowing ? 'Suivi' : 'Suivre'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          )}
-        </section>
-      )}
-
-      {/* SECTION 3: TENDANCES POPULAIRES (Sorted by rating/reads growth) */}
-      <section className="space-y-4">
-        <div className="flex justify-between items-center pb-1.5 border-b border-gray-100 dark:border-zinc-900">
-          <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center space-x-1.5">
-            <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
-            <span>Tendances Populaires</span>
-          </h3>
-          <span className="text-[9px] font-mono text-purple-600 bg-purple-500/10 px-2 py-1 rounded-full uppercase font-bold flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 text-purple-600" />
-            <span>Croissance active</span>
-          </span>
-        </div>
-
-        <div className="space-y-3">
-          {trendingStories.slice(0, 3).map((story, idx) => (
-            <div 
-              key={story.id} 
-              className="flex items-center gap-4 p-3 bg-white dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl transition hover:border-purple-500/25 shadow-xs"
-            >
-              {/* Cover index display */}
-              <div className="font-mono text-base font-black text-gray-300 dark:text-zinc-700 w-6 text-center">
-                #{idx + 1}
-              </div>
-
-              <img 
-                src={optimizedImage(story.cover, 220)} 
-                alt={story.title} 
-                className="w-10 h-14 rounded-lg object-cover flex-shrink-0 cursor-pointer"
-                onClick={() => onSelectStory(story)}
-                referrerPolicy="no-referrer"
-              />
-
-              <div className="flex-1 min-w-0 text-left">
-                <h4 
-                  onClick={() => onSelectStory(story)}
-                  className="font-bold text-xs text-gray-900 dark:text-gray-100 line-clamp-1 hover:text-purple-600 hover:underline cursor-pointer"
-                >
-                  {story.title}
-                </h4>
-                <p className="text-[10px] text-gray-400">Archipel de {story.genre}</p>
-                
-                {/* Stats metrics */}
-                <div className="flex items-center space-x-3 text-[9px] font-mono text-gray-400 mt-1">
-                  <span className="flex items-center space-x-0.5" title="Lectures">
-                    <Eye className="w-3 h-3 text-gray-500" />
-                    <span>{story.reads}</span>
-                  </span>
-                  <span className="flex items-center space-x-0.5" title="Likes">
-                    <Heart className="w-3 h-3 text-purple-500 fill-purple-500/10" />
-                    <span>{story.likes}</span>
-                  </span>
-                </div>
-              </div>
-
-              <button
-                id={`trend-share-shortcut-${story.id}`}
-                onClick={() => setShareStory(story)}
-                className="p-1.5 text-gray-400 hover:text-purple-600"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
+          );
+        })()}
       </section>
 
-      {/* SECTION 4: LES NOUVEAUTÉS DU JOUR */}
+      {/* SECTION 3: EVENEMENTS & COMMUNAUTE */}
       <section className="space-y-3">
-        <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400">
-          Nouveautés Récentes
+        <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
+          <Users className="w-4 h-4 text-purple-600" />
+          <span>Événements & communauté</span>
         </h3>
-
-        <div className="grid grid-cols-2 gap-3">
-          {newsStories.slice(0, 2).map((story) => (
-            <div 
-              key={story.id} 
-              onClick={() => onSelectStory(story)}
-              className="p-3.5 bg-[#FCFBFF] dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl cursor-pointer text-left group hover:scale-[1.01] transition-transform shadow-xs"
-            >
-              <img 
-                src={optimizedImage(story.cover, 220)} 
-                alt={story.title} 
-                className="w-full h-28 object-cover rounded-xl shadow-xs" 
-                referrerPolicy="no-referrer"
-              />
-              <span className="inline-block px-2 py-0.5 bg-green-500/10 text-green-600 rounded text-[8px] font-black uppercase tracking-wider mt-2">
-                Nouveau
-              </span>
-              <h4 className="font-serif font-black text-xs text-gray-900 dark:text-white line-clamp-1 mt-1 shrink-0 group-hover:text-purple-600">
-                {story.title}
-              </h4>
-              <p className="text-[10px] text-gray-400">
-                Par{' '}
-                <span 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onViewProfile) {
-                      onViewProfile(story.authorId);
-                    } else {
-                      onOpenDiscussion(story.authorId);
-                    }
-                  }}
-                  className="hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer font-bold transition-colors"
-                  title="Consulter le profil de l'auteur"
-                >
-                  {story.authorName}
-                </span>
-              </p>
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+          {[
+            { t: 'Le défi des 7 jours', d: 'Écris un peu chaque jour', g: 'from-purple-600 to-fuchsia-600' },
+            { t: "Plume d'or 2024", d: 'Le concours de la communauté', g: 'from-amber-500 to-orange-600' },
+            { t: "Sélection de l'équipe", d: 'Les coups de cœur du moment', g: 'from-emerald-500 to-teal-600' },
+          ].map((e, i) => (
+            <div key={i} className={`w-52 flex-shrink-0 rounded-2xl p-4 text-white bg-gradient-to-br ${e.g} flex flex-col justify-end h-28 shadow-md`}>
+              <p className="text-sm font-serif font-black leading-tight">{e.t}</p>
+              <p className="text-[10px] opacity-90">{e.d}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* SECTION 5: NOUVEAUX AUTEURS ACTIFS */}
-      <section className="space-y-3">
-        <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-[#7C3AED] dark:text-purple-400">
-          Nouveaux Auteurs Vedettes
-        </h3>
-
-        <div className="space-y-2">
-          {authorsList.map((author) => {
-            const isFollowing = currentUser.following.includes(author.id);
-            return (
-              <div 
-                key={author.id} 
-                className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-100 dark:border-purple-900/15 text-left shadow-xs"
-              >
-                <div 
-                  onClick={() => {
-                    if (onViewProfile) {
-                      onViewProfile(author.id);
-                    } else {
-                      onOpenDiscussion(author.id);
-                    }
-                  }}
-                  className="flex items-center space-x-3 cursor-pointer group"
-                  title="Consulter le profil"
-                >
-                  <img 
-                    src={optimizedImage(author.avatar, 64, { square: true })} 
-                    alt={author.username} 
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-600/10 group-hover:scale-105 transition duration-150"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <span className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 group-hover:underline transition-colors">{author.username}</span>
-                      {author.isVerified && <VerifiedBadge size="xs" />}
-                    </div>
-                    <p className="text-[9px] text-gray-400 line-clamp-1">{author.bio || "Plume d'encre"}</p>
-                  </div>
-                </div>
-
-                <button
-                  id={`home-follow-author-${author.id}`}
-                  onClick={() => onFollowAuthor(author.id)}
-                  className={`h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center space-x-1 shrink-0 ${
-                    isFollowing 
-                      ? 'bg-gray-100 hover:bg-gray-200 text-gray-805 dark:bg-black dark:text-zinc-300 border border-gray-200/50 dark:border-purple-900/40 hover:bg-purple-950/10' 
-                      : 'bg-[#7C3AED] hover:bg-[#6D28D9] text-white'
-                  }`}
-                >
-                  {isFollowing ? (
-                    <>
-                      <UserCheck className="w-3.5 h-3.5" />
-                      <span>Suivi</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Suivre</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            );
-          })}
         </div>
       </section>
 
