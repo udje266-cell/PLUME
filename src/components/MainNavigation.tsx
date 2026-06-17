@@ -154,7 +154,7 @@ export default function MainNavigation({
     <div className="w-full flex flex-col z-30 select-none">
       
       {/* TOP ACTIONS APP HEADER */}
-      <header className="w-full bg-white/90 dark:bg-black/90 backdrop-blur-md transition-colors py-3 px-4">
+      <header className="w-full bg-white/90 dark:bg-black/90 backdrop-blur-md transition-colors pt-2.5 pb-1.5 px-4">
         <div className="flex items-center justify-between">
           
           {/* Left: Filter Toggle Button */}
@@ -339,7 +339,7 @@ export default function MainNavigation({
             <span className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-lg shadow-purple-600/30 border-4 border-white dark:border-black transition-transform active:scale-95 ${
               activeTab === 'write' ? 'ring-2 ring-purple-400' : ''
             } bg-gradient-to-br from-purple-600 to-fuchsia-600`}>
-              <img src="/plume-icon.png" alt="Écrire" className="w-full h-full object-cover" draggable={false} />
+              <img src="/app-icon.png" alt="Écrire" className="w-full h-full object-cover" draggable={false} />
             </span>
             <span className={`text-[9px] mt-1 font-black uppercase tracking-wide ${activeTab === 'write' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}>Écrire</span>
           </button>

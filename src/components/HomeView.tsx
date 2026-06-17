@@ -237,7 +237,7 @@ export default function HomeView({
   ];
 
   return (
-    <div className="px-4 py-4 space-y-6 animate-fade-in text-left select-none pb-28">
+    <div className="px-4 pt-2 space-y-6 animate-fade-in text-left select-none pb-28">
       
       {/* En-tête : recherche DIRECTE (livres + comptes) sur l'accueil. */}
       <header className="pb-1">

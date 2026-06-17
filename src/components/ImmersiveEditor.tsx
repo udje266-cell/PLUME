@@ -239,11 +239,13 @@ export default function ImmersiveEditor({
           className={`plume-editor w-full min-h-full bg-transparent focus:outline-none break-words ${familyClass} text-[#1F2421] dark:text-[#E9E5DC]`}
           style={{
             fontSize: sizeStyle,
-            lineHeight: 1.65,
-            padding: `8px 20px ${Math.max(120, keyboardH + 80)}px 20px`,
+            lineHeight: 1.7,
+            padding: `10px 14px ${Math.max(120, keyboardH + 80)}px 14px`,
             caretColor: '#7C3AED',
             whiteSpace: 'pre-wrap',
             overflowWrap: 'anywhere',
+            width: '100%',
+            boxSizing: 'border-box',
           }}
         />
       </div>

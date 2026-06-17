@@ -2988,7 +2988,7 @@ export default function App() {
             />
 
             {/* Main scrollable body container */}
-            <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 pt-2 scrollbar-none scroll-smooth">
+            <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 pt-0 scrollbar-none scroll-smooth">
 
               {/* Frontière de chargement pour les vues découpées (lazy). */}
               <Suspense fallback={(

@@ -1621,7 +1621,7 @@ export default function MessagesView({
                       ref={messageInputRef}
                       rows={1}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                      className="flex-1 min-w-0 resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-2xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-snug scrollbar-none"
+                      className="flex-1 w-full min-w-0 resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-sm rounded-2xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-snug scrollbar-none"
                       value={messageText}
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
