@@ -701,27 +701,45 @@ export default function MessagesView({
     const end = messagesEndRef.current;
     const switchedThread = lastThreadKeyRef.current !== threadKey;
     const grew = activeThreadCount > lastMsgCountRef.current;
+    lastThreadKeyRef.current = threadKey;
+    lastMsgCountRef.current = activeThreadCount;
+
+    if (!container) return;
 
     if (switchedThread) {
-      // Nouvelle discussion : coller tout en bas (dernier message). On le fait
-      // sur plusieurs frames car le contenu (images, stickers, notes vocales)
-      // se met en page apres coup et decale la hauteur.
-      const stick = () => { if (container) container.scrollTop = container.scrollHeight; };
-      stick();
-      requestAnimationFrame(stick);
-      requestAnimationFrame(() => requestAnimationFrame(stick));
-      setTimeout(stick, 120);
-      setTimeout(stick, 320);
-    } else if (grew && container) {
+      // Nouvelle discussion : on epingle le bas pendant une courte fenetre
+      // (le temps que les images / stickers / notes vocales se mettent en page
+      // et decalent la hauteur). Le moindre geste de l'utilisateur (molette ou
+      // doigt) annule immediatement l'epinglage : plus de "scroll tout seul"
+      // ni de blocage.
+      let cancelled = false;
+      const deadline = performance.now() + 700;
+      let raf = 0;
+      const cancel = () => { cancelled = true; };
+      const loop = () => {
+        if (cancelled) return;
+        container.scrollTop = container.scrollHeight;
+        if (performance.now() < deadline) raf = requestAnimationFrame(loop);
+      };
+      container.addEventListener('wheel', cancel, { passive: true });
+      container.addEventListener('touchstart', cancel, { passive: true });
+      container.scrollTop = container.scrollHeight;
+      raf = requestAnimationFrame(loop);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(raf);
+        container.removeEventListener('wheel', cancel);
+        container.removeEventListener('touchstart', cancel);
+      };
+    }
+
+    if (grew) {
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
       // On ne ramene en bas que si l'utilisateur y etait deja (< 160px).
       if (distanceFromBottom < 160) {
         end?.scrollIntoView({ behavior: 'smooth' });
       }
     }
-
-    lastThreadKeyRef.current = threadKey;
-    lastMsgCountRef.current = activeThreadCount;
   }, [threadKey, activeThreadCount]);
 
   // Submit send message
