@@ -48,6 +48,7 @@ import PullToRefresh from './components/PullToRefresh';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
+import { applyStatusBarTheme } from './utils/native';
 import { 
   getUserStats,
   saveUserStats,
@@ -1440,6 +1441,8 @@ export default function App() {
       document.documentElement.classList.remove('dark');
       document.body.className = 'bg-[#FFFFFF] text-[#1F2937] transition-colors duration-300';
     }
+    // Aligne la barre d'etat native (icones) sur le theme.
+    applyStatusBarTheme(darkMode);
   }, [darkMode]);
 
   // Handle lateral filter choices. Re-routes to the Explorer view and updates the filter criteria
@@ -2187,6 +2190,36 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // Rafraichissement AUTOMATIQUE : a chaque ouverture d'un onglet (messages,
+  // accueil, succes, profil...) on recharge les donnees, sans avoir a tirer
+  // pour rafraichir. Anti-rebond pour ne pas marteler le serveur.
+  const lastAutoRefreshRef = React.useRef(0);
+  const autoRefresh = React.useCallback((force = false) => {
+    if (!isAuthenticated || !currentUser?.id) return;
+    const now = Date.now();
+    if (!force && now - lastAutoRefreshRef.current < 1000) return;
+    lastAutoRefreshRef.current = now;
+    handleGlobalRefresh();
+    fetchGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, currentUser?.id, handleGlobalRefresh]);
+
+  useEffect(() => {
+    autoRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isAuthenticated, currentUser?.id]);
+
+  // Retour de l'app au premier plan (ou onglet redevenu visible) -> on actualise.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') autoRefresh(true); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [autoRefresh]);
 
   const handleCreateStory = (storyData: Partial<Story>) => {
     // Increment stats for achievements

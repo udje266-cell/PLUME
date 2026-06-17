@@ -54,6 +54,12 @@ img, video, canvas, svg {
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+  /* La zone de la barre d'etat (heure/wifi/batterie) prend la couleur du fond
+     de l'app pour eviter une bande blanche et tout chevauchement. */
+  background: #ffffff;
+}
+.native-app.dark body {
+  background: #000000;
 }
 
 .animate-slide-up {

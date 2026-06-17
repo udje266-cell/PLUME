@@ -13,17 +13,30 @@
 
 import { Capacitor } from '@capacitor/core';
 
+/**
+ * Aligne le style de la barre d'etat (heure / wifi / batterie) sur le theme :
+ * - mode clair : icones SOMBRES (Style.Light) ;
+ * - mode sombre : icones CLAIRES (Style.Dark).
+ * No-op hors natif. Appelable a chaque changement de theme.
+ */
+export async function applyStatusBarTheme(dark: boolean): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const { StatusBar, Style } = await import('@capacitor/status-bar');
+    await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
+  } catch {
+    /* plugin indisponible : on ignore */
+  }
+}
+
 export async function initNative(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
   document.documentElement.classList.add('native-app');
 
-  try {
-    const { StatusBar, Style } = await import('@capacitor/status-bar');
-    await StatusBar.setStyle({ style: Style.Dark });
-  } catch {
-    /* plugin indisponible : on ignore */
-  }
+  // Style de la barre d'etat selon le theme courant (icones sombres sur fond
+  // clair, icones claires sur fond sombre).
+  await applyStatusBarTheme(document.documentElement.classList.contains('dark'));
 
   try {
     const { SplashScreen } = await import('@capacitor/splash-screen');
