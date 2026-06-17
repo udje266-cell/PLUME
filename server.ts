@@ -2648,7 +2648,7 @@ export async function createServerInstance() {
 
   app.post('/api/messages', requireAuth, async (req: any, res) => {
     try {
-      const { conversationId, content } = req.body;
+      const { conversationId, content, replyToId } = req.body;
       // L'expéditeur est TOUJOURS l'utilisateur authentifié : on ignore tout
       // senderId fourni par le client (sinon usurpation d'identité possible).
       const senderId = req.user.id;
@@ -2727,6 +2727,7 @@ export async function createServerInstance() {
             conversationId,
             senderId,
             content: trimmed,
+            replyToId: typeof replyToId === 'string' ? replyToId : null,
             isDelivered: recipientOnline,
             isRead: false
           },
@@ -2835,6 +2836,43 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du marquage comme lu' });
+    }
+  });
+
+  // Modifier un message TEXTE envoyé par soi, dans un délai de 5 minutes.
+  app.put('/api/messages/:id', requireAuth, async (req: any, res) => {
+    try {
+      const msg = await prisma.message.findUnique({ where: { id: req.params.id }, include: { conversation: { include: { participants: { select: { id: true } } } } } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      if (msg.senderId !== req.user.id) return res.status(403).json({ error: 'Action interdite' });
+      if (msg.deletedForEveryone) return res.status(400).json({ error: 'Message supprimé' });
+      if (Date.now() - new Date(msg.createdAt).getTime() > 5 * 60 * 1000) {
+        return res.status(403).json({ error: 'Modification possible uniquement dans les 5 minutes.' });
+      }
+      const content = String(req.body?.content || '').trim();
+      if (!content) return res.status(400).json({ error: 'Contenu vide.' });
+      if (content.length > 2000) return res.status(400).json({ error: 'Message trop long.' });
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: true } });
+      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la modification du message' });
+    }
+  });
+
+  // Supprimer un message POUR TOUT LE MONDE (uniquement ses propres messages).
+  app.delete('/api/messages/:id', requireAuth, async (req: any, res) => {
+    try {
+      const msg = await prisma.message.findUnique({ where: { id: req.params.id }, include: { conversation: { include: { participants: { select: { id: true } } } } } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      if (msg.senderId !== req.user.id) return res.status(403).json({ error: 'Action interdite' });
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: true } });
+      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suppression du message' });
     }
   });
 

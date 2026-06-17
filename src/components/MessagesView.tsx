@@ -87,7 +87,7 @@ interface MessagesViewProps {
   allUsers: User[];
   conversations: Conversation[];
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
-  onSendMessage: (conversationId: string, content: string) => void;
+  onSendMessage: (conversationId: string, content: string, replyToId?: string | null) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
   typingUserIds?: Set<string>;
@@ -98,6 +98,8 @@ interface MessagesViewProps {
   onGroupVoiceRecording?: (groupId: string, memberIds: string[], isRecording: boolean) => void;
   onViewProfile?: (userId: string) => void;
   onSyncStickers?: (stickers: string[]) => void;
+  onEditMessage?: (messageId: string, content: string) => void;
+  onDeleteMessageForEveryone?: (messageId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -230,6 +232,8 @@ export default function MessagesView({
   onGroupVoiceRecording,
   onViewProfile,
   onSyncStickers,
+  onEditMessage,
+  onDeleteMessageForEveryone,
   onDeleteConversation,
   onStartConversation,
   activeConversationId,
@@ -458,6 +462,29 @@ export default function MessagesView({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Répondre / modifier / supprimer (messages privés, façon WhatsApp).
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+  const [actionMsg, setActionMsg] = useState<Message | null>(null);
+  const [deletedForMe, setDeletedForMe] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('plume_deleted_msgs') || '[]')); } catch { return new Set(); }
+  });
+  const deleteForMe = (id: string) => {
+    setDeletedForMe((prev) => {
+      const next = new Set(prev); next.add(id);
+      try { localStorage.setItem('plume_deleted_msgs', JSON.stringify([...next].slice(-500))); } catch { /* ignore */ }
+      return next;
+    });
+    setActionMsg(null);
+  };
+  const longPressRef = useRef<any>(null);
+  const startLongPress = (msg: Message) => { longPressRef.current = setTimeout(() => setActionMsg(msg), 480); };
+  const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
+  // Un message peut être modifié s'il est à moi, en texte, et envoyé il y a < 5 min.
+  const canEdit = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && !parseSticker(m.content) && !m.content.startsWith('[🎙️ Note Vocale') && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 5 * 60 * 1000);
+  const startReply = (m: Message) => { setReplyTo(m); setEditingMsg(null); setActionMsg(null); messageInputRef.current?.focus(); };
+  const startEdit = (m: Message) => { setEditingMsg(m); setReplyTo(null); setMessageText(m.content); setActionMsg(null); setTimeout(() => messageInputRef.current?.focus(), 0); };
   // Ajuste la hauteur du champ message (retour à la ligne automatique, jusqu'à
   // ~5 lignes puis défilement) — comportement type WhatsApp.
   const autoSizeMessageInput = () => {
@@ -646,13 +673,22 @@ export default function MessagesView({
     e.preventDefault();
     if (!messageText.trim()) return;
 
+    // Modification d'un message existant (privé) plutôt qu'un nouvel envoi.
+    if (editingMsg && !activeGroupId) {
+      onEditMessage?.(editingMsg.id, messageText.trim());
+      setEditingMsg(null);
+      setMessageText('');
+      return;
+    }
+
     if (activeGroupId) {
       // Message de groupe persisté côté serveur (diffusé en temps réel).
       onSendGroupMessage(activeGroupId, messageText.trim());
     } else if (activeConversationId) {
-      // Send personal
-      onSendMessage(activeConversationId, messageText.trim());
+      // Envoi privé (avec éventuelle réponse à un message).
+      onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
     }
+    setReplyTo(null);
     setMessageText('');
     // Fin de saisie : on arrête l'indicateur « écrit… » chez l'interlocuteur.
     if (!activeGroupId && interlocutor) {
@@ -1282,16 +1318,34 @@ export default function MessagesView({
                 </div>
               ) : (
                 threadMessages.map((msg) => {
+                  if (deletedForMe.has(msg.id)) return null; // supprimé pour moi
                   const isSentByMe = msg.senderId === currentUser.id;
                   const isVoiceStr = msg.content.startsWith('[🎙️ Note Vocale');
                   const sticker = parseSticker(msg.content);
+
+                  // Message supprimé pour tout le monde.
+                  if (msg.deletedForEveryone) {
+                    return (
+                      <div key={msg.id} className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+                        <div className="max-w-[80%] px-3 py-1.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 italic text-xs flex items-center gap-1.5">
+                          <Trash2 className="w-3 h-3" /> Ce message a été supprimé
+                        </div>
+                      </div>
+                    );
+                  }
 
                   // Sticker : affichage SANS bulle (grand emoji ou image).
                   if (sticker) {
                     const savable = !isSentByMe && isStickerUrl(sticker) && !customStickers.includes(sticker);
                     return (
                       <div key={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
-                        <div className="relative group">
+                        <div
+                          className="relative group"
+                          onTouchStart={() => startLongPress(msg)}
+                          onTouchEnd={cancelLongPress}
+                          onTouchMove={cancelLongPress}
+                          onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg); }}
+                        >
                           {isStickerUrl(sticker)
                             ? (isVideoSticker(sticker)
                                 ? <video src={sticker} className="w-28 h-28 object-contain drop-shadow rounded-lg" muted loop autoPlay playsInline />
@@ -1317,12 +1371,18 @@ export default function MessagesView({
                     );
                   }
 
+                  const repliedMsg = msg.replyToId ? threadMessages.find((m) => m.id === msg.replyToId) : null;
                   return (
                     <div
                       key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
-                      <div className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-1.5 shadow-sm rounded-xl ${
+                      <div
+                        onTouchStart={() => startLongPress(msg)}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                        onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg); }}
+                        className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-1.5 shadow-sm rounded-xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-tr-none text-right'
                           : 'bg-black text-white rounded-tl-none border border-zinc-800/85 text-left'
@@ -1333,6 +1393,14 @@ export default function MessagesView({
                             ? 'right-[-5px] bg-purple-600 dark:bg-purple-700 rounded-bl-full'
                             : 'left-[-5px] bg-black rounded-br-full'
                         }`}></span>
+
+                        {/* Citation du message auquel on répond. */}
+                        {repliedMsg && (
+                          <div className="mb-1 px-2 py-1 rounded-lg bg-white/15 border-l-2 border-white/50 text-left">
+                            <p className="text-[9px] font-black opacity-90 truncate">{repliedMsg.senderId === currentUser.id ? 'Vous' : (interlocutor?.username || 'Auteur')}</p>
+                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : repliedMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : repliedMsg.content}</p>
+                          </div>
+                        )}
 
                         {isVoiceStr ? (
                           <VoicePlayerMockup
@@ -1349,6 +1417,7 @@ export default function MessagesView({
                         <div className={`flex items-center justify-end space-x-1 mt-1 text-[9px] font-mono ${
                           isSentByMe ? 'text-purple-200' : 'text-zinc-400'
                         }`}>
+                          {msg.editedAt && <span className="italic opacity-80">modifié</span>}
                           <span>
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -1466,6 +1535,22 @@ export default function MessagesView({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Barre « réponse à » / « modification » au-dessus du champ. */}
+              {(replyTo || editingMsg) && (
+                <div className="flex items-center gap-2 mb-1.5 px-3 py-2 rounded-xl bg-purple-500/10 border-l-2 border-purple-500">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">{editingMsg ? 'Modification' : 'Réponse à'}</p>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
+                      {(editingMsg || replyTo)?.deletedForEveryone ? 'Message supprimé'
+                        : parseSticker((editingMsg || replyTo)!.content) ? '🪶 Sticker'
+                        : (editingMsg || replyTo)!.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale'
+                        : (editingMsg || replyTo)!.content}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => { setReplyTo(null); setEditingMsg(null); setMessageText(''); }} className="text-gray-400 hover:text-gray-600 shrink-0" aria-label="Annuler"><X className="w-4 h-4" /></button>
                 </div>
               )}
 
@@ -1825,6 +1910,32 @@ export default function MessagesView({
           </div>
         );
       })()}
+
+      {/* MENU D'ACTIONS SUR UN MESSAGE (appui long) — répondre / modifier / supprimer. */}
+      {actionMsg && createPortal(
+        <div className="fixed inset-0 z-[2147483000] bg-black/50 flex items-end justify-center" onClick={() => setActionMsg(null)}>
+          <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-t-3xl p-2 animate-fade-in" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}>
+            <button onClick={() => startReply(actionMsg)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
+              <Send className="w-4 h-4 text-purple-600 -scale-x-100" /><span className="text-sm font-bold">Répondre</span>
+            </button>
+            {canEdit(actionMsg) && (
+              <button onClick={() => startEdit(actionMsg)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
+                <Check className="w-4 h-4 text-purple-600" /><span className="text-sm font-bold">Modifier</span>
+              </button>
+            )}
+            <button onClick={() => deleteForMe(actionMsg.id)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
+              <Trash2 className="w-4 h-4 text-gray-500" /><span className="text-sm font-bold">Supprimer pour moi</span>
+            </button>
+            {actionMsg.senderId === currentUser.id && !actionMsg.deletedForEveryone && (
+              <button onClick={() => { onDeleteMessageForEveryone?.(actionMsg.id); setActionMsg(null); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
+                <Trash2 className="w-4 h-4 text-red-500" /><span className="text-sm font-bold text-red-500">Supprimer pour tout le monde</span>
+              </button>
+            )}
+            <button onClick={() => setActionMsg(null)} className="w-full px-4 py-3 mt-1 text-center text-sm font-black text-gray-400">Annuler</button>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* MODALE : FOND DE LA DISCUSSION (5 fonds prédéfinis + image perso). */}
       {showBgPicker && createPortal(

@@ -135,6 +135,9 @@ export interface Message {
   receiverName?: string;
   receiverAvatar?: string;
   createdAt?: string;
+  replyToId?: string | null;
+  editedAt?: string | null;
+  deletedForEveryone?: boolean;
 }
 
 export interface Conversation {

@@ -199,6 +199,10 @@ model Message {
   content        String
   isDelivered    Boolean      @default(false)
   isRead         Boolean      @default(false)
+  // Réponse à un autre message (WhatsApp-like) + édition + suppression globale.
+  replyToId      String?
+  editedAt       DateTime?
+  deletedForEveryone Boolean  @default(false)
   sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())

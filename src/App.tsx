@@ -777,6 +777,15 @@ export default function App() {
       })));
     });
 
+    // Message modifié ou supprimé pour tout le monde (temps réel).
+    socket.on('message_updated', (updated: Message) => {
+      if (!updated?.id) return;
+      setConversations((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m),
+      })));
+    });
+
     // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
     // du profil se met à jour sans rafraîchissement.
     socket.on('story_stats', ({ storyId, likes, favoritesCount }: { storyId: string; likes: number; favoritesCount: number }) => {
@@ -910,6 +919,7 @@ export default function App() {
       socket.off('typing');
       socket.off('stop_typing');
       socket.off('message_delivered');
+      socket.off('message_updated');
       socket.off('story_stats');
       socket.off('group_created');
       socket.off('group_updated');
@@ -2326,9 +2336,9 @@ export default function App() {
   };
 
   // Messages operations
-  const handleSendMessage = (conversationId: string, content: string) => {
+  const handleSendMessage = (conversationId: string, content: string, replyToId?: string | null) => {
     if (!currentUser) return;
-    
+
     const conv = conversations.find(c => c.id === conversationId);
     const otherParticipant = conv?.participants.find(p => p.id !== currentUser.id);
     const targetUserId = otherParticipant?.id;
@@ -2346,7 +2356,8 @@ export default function App() {
       content,
       date: new Date().toISOString(),
       isRead: false,
-      sender: currentUser
+      sender: currentUser,
+      replyToId: replyToId || null
     };
 
     // Optimistically add message to the correct conversation
@@ -2365,7 +2376,7 @@ export default function App() {
     fetch('/api/messages', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ conversationId, content })
+      body: JSON.stringify({ conversationId, content, replyToId: replyToId || undefined })
     })
     .then(async (res) => {
       if (res.ok) {
@@ -2415,6 +2426,37 @@ export default function App() {
         return c;
       }));
     });
+  };
+
+  // Applique une mise à jour de message (édition / suppression globale) localement.
+  const applyMessageUpdate = (updated: Message) => {
+    setConversations(prev => prev.map(c => c.id === (updated.conversationId || c.id)
+      ? { ...c, messages: c.messages.map(m => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m) }
+      : c));
+  };
+
+  // Modifier un message texte (≤ 5 min côté serveur).
+  const handleEditMessage = (messageId: string, content: string) => {
+    fetch(`/api/messages/${messageId}`, {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ content }),
+    })
+      .then(async (res) => {
+        if (res.ok) applyMessageUpdate(await res.json());
+        else { const d = await res.json().catch(() => ({})); alert(d.error || 'Modification impossible.'); }
+      })
+      .catch(() => alert('Modification impossible (réseau).'));
+  };
+
+  // Supprimer un message pour tout le monde (mes messages uniquement).
+  const handleDeleteMessageForEveryone = (messageId: string) => {
+    fetch(`/api/messages/${messageId}`, { method: 'DELETE', headers: authHeaders() })
+      .then(async (res) => {
+        if (res.ok) applyMessageUpdate(await res.json());
+        else { const d = await res.json().catch(() => ({})); alert(d.error || 'Suppression impossible.'); }
+      })
+      .catch(() => alert('Suppression impossible (réseau).'));
   };
 
   const handleDeleteConversation = async (conversationId: string) => {
@@ -3055,6 +3097,8 @@ export default function App() {
                       onViewProfile={handleViewUserProfile}
                       onSyncStickers={(stickers) => handleUpdateProfile({ customStickers: stickers })}
                       onSendMessage={handleSendMessage}
+                      onEditMessage={handleEditMessage}
+                      onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
                       onDeleteConversation={handleDeleteConversation}
                       onStartConversation={handleStartConversation}
                       activeConversationId={activeConversationId}
