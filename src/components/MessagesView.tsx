@@ -499,6 +499,7 @@ export default function MessagesView({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const lastThreadKeyRef = useRef<string | null>(null);
+  const initialAnchorDoneRef = useRef(false);
 
   // Répondre / modifier / supprimer (messages privés, façon WhatsApp).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -758,26 +759,36 @@ export default function MessagesView({
     const container = scrollContainerRef.current;
     const end = messagesEndRef.current;
     const switchedThread = lastThreadKeyRef.current !== threadKey;
-    const grew = activeThreadCount > lastMsgCountRef.current;
-    lastThreadKeyRef.current = threadKey;
+    if (switchedThread) {
+      lastThreadKeyRef.current = threadKey;
+      initialAnchorDoneRef.current = false; // ancrage initial pas encore fait
+      lastMsgCountRef.current = 0;
+    }
+    const prevCount = lastMsgCountRef.current;
     lastMsgCountRef.current = activeThreadCount;
 
     if (!container) return;
 
-    if (switchedThread) {
-      // Nouvelle discussion : on va au dernier message par quelques sauts
-      // DISCRETS (le temps que les images/stickers se mettent en page). Aucune
-      // boucle continue -> ca ne "bloque" jamais le defilement de l'utilisateur.
-      const stick = () => { container.scrollTop = container.scrollHeight; };
-      stick();
-      const t1 = window.setTimeout(stick, 60);
-      const t2 = window.setTimeout(stick, 240);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+    // ANCRAGE INITIAL : on colle au DERNIER message des que la discussion a des
+    // messages — que ce soit immediatement a l'ouverture OU apres leur
+    // chargement asynchrone (sinon, ouvrir une conv vide puis recevoir les
+    // messages laissait l'utilisateur tout en haut, sur le 1er message).
+    if (!initialAnchorDoneRef.current) {
+      if (activeThreadCount > 0) {
+        initialAnchorDoneRef.current = true;
+        const stick = () => { container.scrollTop = container.scrollHeight; };
+        stick();
+        const t1 = window.setTimeout(stick, 60);
+        const t2 = window.setTimeout(stick, 240);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+      }
+      return; // pas encore de messages : on attend leur arrivee
     }
 
-    if (grew) {
+    // Apres l'ancrage : un NOUVEAU message ne ramene en bas que si l'utilisateur
+    // y etait deja (sinon on le laisse lire l'historique).
+    if (activeThreadCount > prevCount) {
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      // On ne ramene en bas que si l'utilisateur y etait deja (< 160px).
       if (distanceFromBottom < 160) {
         end?.scrollIntoView({ behavior: 'smooth' });
       }
