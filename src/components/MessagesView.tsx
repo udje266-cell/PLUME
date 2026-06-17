@@ -295,13 +295,22 @@ export default function MessagesView({
     { id: 'emeraude', label: 'Émeraude', css: 'linear-gradient(160deg,#ecfdf5,#bbf7d0)' },
     { id: 'aube', label: 'Aube', css: 'linear-gradient(160deg,#fff1f2,#fbcfe8)' },
   ];
-  const [chatBg, setChatBg] = useState<string>(() => { try { return localStorage.getItem('plume_chat_bg') || ''; } catch { return ''; } });
+  // Fond de discussion PERSONNALISE PAR CONVERSATION : chaque fil (prive ou
+  // groupe) garde son propre theme, stocke sous une cle dediee.
+  const [chatBg, setChatBg] = useState<string>('');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [uploadingBg, setUploadingBg] = useState(false);
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const currentThreadBgKey = (): string => {
+    const tk = activeGroupId ? `g:${activeGroupId}` : (activeConversationId ? `c:${activeConversationId}` : '');
+    return tk ? `plume_chat_bg_${currentUser.id}_${tk}` : '';
+  };
   const applyChatBg = (val: string) => {
     setChatBg(val);
-    try { val ? localStorage.setItem('plume_chat_bg', val) : localStorage.removeItem('plume_chat_bg'); } catch { /* ignore */ }
+    const key = currentThreadBgKey();
+    if (key) {
+      try { val ? localStorage.setItem(key, val) : localStorage.removeItem(key); } catch { /* ignore */ }
+    }
     setShowBgPicker(false);
   };
   const handleBgUpload = async (file: File | null) => {
@@ -696,6 +705,14 @@ export default function MessagesView({
   // proche du bas. Sinon on le laisse lire l'historique sans le faire sauter.
   const activeThreadCount = activeGroupId ? activeGroupMessages.length : threadMessages.length;
   const threadKey = activeGroupId ? `g:${activeGroupId}` : `c:${activeConversationId ?? ''}`;
+
+  // Charger le fond propre a la conversation active (ou groupe) a chaque
+  // changement de fil : un theme par discussion.
+  useEffect(() => {
+    const key = currentThreadBgKey();
+    try { setChatBg(key ? (localStorage.getItem(key) || '') : ''); } catch { setChatBg(''); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadKey]);
   useEffect(() => {
     const container = scrollContainerRef.current;
     const end = messagesEndRef.current;
@@ -1163,7 +1180,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header */}
-          <div className="px-4 py-3 bg-[#0F0F14] text-white flex items-center justify-between border-b border-zinc-800/80 z-10 shrink-0 mb-0.5">
+          <div className="px-4 py-3 bg-[#0F0F14] text-white flex items-center justify-between border-b border-zinc-800/80 z-10 shrink-0">
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
