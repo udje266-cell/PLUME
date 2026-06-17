@@ -555,6 +555,15 @@ const user = freshViewedUser || freshCurrentUser;
     } catch { return [null, null, null]; }
   });
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  // Vitrine des succes : activable / desactivable depuis la confidentialite.
+  const showcaseEnabledKey = `plume_showcase_enabled_${currentUser.id}`;
+  const [showcaseEnabled, setShowcaseEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem(showcaseEnabledKey) !== '0'; } catch { return true; }
+  });
+  const toggleShowcaseEnabled = (on: boolean) => {
+    setShowcaseEnabled(on);
+    try { localStorage.setItem(showcaseEnabledKey, on ? '1' : '0'); } catch { /* ignore */ }
+  };
   const setShowcaseSlot = (slot: number, achId: string | null) => {
     setShowcase((prev) => {
       const next = [...prev];
@@ -1735,7 +1744,7 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         );
         return (
-          <div className="bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl space-y-3 font-sans text-left shadow-lg">
+          <div className="p-4 rounded-2xl space-y-3 font-sans text-left bg-zinc-50/70 dark:bg-white/[0.03]">
             <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-200">
               <Zap className="w-4 h-4 text-purple-600" />
               <span className="font-bold text-[10px] uppercase tracking-wider">Niveaux & Expérience</span>
@@ -1747,7 +1756,7 @@ const user = freshViewedUser || freshCurrentUser;
       })()}
 
       {/* ÉTAGÈRE À TROPHÉES : 3 succès mis en avant, choisis par l'utilisateur. */}
-      {isOwnProfile && (() => {
+      {isOwnProfile && showcaseEnabled && (() => {
         const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
         const ownerAllUnlocked = currentUser.role === 'Administrateur';
         const allAch = [
@@ -1758,7 +1767,7 @@ const user = freshViewedUser || freshCurrentUser;
         const byId = (id: string | null) => (id ? allAch.find((a) => a.id === id) || null : null);
 
         return (
-          <div className="bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl space-y-3 font-sans text-left shadow-lg">
+          <div className="p-4 rounded-2xl space-y-3 font-sans text-left bg-zinc-50/70 dark:bg-white/[0.03]">
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-2">
                 <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
@@ -3846,6 +3855,24 @@ const user = freshViewedUser || freshCurrentUser;
                           onChange={(e) => {
                             onUpdateProfile({ showPalmares: e.target.checked });
                             setShowStatusToast(e.target.checked ? "Palmarès rendu public !" : "Palmarès masqué !");
+                            setTimeout(() => setShowStatusToast(null), 2550);
+                          }}
+                          className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Vitrine des succès (étagère à trophées) */}
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
+                        <div className="space-y-0.5 pr-4">
+                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Afficher la vitrine de mes succès</label>
+                          <span className="text-[9px] text-zinc-455 block">Afficher sur votre profil l'étagère des 3 trophées que vous mettez en avant. (Visible par défaut)</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={showcaseEnabled}
+                          onChange={(e) => {
+                            toggleShowcaseEnabled(e.target.checked);
+                            setShowStatusToast(e.target.checked ? "Vitrine des succès activée !" : "Vitrine des succès masquée !");
                             setTimeout(() => setShowStatusToast(null), 2550);
                           }}
                           className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
