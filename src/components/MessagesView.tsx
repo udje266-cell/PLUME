@@ -703,8 +703,15 @@ export default function MessagesView({
     const grew = activeThreadCount > lastMsgCountRef.current;
 
     if (switchedThread) {
-      // Nouvelle discussion : aller en bas immediatement, sans animation.
-      end?.scrollIntoView({ behavior: 'auto' });
+      // Nouvelle discussion : coller tout en bas (dernier message). On le fait
+      // sur plusieurs frames car le contenu (images, stickers, notes vocales)
+      // se met en page apres coup et decale la hauteur.
+      const stick = () => { if (container) container.scrollTop = container.scrollHeight; };
+      stick();
+      requestAnimationFrame(stick);
+      requestAnimationFrame(() => requestAnimationFrame(stick));
+      setTimeout(stick, 120);
+      setTimeout(stick, 320);
     } else if (grew && container) {
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
       // On ne ramene en bas que si l'utilisateur y etait deja (< 160px).
