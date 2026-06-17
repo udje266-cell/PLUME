@@ -238,14 +238,14 @@ export default function HomeView({
   return (
     <div className="px-4 py-4 space-y-6 animate-fade-in text-left select-none pb-28">
       
-      {/* En-tête : titre + barre de recherche (ouvre la Bibliothèque). */}
+      {/* En-tête : titre + recherche DIRECTE (livres + comptes) sur l'accueil. */}
       <header className="space-y-3 pb-1">
         <h1 className="text-xl font-black tracking-tight text-gray-950 dark:text-white flex items-center space-x-1.5">
           <Sparkles className="w-5 h-5 text-purple-600 fill-purple-600/15" />
           <span>Archipel Plume</span>
         </h1>
         <form
-          onSubmit={(e) => { e.preventDefault(); onOpenLibrary?.(searchText.trim() || undefined); }}
+          onSubmit={(e) => e.preventDefault()}
           className="relative"
         >
           <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -253,12 +253,107 @@ export default function HomeView({
             type="text"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            onFocus={() => onOpenLibrary?.()}
             placeholder="Rechercher un livre, un auteur, un genre…"
-            className="w-full bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-purple-500/40 rounded-2xl pl-10 pr-4 py-3 text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500/30 transition"
+            className="w-full bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-purple-500/40 rounded-2xl pl-10 pr-9 py-3 text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500/30 transition"
           />
+          {searchText && (
+            <button
+              type="button"
+              onClick={() => setSearchText('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label="Effacer"
+            >
+              <CloseIcon className="w-4 h-4" />
+            </button>
+          )}
         </form>
       </header>
+
+      {/* RÉSULTATS DE RECHERCHE (livres + comptes) — remplacent le fil tant
+          qu'une requête est saisie. */}
+      {(() => {
+        const q = searchText.trim().toLowerCase();
+        if (!q) return null;
+        const bookResults = publishedStories.filter((s) =>
+          s.title.toLowerCase().includes(q) ||
+          (s.authorName || '').toLowerCase().includes(q) ||
+          (s.genre || '').toLowerCase().includes(q) ||
+          (s.category || '').toLowerCase().includes(q) ||
+          (s.tags || []).some((t) => String(t).toLowerCase().includes(q))
+        ).slice(0, 30);
+        const userResults = allUsers.filter((u) =>
+          u && u.id !== currentUser.id &&
+          ((u.username || '').toLowerCase().includes(q) || (u.bio || '').toLowerCase().includes(q))
+        ).slice(0, 30);
+
+        return (
+          <div className="space-y-5 animate-fade-in">
+            {/* Comptes */}
+            {userResults.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5" /> Comptes ({userResults.length})
+                </h3>
+                <div className="space-y-1.5">
+                  {userResults.map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => onViewProfile?.(u.id)}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 hover:border-purple-500/30 transition text-left"
+                    >
+                      <img
+                        src={optimizedImage(u.avatar, 64, { square: true }) || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))}
+                        alt={u.username}
+                        className="w-10 h-10 rounded-full object-cover shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black text-gray-900 dark:text-white truncate flex items-center gap-1">
+                          {u.username}
+                          {u.isVerified && <VerifiedBadge size="sm" />}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">{u.bio || 'Membre de la communauté'}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Livres */}
+            {bookResults.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5" /> Livres ({bookResults.length})
+                </h3>
+                <div className="space-y-1.5">
+                  {bookResults.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onSelectStory(s)}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 hover:border-purple-500/30 transition text-left"
+                    >
+                      <img src={optimizedImage(s.cover, 120)} alt={s.title} className="w-10 h-14 rounded-lg object-cover shrink-0" referrerPolicy="no-referrer" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-serif font-black text-gray-900 dark:text-white truncate">{s.title}</p>
+                        <p className="text-[10px] text-gray-400 truncate">Par {s.authorName} · {s.genre}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {bookResults.length === 0 && userResults.length === 0 && (
+              <p className="text-center text-sm text-gray-400 py-12">Aucun résultat pour « {searchText.trim()} ».</p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Le fil d'accueil complet n'apparaît que HORS recherche. */}
+      {!searchText.trim() && (
+      <div className="space-y-6">
 
       {/* SECTION: À LA UNE (mises en avant par l'administration) */}
       {(() => {
@@ -829,6 +924,9 @@ export default function HomeView({
           })}
         </div>
       </section>
+
+      </div>
+      )}
 
       {/* SHARING MODAL - TIKTOK / SOCIAL SHARING SIMULATION */}
       {shareStory && (
