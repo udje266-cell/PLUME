@@ -756,30 +756,14 @@ export default function MessagesView({
     if (!container) return;
 
     if (switchedThread) {
-      // Nouvelle discussion : on epingle le bas pendant une courte fenetre
-      // (le temps que les images / stickers / notes vocales se mettent en page
-      // et decalent la hauteur). Le moindre geste de l'utilisateur (molette ou
-      // doigt) annule immediatement l'epinglage : plus de "scroll tout seul"
-      // ni de blocage.
-      let cancelled = false;
-      const deadline = performance.now() + 700;
-      let raf = 0;
-      const cancel = () => { cancelled = true; };
-      const loop = () => {
-        if (cancelled) return;
-        container.scrollTop = container.scrollHeight;
-        if (performance.now() < deadline) raf = requestAnimationFrame(loop);
-      };
-      container.addEventListener('wheel', cancel, { passive: true });
-      container.addEventListener('touchstart', cancel, { passive: true });
-      container.scrollTop = container.scrollHeight;
-      raf = requestAnimationFrame(loop);
-      return () => {
-        cancelled = true;
-        cancelAnimationFrame(raf);
-        container.removeEventListener('wheel', cancel);
-        container.removeEventListener('touchstart', cancel);
-      };
+      // Nouvelle discussion : on va au dernier message par quelques sauts
+      // DISCRETS (le temps que les images/stickers se mettent en page). Aucune
+      // boucle continue -> ca ne "bloque" jamais le defilement de l'utilisateur.
+      const stick = () => { container.scrollTop = container.scrollHeight; };
+      stick();
+      const t1 = window.setTimeout(stick, 60);
+      const t2 = window.setTimeout(stick, 240);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
 
     if (grew) {
@@ -976,7 +960,7 @@ export default function MessagesView({
         }`}>
           {/* Header with simply 'Messagerie' + sleek Action buttons */}
           <div className="px-5 py-2.5 bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center">
-            <h2 className="text-base font-serif font-black tracking-tight text-[#7C3AED] dark:text-white uppercase">
+            <h2 className="text-base font-serif font-black tracking-tight text-gray-900 dark:text-white uppercase">
               Messagerie
             </h2>
             
@@ -1037,7 +1021,7 @@ export default function MessagesView({
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
                 placeholder={activeTab === 'chats' ? "Rechercher une discussion solo" : "Rechercher un groupe de lecture"}
-                className="w-full bg-transparent text-xs text-[#7C3AED] dark:text-white placeholder-purple-300 dark:placeholder-gray-500 border-none outline-none focus:ring-0 p-0"
+                className="w-full bg-transparent text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border-none outline-none focus:ring-0 p-0"
               />
               {convSearch && (
                 <button onClick={() => setConvSearch('')} className="ml-2 shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Effacer">
@@ -1094,7 +1078,7 @@ export default function MessagesView({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-bold text-[#7C3AED] dark:text-white flex items-center">
+                      <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center">
                         {partner.username}
                         {partner.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                       </span>
@@ -1159,7 +1143,7 @@ export default function MessagesView({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-serif font-black text-[#7C3AED] dark:text-white truncate max-w-[140px] block">
+                      <span className="text-xs font-serif font-black text-gray-900 dark:text-white truncate max-w-[140px] block">
                         {group.name}
                       </span>
                       <span className="text-[9px] text-gray-400 font-mono">
@@ -1231,7 +1215,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header */}
-          <div className="px-4 py-3 bg-white dark:bg-black text-[#7C3AED] dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
+          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1240,7 +1224,7 @@ export default function MessagesView({
                   setActiveGroupId(null);
                   setActiveConversationId('');
                 }}
-                className="p-1.5 -ml-1.5 md:hidden hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full text-[#7C3AED] dark:text-white mr-1"
+                className="p-1.5 -ml-1.5 md:hidden hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full text-gray-900 dark:text-white mr-1"
                 title="Retour à la liste"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -1256,7 +1240,7 @@ export default function MessagesView({
                       : <BookOpen className="w-5 h-5" />}
                   </div>
                   <div className="text-left min-w-0">
-                    <h4 className="text-xs font-serif font-black text-[#7C3AED] dark:text-white leading-none truncate max-w-[190px]">
+                    <h4 className="text-xs font-serif font-black text-gray-900 dark:text-white leading-none truncate max-w-[190px]">
                       {activeGroup?.name}
                     </h4>
                     <p className="text-[9px] text-[#A78BFA] font-bold mt-1.5 truncate max-w-[190px]">
@@ -1283,12 +1267,12 @@ export default function MessagesView({
                   <div className="text-left min-w-0">
                     <h4
                       onClick={() => onViewProfile?.(interlocutor.id)}
-                      className="text-xs font-serif font-black text-[#7C3AED] dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
+                      className="text-xs font-serif font-black text-gray-900 dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
                     >
                       <span>{interlocutor.username}</span>
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
-                    <p className="text-[10px] text-purple-500/80 dark:text-white/80 font-bold mt-1.5">
+                    <p className="text-[10px] text-gray-500 dark:text-white/80 font-bold mt-1.5">
                       {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'}
                     </p>
                   </div>
@@ -1376,7 +1360,7 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <Users className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-[#7C3AED] dark:text-white text-sm">Groupe de lecture sécurisé</h5>
+                  <h5 className="font-bold text-gray-900 dark:text-white text-sm">Groupe de lecture sécurisé</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
                     Les membres de ce cercle de lecture peuvent tous échanger ici. Écrivez le premier message coopératif !
                   </p>
@@ -1394,7 +1378,7 @@ export default function MessagesView({
                       <div className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md text-right'
-                          : 'bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-bl-md border border-transparent text-left'
+                          : 'bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-bl-md border border-transparent text-left'
                       }`}>
 
                         {/* Group member identifier tag top */}
@@ -1450,7 +1434,7 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <MessageSquare className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-[#7C3AED] dark:text-white text-sm">Chiffrement de bout en bout</h5>
+                  <h5 className="font-bold text-gray-900 dark:text-white text-sm">Chiffrement de bout en bout</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
                     Vos conversations privées sont locales et chiffrées. Échangez avec le romancier {interlocutor.username}.
                   </p>
@@ -1530,7 +1514,7 @@ export default function MessagesView({
                         className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md'
-                          : 'bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-bl-md border border-transparent'
+                          : 'bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-bl-md border border-transparent'
                       }`}>
 
                         {/* Citation du message auquel on répond. */}
@@ -1573,9 +1557,9 @@ export default function MessagesView({
               {/* Indicateur « enregistre un audio… » (prioritaire) — privé ET groupe */}
               {(partnerRecording || groupRecordingName) && (
                 <div className="flex justify-start animate-fade-in mt-1">
-                  <div className="bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                  <div className="bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
                     <Mic className="w-4 h-4 text-red-500 animate-pulse" />
-                    <span className="text-[10px] text-purple-500 dark:text-zinc-300 italic">
+                    <span className="text-[10px] text-gray-700 dark:text-zinc-300 italic">
                       {activeGroupId ? `${groupRecordingName} enregistre un audio…` : `${interlocutor.username} enregistre un audio…`}
                     </span>
                   </div>
@@ -1584,9 +1568,9 @@ export default function MessagesView({
               {/* Indicateur « en train d'écrire » (plume qui écrit) — privé ET groupe */}
               {!partnerRecording && !groupRecordingName && (partnerTyping || (activeGroupId && groupTyping?.[activeGroupId])) && (
                 <div className="flex justify-start animate-fade-in mt-1">
-                  <div className="bg-gray-100 dark:bg-zinc-900 text-[#7C3AED] dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                  <div className="bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
                     <Feather className="w-4 h-4 text-purple-500 dark:text-purple-300 animate-feather-write" />
-                    <span className="text-[10px] text-purple-500 dark:text-zinc-300 italic">
+                    <span className="text-[10px] text-gray-700 dark:text-zinc-300 italic">
                       {activeGroupId ? `${groupTyping?.[activeGroupId]} écrit…` : `${interlocutor.username} écrit…`}
                     </span>
                   </div>
@@ -1741,7 +1725,7 @@ export default function MessagesView({
                       ref={messageInputRef}
                       rows={1}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                      className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-[#7C3AED] dark:text-white placeholder-purple-300 dark:placeholder-gray-500 leading-relaxed scrollbar-none"
+                      className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 leading-relaxed scrollbar-none"
                       value={messageText}
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
