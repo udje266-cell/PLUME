@@ -4,14 +4,13 @@
  */
 
 import React, { useState } from 'react';
-import { GENRES, CATEGORIES, AMBIANCES, FORMATS, LANGUAGES } from '../data';
+import { GENRES, CATEGORIES, AMBIANCES, FORMATS } from '../data';
 import Logo from './Logo';
 import {
   BookOpen,
   Layers,
   Sparkles,
   Clock,
-  Globe,
   Crown,
   HelpCircle,
   LogOut,
@@ -52,18 +51,6 @@ export default function LateralMenu({
     }));
   };
 
-  const handleLanguageChange = (language: string) => {
-    localStorage.setItem('plume_app_language', language);
-
-    window.dispatchEvent(
-      new CustomEvent('plume-language-change', {
-        detail: { language }
-      })
-    );
-
-    onFilterSelect('language', language);
-    onClose();
-  };
 
   const sections = [
     {
@@ -89,12 +76,6 @@ export default function LateralMenu({
       icon: <Clock className="w-4 h-4 text-purple-500" />,
       items: FORMATS,
       type: 'format' as const
-    },
-    {
-      title: 'Langues',
-      icon: <Globe className="w-4 h-4 text-purple-500" />,
-      items: LANGUAGES,
-      type: 'language' as const
     }
   ];
 
@@ -195,11 +176,6 @@ export default function LateralMenu({
                           key={item}
                           id={`filter-btn-${section.type}-${item.replace(/\s+/g, '-')}`}
                           onClick={() => {
-                            if (section.type === 'language') {
-                              handleLanguageChange(item);
-                              return;
-                            }
-
                             onFilterSelect(section.type, item);
                             onClose();
                           }}
@@ -247,11 +223,6 @@ export default function LateralMenu({
               <LogOut className="w-4 h-4" />
               <span>Déconnexion</span>
             </button>
-          </div>
-          <div className="mt-4 text-center">
-            <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 block">
-              PLUME Littéraire v1.0
-            </span>
           </div>
         </div>
       </aside>

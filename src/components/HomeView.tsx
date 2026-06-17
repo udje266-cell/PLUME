@@ -540,6 +540,10 @@ export default function HomeView({
                   </div>
                   <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-[10px] font-black text-gray-900 dark:text-white line-clamp-1 cursor-pointer">{story.title}</h4>
                   <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
+                  <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-400">
+                    <span className="flex items-center gap-0.5" title="Lectures"><Eye className="w-2.5 h-2.5 shrink-0" />{formatStat(story.reads || 0)}</span>
+                    <span className="flex items-center gap-0.5" title="J’aime"><Heart className="w-2.5 h-2.5 shrink-0" />{formatStat(story.likes || 0)}</span>
+                  </div>
                 </div>
               ))}
               {list.length === 0 && <p className="text-xs text-gray-400 py-6">Rien pour le moment.</p>}
