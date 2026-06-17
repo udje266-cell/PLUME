@@ -45,10 +45,13 @@ import { mergeServerStickers } from './utils/stickers';
 import { initPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
+import InstallPrompt from './components/InstallPrompt';
 import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
 import { applyStatusBarTheme } from './utils/native';
+import { ensureWebPush } from './utils/pwa';
+import { playNotificationSound, showAppNotification, setUnreadBadge, type NotifType } from './utils/notify';
 import { 
   getUserStats,
   saveUserStats,
@@ -690,6 +693,18 @@ export default function App() {
         return next;
       });
 
+      // Son + notification système selon le type. Les messages PRIVÉS sont déjà
+      // sonorisés par « new_message » → on évite le doublon ici.
+      const st = String(notification?.type || '').toUpperCase();
+      const nd = (notification?.data && typeof notification.data === 'object') ? notification.data : {};
+      let soundType: NotifType | null = null;
+      if (st === 'MESSAGE') { if (nd.groupId) soundType = 'message'; }
+      else soundType = 'reply';
+      if (soundType) {
+        playNotificationSound(soundType);
+        showAppNotification(soundType, { title: mapped.title || 'PLUME', body: mapped.message || '', conversationId: nd.conversationId, groupId: nd.groupId });
+      }
+
       const toastId = mapped.id;
       const nextToast: RealtimeNotificationToast = {
         id: toastId,
@@ -719,6 +734,17 @@ export default function App() {
       socket.emit('message_ack', { messageId: message.id, senderId: message.senderId });
 
       const isCurrentActive = message.conversationId === activeConversationIdRef.current;
+
+      // Son + notification système (si onglet en arrière-plan) pour un nouveau
+      // message reçu, sauf si on est déjà dans la conversation au premier plan.
+      if (!(isCurrentActive && document.visibilityState === 'visible')) {
+        playNotificationSound('message');
+        const senderName = message.sender?.username || message.senderName || 'Nouveau message';
+        const preview = typeof message.content === 'string'
+          ? (message.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : (message.content.startsWith('[sticker]') ? '🪶 Sticker' : message.content))
+          : 'Nouveau message';
+        showAppNotification('message', { title: senderName, body: preview, conversationId: message.conversationId });
+      }
 
       if (isCurrentActive) {
         // Mark as read immediately on the server
@@ -1324,8 +1350,17 @@ export default function App() {
     isAuthenticatedRef.current = isAuthenticated;
     localStorage.setItem('plume_is_logged_in', isAuthenticated ? 'true' : 'false');
     // Enregistre l'appareil pour les notifications push (natif uniquement).
-    if (isAuthenticated) initPushNotifications().catch(() => {});
+    if (isAuthenticated) {
+      initPushNotifications().catch(() => {});
+      // PWA web : abonne aux Web Push si la permission est déjà accordée.
+      ensureWebPush().catch(() => {});
+    }
   }, [isAuthenticated]);
+
+  // Badge de non-lus : titre d'onglet « (N) PLUME », pastille de favicon et
+  // badge d'icône de la PWA installée — synchronisés en temps réel.
+  const unreadMessagesTotal = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  useEffect(() => { setUnreadBadge(unreadMessagesTotal); }, [unreadMessagesTotal]);
 
   // Tap sur une notification push → ouvre la messagerie (et la conversation
   // concernee si fournie). Emis par utils/push via un CustomEvent.
@@ -2931,6 +2966,9 @@ export default function App() {
           Synchronisation… {pendingActions} action{pendingActions > 1 ? 's' : ''} en attente
         </div>
       )}
+
+      {/* Bandeau d'installation PWA (web uniquement, masqué si déjà installée). */}
+      <InstallPrompt />
 
       {/* Main Responsive Mobile-First Centered Container */}
       <div className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">

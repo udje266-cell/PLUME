@@ -3,6 +3,8 @@ import {createRoot} from 'react-dom/client';
 // Patche window.fetch (base URL du backend + token d'auth) AVANT tout appel API.
 import './utils/api';
 import { initNative } from './utils/native';
+import { initPWA } from './utils/pwa';
+import { primeAudio } from './utils/notify';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { reportClientError } from './utils/reportError';
@@ -10,6 +12,10 @@ import './index.css';
 
 // Initialisation native (splash, barre d'état, safe-areas) — no-op en web.
 initNative();
+// Initialisation PWA (Service Worker, install, Web Push) — no-op en natif.
+initPWA();
+// Débloque l'audio des notifications au 1er geste utilisateur.
+primeAudio();
 
 // Filet de sécurité GLOBAL : une erreur d'init de module ou une promesse rejetée
 // (hors rendu React) laisserait sinon le WebView sur l'écran noir du splash. Si

@@ -7,10 +7,17 @@
     <title>PLUME</title>
 
     <link rel="icon" type="image/png" href="/plume-icon.png" />
-    <link rel="apple-touch-icon" href="/plume-icon.png" />
+    <link rel="apple-touch-icon" href="/app-icon.png" />
 
+    <!-- PWA : installable sur ordinateur, Android et iPhone -->
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#7C3AED" />
     <meta name="description" content="PLUME - Plateforme de lecture et d'écriture" />
+    <!-- iOS : comportement « app » une fois ajoutée à l'écran d'accueil -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PLUME" />
   </head>
 
   <body>

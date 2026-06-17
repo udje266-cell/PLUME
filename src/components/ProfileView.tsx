@@ -51,6 +51,8 @@ import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { authHeaders } from '../utils/auth';
+import { getNotifSettings, saveNotifSettings, notificationPermission, requestNotificationPermission, playNotificationSound, type NotifSettings, type NotifType } from '../utils/notify';
+import { ensureWebPush } from '../utils/pwa';
 import {
   getUserStats,
   generateReaderAchievements,
@@ -456,6 +458,19 @@ const user = freshViewedUser || freshCurrentUser;
   const [notifAbonnes, setNotifAbonnes] = useState(true);
   const [notifTrophies, setNotifTrophies] = useState(true);
   const [notifDMs, setNotifDMs] = useState(true);
+
+  // Sons de notification + autorisation push (PWA / navigateur).
+  const [soundCfg, setSoundCfg] = useState<NotifSettings>(() => getNotifSettings());
+  const [pushPerm, setPushPerm] = useState<NotificationPermission>(notificationPermission());
+  const updateSound = (patch: Partial<NotifSettings>) => {
+    setSoundCfg((prev) => { const next = { ...prev, ...patch, types: { ...prev.types, ...(patch.types || {}) } }; saveNotifSettings(next); return next; });
+  };
+  const toggleSoundType = (k: NotifType, v: boolean) => updateSound({ types: { ...soundCfg.types, [k]: v } });
+  const enablePush = async () => {
+    const p = await requestNotificationPermission();
+    setPushPerm(p);
+    if (p === 'granted') ensureWebPush().catch(() => {});
+  };
 
   // Help topic sending state
   const [helpProblemText, setHelpProblemText] = useState('');
@@ -4135,6 +4150,58 @@ const user = freshViewedUser || freshCurrentUser;
                     <p className="text-[10px] text-zinc-400 font-serif leading-relaxed">
                       Paramétrez l'arrivée des alertes instantanées pour votre compte.
                     </p>
+
+                    {/* Autorisation push (navigateur / PWA) */}
+                    <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-0.5 min-w-0">
+                          <label className="text-[11.5px] font-bold text-gray-900 dark:text-white block">Notifications push</label>
+                          <span className="text-[9px] text-zinc-455 block">Recevoir les alertes même app fermée (web / PWA installée).</span>
+                        </div>
+                        {pushPerm === 'granted' ? (
+                          <span className="text-[10px] font-black uppercase tracking-wide text-emerald-600 shrink-0">Activées ✓</span>
+                        ) : pushPerm === 'denied' ? (
+                          <span className="text-[9px] text-zinc-400 shrink-0 text-right max-w-[120px]">Bloquées — autorise-les dans le navigateur</span>
+                        ) : (
+                          <button onClick={enablePush} className="shrink-0 text-[10px] font-black uppercase tracking-wide bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg">Activer</button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sons de notification */}
+                    <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl space-y-3.5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <label className="text-[11.5px] font-bold text-gray-900 dark:text-white block">Sons de notification</label>
+                          <span className="text-[9px] text-zinc-455 block">Active ou coupe les sons, et règle le volume.</span>
+                        </div>
+                        <input type="checkbox" checked={soundCfg.enabled} onChange={(e) => updateSound({ enabled: e.target.checked })} className="w-4 h-4 text-purple-650 rounded cursor-pointer" />
+                      </div>
+
+                      {soundCfg.enabled && (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] text-zinc-500 w-14 shrink-0">Volume</span>
+                            <input type="range" min={0} max={1} step={0.05} value={soundCfg.volume} onChange={(e) => updateSound({ volume: parseFloat(e.target.value) })} className="flex-1 accent-purple-600" />
+                          </div>
+
+                          {([
+                            { k: 'message', label: 'Message privé' },
+                            { k: 'reply', label: 'Réponse / commentaire' },
+                            { k: 'groupInvite', label: 'Invitation à un groupe' },
+                            { k: 'achievement', label: 'Succès débloqué' },
+                          ] as { k: NotifType; label: string }[]).map((row) => (
+                            <div key={row.k} className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-gray-700 dark:text-gray-200">{row.label}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button type="button" onClick={() => playNotificationSound(row.k, true)} className="text-[9px] font-bold uppercase tracking-wide text-purple-600 hover:text-purple-700 px-2 py-1 rounded-lg hover:bg-purple-500/10">Tester</button>
+                                <input type="checkbox" checked={soundCfg.types[row.k]} onChange={(e) => toggleSoundType(row.k, e.target.checked)} className="w-4 h-4 text-purple-650 rounded cursor-pointer" />
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
 
                     <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-purple-500/5 p-4 rounded-2xl space-y-4">
                       

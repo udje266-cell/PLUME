@@ -1061,6 +1061,12 @@ export async function createServerInstance() {
     }
   });
 
+  // Clé publique VAPID pour l'abonnement Web Push (PWA). Publique par nature ;
+  // renvoie null si le Web Push n'est pas configuré (le client n'insiste pas).
+  app.get('/api/push/vapid', (_req, res) => {
+    res.json({ key: process.env.VAPID_PUBLIC_KEY || null });
+  });
+
   app.post('/api/devices/unregister', requireAuth, async (req: any, res) => {
     try {
       const token = String(req.body?.token || '').trim();

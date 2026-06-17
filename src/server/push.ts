@@ -13,6 +13,33 @@
 
 import { prisma } from './prisma';
 
+/* --------------------------- Web Push (PWA / navigateur) --------------------- */
+// Activé si VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY sont définis. Génère une paire
+// avec : npx web-push generate-vapid-keys
+let webpushLib: any = null;
+let webpushReady = false;
+async function getWebPush(): Promise<any | null> {
+  if (webpushReady) return webpushLib;
+  webpushReady = true;
+  try {
+    const pub = process.env.VAPID_PUBLIC_KEY;
+    const priv = process.env.VAPID_PRIVATE_KEY;
+    if (!pub || !priv) {
+      console.log('[PUSH] Web Push non configuré (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absents).');
+      return null;
+    }
+    const mod = await import('web-push');
+    const wp = (mod as any).default || mod;
+    wp.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:contact@plume.app', pub, priv);
+    webpushLib = wp;
+    console.log('[PUSH] Web Push (VAPID) actif — notifications navigateur / iOS PWA.');
+    return wp;
+  } catch (error) {
+    console.error('[PUSH] Échec init Web Push :', error);
+    return null;
+  }
+}
+
 let messagingPromise: Promise<any | null> | null = null;
 
 async function getMessaging(): Promise<any | null> {
@@ -52,13 +79,46 @@ export interface PushPayload {
  * jamais bloquant. Les jetons invalides sont purgés automatiquement.
  */
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+  if (!userId) return;
+  const devices = await prisma.deviceToken.findMany({ where: { userId }, select: { token: true, platform: true } }).catch(() => [] as any[]);
+  if (!devices.length) return;
+
+  const webSubs = devices.filter((d: any) => d.platform === 'web');
+  const fcmTokens = devices.filter((d: any) => d.platform !== 'web').map((d: any) => d.token);
+
+  // 1) Web Push (PWA navigateur / iOS) — payload JSON lu par le Service Worker.
+  if (webSubs.length) {
+    try {
+      const wp = await getWebPush();
+      if (wp) {
+        const body = JSON.stringify({
+          title: payload.title,
+          body: payload.body,
+          conversationId: payload.data?.conversationId || '',
+          groupId: payload.data?.groupId || '',
+          type: payload.data?.type || '',
+        });
+        const stale: string[] = [];
+        await Promise.all(webSubs.map(async (d: any) => {
+          try {
+            await wp.sendNotification(JSON.parse(d.token), body, { TTL: 600 });
+          } catch (err: any) {
+            if (err?.statusCode === 404 || err?.statusCode === 410) stale.push(d.token);
+          }
+        }));
+        if (stale.length) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } }).catch(() => {});
+      }
+    } catch (error) {
+      console.error('[PUSH] Web Push erreur :', error);
+    }
+  }
+
+  // 2) FCM (Android natif) — inchangé.
+  if (!fcmTokens.length) return;
   try {
     const messaging = await getMessaging();
-    if (!messaging || !userId) return;
-
-    const devices = await prisma.deviceToken.findMany({ where: { userId }, select: { token: true } });
-    if (!devices.length) return;
-    const tokens = devices.map((d) => d.token);
+    if (!messaging) return;
+    const tokens = fcmTokens;
 
     // Les notifications de MESSAGE sont envoyées en DATA-ONLY : ainsi le service
     // natif Android (PlumeMessagingService) est invoqué même app fermée et peut
