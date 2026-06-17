@@ -418,6 +418,16 @@ export default function MessagesView({
   }, [videoStickerSrc, videoTrimStart, videoTrimEnd]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  // Ajuste la hauteur du champ message (retour à la ligne automatique, jusqu'à
+  // ~5 lignes puis défilement) — comportement type WhatsApp.
+  const autoSizeMessageInput = () => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  };
+  useEffect(() => { autoSizeMessageInput(); }, [messageText]);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
@@ -1392,7 +1402,7 @@ export default function MessagesView({
 
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {/* Standard message input bar */}
-              <form onSubmit={handleSend} className="flex items-center space-x-1.5">
+              <form onSubmit={handleSend} className="flex items-end space-x-1.5">
                 {isRecording || uploadingVoice ? (
                   /* Barre d'enregistrement vocal (privé ET groupe). */
                   <div className="flex-1 flex items-center gap-2 bg-white dark:bg-zinc-800 rounded-xl px-3 py-2 border border-red-500/30">
@@ -1432,14 +1442,22 @@ export default function MessagesView({
                       <Sticker className="w-5 h-5 shrink-0" />
                     </button>
 
-                    <input
+                    <textarea
                       id="message-input-chat-box"
-                      type="text"
+                      ref={messageInputRef}
+                      rows={1}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                      className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                      className="flex-1 min-w-0 resize-none bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-2xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400 leading-snug scrollbar-none"
                       value={messageText}
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
+                      onKeyDown={(e) => {
+                        // Entrée = envoyer ; Maj+Entrée = nouvelle ligne.
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend(e as any);
+                        }
+                      }}
                     />
 
                     {messageText.trim() ? (

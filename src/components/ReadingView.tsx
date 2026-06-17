@@ -43,6 +43,41 @@ import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 
+// ── Rendu du contenu de chapitre avec mise en forme inline (gras/italique/
+// souligne). Le contenu peut etre du HTML leger (nouveaux chapitres ecrits dans
+// l'editeur WYSIWYG) ou du texte simple (anciens chapitres). On NE GARDE que les
+// balises inline sures pour eviter toute injection.
+function escapeText(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function sanitizeInlineHtml(html: string): string {
+  return html.replace(/<(\/?)([a-zA-Z0-9]+)[^>]*>/g, (_m, slash, tag) => {
+    const t = String(tag).toLowerCase();
+    return ['b', 'strong', 'i', 'em', 'u', 'br'].includes(t) ? `<${slash}${t}>` : '';
+  });
+}
+function plainFromHtml(html: string): string {
+  if (typeof document === 'undefined') return html.replace(/<[^>]+>/g, '');
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return d.textContent || '';
+}
+function contentToParagraphs(content: string): { html: string; text: string }[] {
+  if (!content) return [];
+  const hasHtml = /<\/?(b|strong|i|em|u|div|p|br|span|hr)\b/i.test(content);
+  if (!hasHtml) {
+    return content.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean)
+      .map((t) => ({ html: escapeText(t).replace(/\n/g, '<br>'), text: t }));
+  }
+  const s = content
+    .replace(/<\/(div|p)>/gi, '\n')
+    .replace(/<(div|p)[^>]*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<hr\s*\/?>/gi, '\n* * *\n');
+  return s.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+    .map((l) => ({ html: sanitizeInlineHtml(l), text: plainFromHtml(l).trim() }));
+}
+
 interface ReadingViewProps {
   story: Story;
   onBack: () => void;
@@ -895,7 +930,7 @@ export default function ReadingView({
   }, [isCinemaMode]);
 
   // Split chapter text into readable paragraphs
-  const paragraphs = activeChapter ? activeChapter.content.split('\n\n').filter(p => p.trim()) : [];
+  const paragraphs = activeChapter ? contentToParagraphs(activeChapter.content) : [];
 
   if (!story.chapters || story.chapters.length === 0) {
     return (
@@ -1759,7 +1794,7 @@ export default function ReadingView({
                 <span>•</span>
                 <span>{paragraphs.length} Paragraphes</span>
                 <span>•</span>
-                <span>{Math.round(activeChapter.content.length / 5)} mots</span>
+                <span>{Math.round(plainFromHtml(activeChapter.content).length / 5)} mots</span>
                 <span>•</span>
                 <span>{story.reads || 0} lectures</span>
                 <span>•</span>
@@ -1774,7 +1809,8 @@ export default function ReadingView({
             className={`text-left select-text ${fontStyleClasses[fontStyle]} ${lineSpacingClasses[lineSpacing]}`}
             style={{ fontSize: `${fontSize}px` }}
           >
-            {paragraphs.map((pText, pIdx) => {
+            {paragraphs.map((para, pIdx) => {
+              const pText = para.text;
               const capKey = `${activeChapter.id}_p_${pIdx}`;
               const isPFocus = activeParagraphIndex === pIdx;
               const plikes = passageLikes[capKey] || 0;
@@ -1848,9 +1884,10 @@ export default function ReadingView({
                     </div>
                   )}
 
-                  <p className="indent-4 leading-relaxed font-serif whitespace-pre-wrap">
-                    {pText}
-                  </p>
+                  <p
+                    className="indent-4 leading-relaxed font-serif whitespace-pre-wrap break-words"
+                    dangerouslySetInnerHTML={{ __html: para.html }}
+                  />
                   
                   {/* Discreet indicator if this is a highly liked passage */}
                   {!isImmersive && !isCinemaMode && plikes >= 10 && (

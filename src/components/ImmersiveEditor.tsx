@@ -2,18 +2,17 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Editeur d'ecriture IMMERSIF (mobile-first) :
- *  - texte plein ecran (heros), chrome fin auto-masque ;
+ * Editeur d'ecriture IMMERSIF (mobile-first), WYSIWYG :
+ *  - zone d'ecriture contentEditable -> gras / italique / souligne VISIBLES en
+ *    direct (comme WhatsApp), stockage en HTML leger (<b>/<i>/<u>) ;
  *  - auto-sauvegarde INVISIBLE (debounce + brouillon local + serveur) + bouton
- *    de sauvegarde MANUELLE ; toute sauvegarde utilise les valeurs courantes
- *    (refs) pour ne JAMAIS perdre les dernieres modifs a la sortie ;
- *  - barre d'outils minimale au-dessus du clavier (Markdown leger) ;
- *  - mode immersion sans distraction ;
- *  - navigation entre chapitres par swipe horizontal.
+ *    de sauvegarde MANUELLE ; toute sauvegarde lit les valeurs courantes (refs)
+ *    pour ne jamais perdre les dernieres modifs a la sortie ;
+ *  - mode immersion sans distraction ; navigation entre chapitres par swipe.
  */
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Check, Loader2, Bold, Italic, Quote, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save } from 'lucide-react';
 import { Story, Chapter } from '../types';
 
 interface ImmersiveEditorProps {
@@ -31,6 +30,12 @@ interface ImmersiveEditorProps {
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved';
 
 const DRAFT_KEY = (storyId: string, chId: string) => `plume_chapter_draft_${storyId}_${chId}`;
+
+function plainTextOf(html: string): string {
+  const d = document.createElement('div');
+  d.innerHTML = html || '';
+  return (d.textContent || '').trim();
+}
 
 function useKeyboardHeight() {
   const [h, setH] = useState(0);
@@ -54,33 +59,38 @@ export default function ImmersiveEditor({
 }: ImmersiveEditorProps) {
   const isNew = !chapter;
   const [title, setTitle] = useState(chapter ? chapter.title : `Chapitre ${story.chapters.length + 1} : `);
-  const [content, setContent] = useState(chapter ? chapter.content : '');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [chromeVisible, setChromeVisible] = useState(true);
   const [showSommaire, setShowSommaire] = useState(false);
+  const [wordCount, setWordCount] = useState(() => plainTextOf(chapter?.content || '').split(/\s+/).filter(Boolean).length);
 
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
   const idleRef = useRef<any>(null);
   const createdIdRef = useRef<string | null>(chapter?.id || null);
   const lastSavedRef = useRef<string>(`${chapter?.title || ''} ${chapter?.content || ''}`);
-  const history = useRef<string[]>([content]);
-  const histPos = useRef<number>(0);
 
   const keyboardH = useKeyboardHeight();
-  const wordCount = useMemo(() => content.trim().split(/\s+/).filter(Boolean).length, [content]);
 
+  // Source de verite du contenu : le HTML de la zone editable (non controlee
+  // par React pour eviter les sauts de curseur). Title controle en state.
   const titleRef = useRef(title);
-  const contentRef = useRef(content);
   titleRef.current = title;
-  contentRef.current = content;
+  const contentRef = useRef<string>(chapter?.content || '');
+
+  // Initialise la zone editable une seule fois (au montage / changement chapitre).
+  useEffect(() => {
+    if (editorRef.current) editorRef.current.innerHTML = chapter?.content || '';
+    contentRef.current = chapter?.content || '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const persist = useCallback((opts?: { force?: boolean }) => {
     const nextTitle = titleRef.current;
     const nextContent = contentRef.current;
     const sig = `${nextTitle} ${nextContent}`;
     if (!(opts && opts.force) && sig === lastSavedRef.current) return;
-    if (!createdIdRef.current && !nextContent.trim()) return;
+    if (!createdIdRef.current && !plainTextOf(nextContent)) return; // pas de chapitre fantome
 
     setSaveState('saving');
     try {
@@ -118,15 +128,15 @@ export default function ImmersiveEditor({
     persistRef.current({ force: true });
   };
 
-  useEffect(() => {
+  // Planifie une sauvegarde + brouillon local (appele a chaque frappe/edition).
+  const scheduleSave = useCallback(() => {
     setSaveState((st) => (st === 'saved' ? st : 'dirty'));
-    try { localStorage.setItem(DRAFT_KEY(story.id, createdIdRef.current || 'new'), JSON.stringify({ title, content, at: Date.now() })); } catch { /* ignore */ }
+    try { localStorage.setItem(DRAFT_KEY(story.id, createdIdRef.current || 'new'), JSON.stringify({ title: titleRef.current, content: contentRef.current, at: Date.now() })); } catch { /* ignore */ }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => persistRef.current(), 800);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, content]);
+  }, [story.id]);
 
+  // Sauvegarde forcee a l'arriere-plan + FLUSH au demontage (valeurs courantes).
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') persistRef.current(); };
     document.addEventListener('visibilitychange', onHide);
@@ -144,38 +154,31 @@ export default function ImmersiveEditor({
   }, []);
   useEffect(() => { wakeChrome(); return () => { if (idleRef.current) clearTimeout(idleRef.current); }; }, [wakeChrome]);
 
-  const pushHistory = (val: string) => {
-    const arr = history.current.slice(0, histPos.current + 1);
-    arr.push(val);
-    history.current = arr.slice(-120);
-    histPos.current = history.current.length - 1;
-  };
-  const histTimer = useRef<any>(null);
-  const onContentChange = (val: string) => {
-    setContent(val);
+  // Edition : on lit le HTML courant, met a jour refs + compteur, planifie save.
+  const onEditorInput = () => {
+    const html = editorRef.current?.innerHTML || '';
+    contentRef.current = html;
+    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    scheduleSave();
     wakeChrome();
-    if (histTimer.current) clearTimeout(histTimer.current);
-    histTimer.current = setTimeout(() => pushHistory(val), 400);
-  };
-  const undo = () => { if (histPos.current > 0) { histPos.current -= 1; setContent(history.current[histPos.current]); } };
-  const redo = () => { if (histPos.current < history.current.length - 1) { histPos.current += 1; setContent(history.current[histPos.current]); } };
-
-  const surround = (before: string, after = before) => {
-    const ta = taRef.current; if (!ta) return;
-    const s = ta.selectionStart, e = ta.selectionEnd;
-    const sel = content.slice(s, e) || 'texte';
-    const next = content.slice(0, s) + before + sel + after + content.slice(e);
-    onContentChange(next);
-    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = s + before.length; ta.selectionEnd = s + before.length + sel.length; });
-  };
-  const insertBlock = (text: string) => {
-    const ta = taRef.current; if (!ta) return;
-    const s = ta.selectionStart;
-    const next = content.slice(0, s) + text + content.slice(s);
-    onContentChange(next);
-    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = s + text.length; });
   };
 
+  // Mise en forme WYSIWYG (gras/italique/souligne) via execCommand.
+  const applyFormat = (cmd: 'bold' | 'italic' | 'underline') => {
+    editorRef.current?.focus();
+    try { document.execCommand('styleWithCSS', false, 'false'); } catch { /* ignore */ }
+    document.execCommand(cmd, false);
+    onEditorInput();
+  };
+  const insertSeparator = () => {
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, '<div>* * *</div><div><br></div>');
+    onEditorInput();
+  };
+  const doUndo = () => { editorRef.current?.focus(); document.execCommand('undo'); onEditorInput(); };
+  const doRedo = () => { editorRef.current?.focus(); document.execCommand('redo'); onEditorInput(); };
+
+  // Navigation entre chapitres (swipe horizontal).
   const idx = isNew ? story.chapters.length : story.chapters.findIndex((c) => c.id === createdIdRef.current);
   const goRelative = (dir: -1 | 1) => {
     persistNow();
@@ -189,8 +192,8 @@ export default function ImmersiveEditor({
     if (touchX.current == null) return;
     const dx = e.changedTouches[0].clientX - touchX.current;
     touchX.current = null;
-    const ta = taRef.current;
-    if (ta && ta.selectionStart !== ta.selectionEnd) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return; // ne pas naviguer pendant une selection
     if (Math.abs(dx) > window.innerWidth * 0.32) goRelative(dx < 0 ? 1 : -1);
   };
 
@@ -200,24 +203,24 @@ export default function ImmersiveEditor({
   return (
     <div className="fixed inset-0 z-[100] bg-[#FBFAF7] dark:bg-[#15130F] flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <div className={`shrink-0 px-3 h-12 flex items-center gap-1.5 transition-all duration-200 ${chromeVisible ? 'opacity-100' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
-        <button onClick={() => { persistNow(); onClose(); }} className="p-1.5 -ml-1 text-gray-500 dark:text-gray-300" aria-label="Retour">
+        <button onClick={() => { persistNow(); onClose(); }} className="p-1.5 -ml-1 text-gray-500 dark:text-gray-300 shrink-0" aria-label="Retour">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <input
           value={title}
-          onChange={(e) => { setTitle(e.target.value); wakeChrome(); }}
+          onChange={(e) => { setTitle(e.target.value); scheduleSave(); wakeChrome(); }}
           placeholder="Titre du chapitre"
           className="flex-1 min-w-0 bg-transparent text-sm font-serif font-black text-gray-900 dark:text-gray-100 focus:outline-none truncate"
         />
-        <span className="text-gray-400 w-5 flex justify-center" title={saveState === 'saving' ? 'Sauvegarde...' : 'A jour'}>
+        <span className="text-gray-400 w-5 flex justify-center shrink-0" title={saveState === 'saving' ? 'Sauvegarde...' : 'A jour'}>
           {saveState === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" />
             : saveState === 'saved' ? <Check className="w-4 h-4 text-emerald-500" />
             : saveState === 'dirty' ? <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-zinc-600 block" /> : null}
         </span>
-        <button onClick={saveManually} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-white bg-purple-600 hover:bg-purple-700 px-2.5 py-1.5 rounded-lg" aria-label="Enregistrer">
+        <button onClick={saveManually} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-white bg-purple-600 hover:bg-purple-700 px-2.5 py-1.5 rounded-lg shrink-0" aria-label="Enregistrer">
           <Save className="w-3.5 h-3.5" />
         </button>
-        <button onClick={() => setShowSommaire(true)} className="p-1.5 text-gray-500 dark:text-gray-300" aria-label="Sommaire"><List className="w-5 h-5" /></button>
+        <button onClick={() => setShowSommaire(true)} className="p-1.5 text-gray-500 dark:text-gray-300 shrink-0" aria-label="Sommaire"><List className="w-5 h-5" /></button>
       </div>
 
       <div
@@ -226,19 +229,21 @@ export default function ImmersiveEditor({
         onTouchEnd={onTouchEnd}
         onClick={() => { if (!chromeVisible) wakeChrome(); }}
       >
-        <textarea
-          ref={taRef}
-          value={content}
-          onChange={(e) => onContentChange(e.target.value)}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={onEditorInput}
           onFocus={wakeChrome}
-          placeholder="Commence ton chapitre..."
-          spellCheck={true}
-          className={`w-full min-h-full bg-transparent resize-none focus:outline-none ${familyClass} text-[#1F2421] dark:text-[#E9E5DC] placeholder-gray-400`}
+          data-placeholder="Commence ton chapitre..."
+          className={`plume-editor w-full min-h-full bg-transparent focus:outline-none break-words ${familyClass} text-[#1F2421] dark:text-[#E9E5DC]`}
           style={{
             fontSize: sizeStyle,
             lineHeight: 1.65,
             padding: `8px 20px ${Math.max(120, keyboardH + 80)}px 20px`,
             caretColor: '#7C3AED',
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
           }}
         />
       </div>
@@ -247,13 +252,13 @@ export default function ImmersiveEditor({
         className={`shrink-0 bg-white/95 dark:bg-[#0E0E14]/95 backdrop-blur border-t border-gray-100 dark:border-zinc-800 flex items-center justify-around px-2 transition-opacity ${chromeVisible || keyboardH > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ height: 48, marginBottom: keyboardH, paddingBottom: keyboardH ? 0 : 'env(safe-area-inset-bottom)' }}
       >
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => surround('**')} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Gras"><Bold className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => surround('*')} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Italique"><Italic className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => insertBlock('\n> ')} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Citation"><Quote className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => insertBlock('\n\n* * *\n\n')} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Separateur"><Minus className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={undo} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Annuler"><Undo2 className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={redo} className="p-2 text-gray-600 dark:text-gray-300" aria-label="Retablir"><Redo2 className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => { taRef.current?.blur(); setChromeVisible(false); }} className="p-2 text-purple-600" aria-label="Immersion"><Maximize2 className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('bold')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Gras"><Bold className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('italic')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Italique"><Italic className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('underline')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Souligne"><Underline className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={insertSeparator} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Separateur"><Minus className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={doUndo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Annuler"><Undo2 className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={doRedo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Retablir"><Redo2 className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => { editorRef.current?.blur(); setChromeVisible(false); }} className="p-2 text-purple-600" aria-label="Immersion"><Maximize2 className="w-4 h-4" /></button>
       </div>
 
       {showSommaire && (

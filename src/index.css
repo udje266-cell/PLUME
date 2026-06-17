@@ -111,3 +111,11 @@ img, video, canvas, svg {
   background: rgba(124, 58, 237, 0.4);
 }
 
+
+/* Placeholder de la zone d'ecriture contentEditable (editeur immersif). */
+.plume-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+.plume-editor:focus { outline: none; }
