@@ -533,6 +533,8 @@ export default function MessagesView({
   useEffect(() => { autoSizeMessageInput(); }, [messageText]);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  // Recherche dans la liste des discussions / groupes.
+  const [convSearch, setConvSearch] = useState('');
 
   // Modals state
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
@@ -930,7 +932,7 @@ export default function MessagesView({
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-0 sm:px-6 lg:px-8 pt-1 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
+    <div className="max-w-6xl mx-auto px-0 sm:px-6 lg:px-8 pt-0 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
 
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
       <div className="bg-gray-50 dark:bg-black md:border md:border-gray-200/50 md:dark:border-purple-900/15 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[580px] md:h-[700px] md:shadow-2xl relative z-10">
@@ -940,7 +942,7 @@ export default function MessagesView({
           mobileShowThread ? 'hidden md:flex' : 'flex'
         }`}>
           {/* Header with simply 'Messagerie' + sleek Action buttons */}
-          <div className="px-5 py-4 bg-gray-100/75 dark:bg-black/60 border-b border-gray-200/40 dark:border-purple-900/15 flex justify-between items-center">
+          <div className="px-5 py-2.5 bg-gray-100/75 dark:bg-black/60 border-b border-gray-200/40 dark:border-purple-900/15 flex justify-between items-center">
             <h2 className="text-base font-serif font-black tracking-tight text-gray-900 dark:text-white uppercase">
               Messagerie
             </h2>
@@ -999,10 +1001,16 @@ export default function MessagesView({
               <input
                 id="whatsapp-search-input"
                 type="text"
+                value={convSearch}
+                onChange={(e) => setConvSearch(e.target.value)}
                 placeholder={activeTab === 'chats' ? "Rechercher une discussion solo" : "Rechercher un groupe de lecture"}
                 className="w-full bg-transparent text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 border-none outline-none focus:ring-0 p-0"
-                disabled
               />
+              {convSearch && (
+                <button onClick={() => setConvSearch('')} className="ml-2 shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Effacer">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1010,7 +1018,14 @@ export default function MessagesView({
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-800/40 bg-white dark:bg-zinc-900">
             
             {/* Solo Discussions Deck View */}
-            {activeTab === 'chats' && conversations.map((conv) => {
+            {activeTab === 'chats' && conversations.filter((conv) => {
+              const q = convSearch.trim().toLowerCase();
+              if (!q) return true;
+              const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
+              const last = conv.messages[conv.messages.length - 1];
+              return (partner.username || '').toLowerCase().includes(q)
+                || (!!last && !last.deletedForEveryone && !parseSticker(last.content) && (last.content || '').toLowerCase().includes(q));
+            }).map((conv) => {
               const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
               const isActive = conv.id === activeConversationId && !activeGroupId;
               const lastMsg = conv.messages[conv.messages.length - 1];
@@ -1082,7 +1097,10 @@ export default function MessagesView({
             })}
 
             {/* Reading Groups Deck View */}
-            {activeTab === 'groups' && groups.map((group) => {
+            {activeTab === 'groups' && groups.filter((group) => {
+              const q = convSearch.trim().toLowerCase();
+              return !q || (group.name || '').toLowerCase().includes(q);
+            }).map((group) => {
               const isGroupActive = activeGroupId === group.id;
               
               return (
