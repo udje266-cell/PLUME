@@ -487,6 +487,9 @@ export default function MessagesView({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastMsgCountRef = useRef(0);
+  const lastThreadKeyRef = useRef<string | null>(null);
 
   // Répondre / modifier / supprimer (messages privés, façon WhatsApp).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -597,11 +600,6 @@ export default function MessagesView({
   const partnerRecording = !activeGroupId && !!interlocutor && (recordingUserIds?.has(interlocutor.id) ?? false);
   const groupRecordingName = activeGroupId ? groupRecording?.[activeGroupId] : undefined;
 
-  // Auto-scroll to bottom of discussion
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversations, groupMessages, activeConversationId, activeGroupId]);
-
   // If conversation changes, open thread on mobile
   useEffect(() => {
     if (activeConversationId) {
@@ -692,6 +690,32 @@ export default function MessagesView({
   const activeGroupMessages = groupMessages.filter(
     m => m.groupId === activeGroupId
   ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Auto-scroll intelligent : on descend tout en bas quand on ouvre une
+  // discussion ou qu'un NOUVEAU message arrive ET que l'utilisateur est deja
+  // proche du bas. Sinon on le laisse lire l'historique sans le faire sauter.
+  const activeThreadCount = activeGroupId ? activeGroupMessages.length : threadMessages.length;
+  const threadKey = activeGroupId ? `g:${activeGroupId}` : `c:${activeConversationId ?? ''}`;
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const end = messagesEndRef.current;
+    const switchedThread = lastThreadKeyRef.current !== threadKey;
+    const grew = activeThreadCount > lastMsgCountRef.current;
+
+    if (switchedThread) {
+      // Nouvelle discussion : aller en bas immediatement, sans animation.
+      end?.scrollIntoView({ behavior: 'auto' });
+    } else if (grew && container) {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      // On ne ramene en bas que si l'utilisateur y etait deja (< 160px).
+      if (distanceFromBottom < 160) {
+        end?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    lastThreadKeyRef.current = threadKey;
+    lastMsgCountRef.current = activeThreadCount;
+  }, [threadKey, activeThreadCount]);
 
   // Submit send message
   const handleSend = (e: React.FormEvent) => {
@@ -1251,7 +1275,7 @@ export default function MessagesView({
           })()}
 
           {/* ACTIVE CHAT WORKSPACE AREA */}
-          <div className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5" style={chatBgStyle}>
+          <div ref={scrollContainerRef} className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5" style={chatBgStyle}>
             {activeGroupId ? (
               // Group Thread messaging
               activeGroupMessages.length === 0 ? (
