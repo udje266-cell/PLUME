@@ -275,17 +275,14 @@ export default function App() {
       if (!res.ok) return;
       const data: ReadingGroup[] = await res.json();
       setGroups(data);
-      const all: GroupMessage[] = [];
-      for (const g of data) {
+      // Messages des groupes chargés EN PARALLELE (au lieu d'une boucle séquentielle).
+      const lists = await Promise.all(data.map(async (g) => {
         try {
           const mres = await fetch(`/api/groups/${g.id}/messages`, { headers: authHeaders() });
-          if (mres.ok) {
-            const ms: GroupMessage[] = await mres.json();
-            all.push(...ms);
-          }
-        } catch { /* ignore par groupe */ }
-      }
-      setGroupMessages(all);
+          return mres.ok ? (await mres.json() as GroupMessage[]) : [];
+        } catch { return []; }
+      }));
+      setGroupMessages(lists.flat());
     } catch (e) {
       console.error('[PLUME] Erreur chargement groupes :', e);
     }
@@ -2198,7 +2195,9 @@ export default function App() {
   const autoRefresh = React.useCallback((force = false) => {
     if (!isAuthenticated || !currentUser?.id) return;
     const now = Date.now();
-    if (!force && now - lastAutoRefreshRef.current < 1000) return;
+    // Anti-rebond : evite de re-fetcher tout a chaque micro-changement d'onglet,
+    // tout en gardant les donnees fraiches (8 s). Le retour au 1er plan force.
+    if (!force && now - lastAutoRefreshRef.current < 8000) return;
     lastAutoRefreshRef.current = now;
     handleGlobalRefresh();
     fetchGroups();

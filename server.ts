@@ -730,6 +730,12 @@ export async function createServerInstance() {
     max: 20,
     message: 'Trop de rapports d’erreur.',
   });
+  // Recherche publique : borne le debit pour eviter l'enumeration / le spam.
+  const searchLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 40,
+    message: 'Trop de recherches. Patiente quelques secondes.',
+  });
 
   function createToken(userId: string) {
     return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
@@ -1583,6 +1589,11 @@ export async function createServerInstance() {
         if (taken) return res.status(409).json({ error: 'Cet e-mail est déjà utilisé par un autre compte.' });
       }
 
+      // Borne la longueur de la bio (anti-bloat des objets utilisateur).
+      if (typeof user.bio === 'string' && user.bio.length > 500) {
+        return res.status(400).json({ error: 'Bio trop longue (500 caractères maximum).' });
+      }
+
       // Champs librement modifiables par le propriétaire du compte.
       // (pseudo/e-mail ajoutés conditionnellement plus bas, avec horodatage.)
       const data: any = {
@@ -1814,7 +1825,7 @@ export async function createServerInstance() {
   // La recherche utilise unaccent(lower(...)) pour être insensible à la casse ET
   // aux accents (« eveil » trouve « Éveil »). On récupère d'abord les IDs en SQL
   // brut, puis on recharge via Prisma pour conserver les includes/sérialisation.
-  app.get('/api/search/users', async (req, res) => {
+  app.get('/api/search/users', searchLimiter, async (req, res) => {
     try {
       const q = String(req.query.q || '').trim();
       if (!q) return res.json([]);
@@ -1837,7 +1848,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.get('/api/search/stories', async (req, res) => {
+  app.get('/api/search/stories', searchLimiter, async (req, res) => {
     try {
       const q = String(req.query.q || '').trim();
       if (!q) return res.json([]);

@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X } from 'lucide-react';
+import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag } from 'lucide-react';
 import { Story, Chapter } from '../types';
 
 interface ImmersiveEditorProps {
@@ -180,6 +180,92 @@ function paragraphsToEditorHtml(paras: string[]): string {
   return paras.map((p) => `<div>${escapeHtml(p)}</div>`).join('<div><br></div>');
 }
 
+/* ===========================================================================
+   MINI-IA — Nettoyage TYPOGRAPHIQUE & PONCTUATION (francais), deterministe.
+   Corrige les espaces, la ponctuation, les majuscules de debut de phrase, les
+   apostrophes/points de suspension, sans rien inventer.
+   =========================================================================== */
+function cleanFrenchTypography(input: string): { text: string; changes: number } {
+  const before = input;
+  // Travaille ligne par ligne pour preserver les paragraphes.
+  const lines = input.replace(/\r/g, '').split('\n');
+  const cleanedLines = lines.map((line) => {
+    let s = line;
+    // Espaces multiples -> un seul ; supprime espaces en bord de ligne.
+    s = s.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/g, '').replace(/^[ \t]+/g, '');
+    if (!s) return s;
+    // Apostrophe droite -> typographique.
+    s = s.replace(/'/g, '’');
+    // Points de suspension : "..." -> "…" ; ".. " ou ".... " normalises.
+    s = s.replace(/\.{3,}/g, '…');
+    // Pas d'espace AVANT , . ) … et apostrophe.
+    s = s.replace(/\s+([,.\)…])/g, '$1');
+    // Un espace APRES une fin de phrase (. ! ? …) collee au mot suivant
+    // (sans casser les decimales : le lookahead exige une LETTRE).
+    s = s.replace(/([.!?…])(?=[A-Za-zÀ-ÿ«“(])/g, '$1 ');
+    // Un espace APRES , ; : ) si colle a un mot.
+    s = s.replace(/([,;:\)])(?=[A-Za-zÀ-ÿ«“(])/g, '$1 ');
+    // Pas d'espace juste apres une parenthese/guillemet ouvrant.
+    s = s.replace(/([(«“])\s+/g, '$1');
+    // Espace insecable AVANT ; : ! ? et » (typographie FR), si precede d'un mot.
+    s = s.replace(/\s*([;:!?»])/g, ' $1').replace(/ +([;:!?»])/g, ' $1');
+    // Espace insecable APRES « ouvrant.
+    s = s.replace(/«\s*/g, '« ');
+    // Recolle les espaces multiples eventuels reintroduits.
+    s = s.replace(/ {2,}/g, ' ').trimEnd();
+    return s;
+  });
+  let text = cleanedLines.join('\n').replace(/\n{3,}/g, '\n\n');
+
+  // Majuscule en debut de phrase (apres . ! ? … et en tout debut).
+  text = text.replace(/(^|[.!?…]\s+|\n\s*)([a-zà-ÿ])/g, (_m, p1, p2) => p1 + p2.toUpperCase());
+
+  // Compte approximatif des corrections (difference de caracteres impactes).
+  let changes = 0;
+  const n = Math.min(before.length, text.length);
+  for (let i = 0; i < n; i++) if (before[i] !== text[i]) changes++;
+  changes += Math.abs(before.length - text.length);
+  return { text, changes };
+}
+
+/* ===========================================================================
+   MINI-IA — Suggestions de TITRE de chapitre a partir du contenu.
+   =========================================================================== */
+const FR_STOPWORDS = new Set([
+  'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'au', 'aux', 'et', 'ou', 'mais',
+  'donc', 'or', 'ni', 'car', 'que', 'qui', 'quoi', 'dont', 'ou', 'a', 'à', 'dans',
+  'en', 'par', 'pour', 'sur', 'sous', 'avec', 'sans', 'chez', 'vers', 'entre', 'il',
+  'elle', 'ils', 'elles', 'je', 'tu', 'nous', 'vous', 'on', 'se', 'sa', 'son', 'ses',
+  'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'leur', 'leurs', 'ce', 'cet', 'cette', 'ces',
+  'est', 'sont', 'etait', 'était', 'etre', 'être', 'avoir', 'avait', 'ne', 'pas', 'plus',
+  'tout', 'tous', 'toute', 'toutes', 'comme', 'si', 'y', 'lui', 'me', 'te', 'cela', 'ca', 'ça',
+]);
+
+function suggestChapterTitles(input: string, fallbackIndex: number): string[] {
+  const text = input.replace(/\s+/g, ' ').trim();
+  const out: string[] = [];
+  if (text) {
+    // 1) Debut de la premiere phrase (max ~7 mots).
+    const firstSentence = (text.split(/[.!?…]/)[0] || '').trim();
+    if (firstSentence) {
+      const words = firstSentence.split(' ').slice(0, 7).join(' ');
+      out.push(words.charAt(0).toUpperCase() + words.slice(1));
+    }
+    // 2) Mots-cles les plus frequents (hors mots-outils).
+    const freq = new Map<string, number>();
+    for (const raw of text.toLowerCase().split(/[^a-zà-ÿ]+/)) {
+      if (raw.length < 4 || FR_STOPWORDS.has(raw)) continue;
+      freq.set(raw, (freq.get(raw) || 0) + 1);
+    }
+    const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([w]) => w.charAt(0).toUpperCase() + w.slice(1));
+    if (top.length) out.push(top.join(' & '));
+  }
+  // 3) Repli numerote.
+  out.push(`Chapitre ${fallbackIndex}`);
+  // Distinct + non vides.
+  return [...new Set(out.map((t) => t.trim()).filter(Boolean))].slice(0, 3);
+}
+
 function useKeyboardHeight() {
   const [h, setH] = useState(0);
   useEffect(() => {
@@ -209,8 +295,11 @@ export default function ImmersiveEditor({
 
   // Mini-IA : decoupage du texte en paragraphes (apercu avant application).
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title'>('menu');
   const [aiParas, setAiParas] = useState<string[]>([]);
   const [aiNote, setAiNote] = useState<string>('');
+  const [aiTypo, setAiTypo] = useState<string>('');
+  const [aiTitles, setAiTitles] = useState<string[]>([]);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
@@ -326,23 +415,26 @@ export default function ImmersiveEditor({
   const doUndo = () => { editorRef.current?.focus(); document.execCommand('undo'); onEditorInput(); };
   const doRedo = () => { editorRef.current?.focus(); document.execCommand('redo'); onEditorInput(); };
 
-  // Mini-IA : analyse le texte courant et propose un decoupage en paragraphes.
+  // Mini-IA : ouvre le menu de l'assistant d'ecriture.
+  const openAIAssistant = () => { setAiMode('menu'); setAiOpen(true); };
+
+  const currentEditorText = () => htmlToTextWithBreaks(editorRef.current?.innerHTML || '').trim();
+
+  // Decoupage en paragraphes.
   const runAIParagraphs = () => {
-    const raw = htmlToTextWithBreaks(editorRef.current?.innerHTML || '');
-    const text = raw.trim();
+    const text = currentEditorText();
     const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
     if (words < 25) {
       setAiParas([]);
       setAiNote("Ecris ou colle d'abord un texte un peu plus long (au moins ~25 mots) pour que l'assistant puisse le decouper.");
-      setAiOpen(true);
-      return;
+    } else {
+      const paras = segmentIntoParagraphs(text);
+      setAiParas(paras);
+      setAiNote(paras.length <= 1
+        ? "Le texte forme deja un seul bloc coherent : aucun decoupage supplementaire n'a ete trouve."
+        : `${paras.length} paragraphes proposes a partir de ${words} mots.`);
     }
-    const paras = segmentIntoParagraphs(text);
-    setAiParas(paras);
-    setAiNote(paras.length <= 1
-      ? "Le texte forme deja un seul bloc coherent : aucun decoupage supplementaire n'a ete trouve."
-      : `${paras.length} paragraphes proposes a partir de ${words} mots.`);
-    setAiOpen(true);
+    setAiMode('paragraphs');
   };
 
   const applyAIParagraphs = () => {
@@ -351,6 +443,47 @@ export default function ImmersiveEditor({
     editorRef.current.innerHTML = html;
     contentRef.current = html;
     setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
+  // Nettoyage typographique & ponctuation.
+  const runAITypo = () => {
+    const text = currentEditorText();
+    if (!text) {
+      setAiTypo('');
+      setAiNote("Ecris d'abord un peu de texte a nettoyer.");
+    } else {
+      const { text: cleaned, changes } = cleanFrenchTypography(text);
+      setAiTypo(cleaned);
+      setAiNote(changes === 0 ? "Rien a corriger : ta typographie est deja impeccable." : `${changes} correction(s) de ponctuation / espaces / majuscules.`);
+    }
+    setAiMode('typo');
+  };
+
+  const applyAITypo = () => {
+    if (!aiTypo || !editorRef.current) { setAiOpen(false); return; }
+    const html = paragraphsToEditorHtml(aiTypo.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
+    editorRef.current.innerHTML = html;
+    contentRef.current = html;
+    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
+  // Suggestions de titre de chapitre.
+  const runAITitle = () => {
+    const text = currentEditorText();
+    const titles = suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1);
+    setAiTitles(titles);
+    setAiNote(text ? 'Touche une proposition pour l’adopter comme titre.' : "Ecris un peu de texte pour de meilleures suggestions.");
+    setAiMode('title');
+  };
+
+  const applyAITitle = (t: string) => {
+    setTitle(t);
     setAiOpen(false);
     scheduleSave();
     wakeChrome();
@@ -438,7 +571,7 @@ export default function ImmersiveEditor({
         <button onMouseDown={(e) => e.preventDefault()} onClick={insertSeparator} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Separateur"><Minus className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={doUndo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Annuler"><Undo2 className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={doRedo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Retablir"><Redo2 className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={runAIParagraphs} className="p-2 text-purple-600" aria-label="Assistant IA : decouper en paragraphes" title="Assistant IA : decouper en paragraphes"><Sparkles className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={openAIAssistant} className="p-2 text-purple-600" aria-label="Assistant d'ecriture IA" title="Assistant d'ecriture IA"><Sparkles className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={() => { editorRef.current?.blur(); setChromeVisible(false); }} className="p-2 text-purple-600" aria-label="Immersion"><Maximize2 className="w-4 h-4" /></button>
       </div>
 
@@ -450,35 +583,103 @@ export default function ImmersiveEditor({
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
           >
             <div className="shrink-0 px-4 py-3 flex items-center gap-2 border-b border-gray-100 dark:border-zinc-800">
+              {aiMode !== 'menu' && (
+                <button onClick={() => setAiMode('menu')} className="p-1 -ml-1 text-gray-400 hover:text-purple-600 shrink-0" aria-label="Retour"><ChevronLeft className="w-5 h-5" /></button>
+              )}
               <span className="w-7 h-7 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0">
                 <Sparkles className="w-4 h-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-serif font-black text-gray-900 dark:text-white leading-none">Assistant de mise en paragraphes</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>
+                <h3 className="text-sm font-serif font-black text-gray-900 dark:text-white leading-none">
+                  {aiMode === 'menu' ? "Assistant d’écriture"
+                    : aiMode === 'paragraphs' ? 'Découper en paragraphes'
+                    : aiMode === 'typo' ? 'Typographie & ponctuation'
+                    : 'Titre du chapitre'}
+                </h3>
+                {aiMode !== 'menu' && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>}
               </div>
               <button onClick={() => setAiOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" aria-label="Fermer"><X className="w-4 h-4" /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
-              {aiParas.length === 0 ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
-              ) : (
-                aiParas.map((p, i) => (
-                  <div key={i} className="flex gap-2.5">
-                    <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-purple-500/12 text-purple-600 dark:text-purple-300 text-[9px] font-black flex items-center justify-center">{i + 1}</span>
-                    <p className="flex-1 min-w-0 text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 break-words">{p}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {aiParas.length > 0 && (
-              <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-                <button onClick={() => setAiOpen(false)} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Annuler</button>
-                <button onClick={applyAIParagraphs} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" /> Appliquer
+            {/* MENU */}
+            {aiMode === 'menu' && (
+              <div className="p-3 space-y-2">
+                <button onClick={runAIParagraphs} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><AlignLeft className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-black text-gray-900 dark:text-white">Découper en paragraphes</span>
+                    <span className="block text-[10px] text-gray-400">Aère un long bloc de texte en paragraphes lisibles.</span>
+                  </span>
                 </button>
+                <button onClick={runAITypo} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Type className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-black text-gray-900 dark:text-white">Typographie & ponctuation</span>
+                    <span className="block text-[10px] text-gray-400">Corrige espaces, ponctuation, majuscules, apostrophes.</span>
+                  </span>
+                </button>
+                <button onClick={runAITitle} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Tag className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-black text-gray-900 dark:text-white">Suggérer un titre</span>
+                    <span className="block text-[10px] text-gray-400">Propose des titres de chapitre à partir du contenu.</span>
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* DECOUPAGE EN PARAGRAPHES */}
+            {aiMode === 'paragraphs' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+                  {aiParas.length === 0 ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  ) : (
+                    aiParas.map((p, i) => (
+                      <div key={i} className="flex gap-2.5">
+                        <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-purple-500/12 text-purple-600 dark:text-purple-300 text-[9px] font-black flex items-center justify-center">{i + 1}</span>
+                        <p className="flex-1 min-w-0 text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 break-words">{p}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {aiParas.length > 0 && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applyAIParagraphs} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Appliquer</button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* TYPOGRAPHIE */}
+            {aiMode === 'typo' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {aiTypo ? (
+                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiTypo}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  )}
+                </div>
+                {aiTypo && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applyAITypo} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Appliquer</button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* TITRE */}
+            {aiMode === 'title' && (
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                {aiTitles.map((t, i) => (
+                  <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                    <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
+                    <Check className="w-4 h-4 text-purple-600 shrink-0" />
+                  </button>
+                ))}
               </div>
             )}
           </div>
