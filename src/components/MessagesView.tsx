@@ -39,7 +39,7 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
-import { uploadImageToCloudinary, uploadVideoToCloudinary } from '../utils/uploadImage';
+import { uploadImageToCloudinary, uploadVideoToCloudinary, uploadVoiceToCloudinary } from '../utils/uploadImage';
 import { getCroppedImageFile } from '../utils/cropImage';
 import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl, isVideoSticker, buildVideoStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -113,35 +113,57 @@ interface MessagesViewProps {
 }
 
 // Interactive soundwave visual playback player mockup
-function VoicePlayerMockup({ durationStr, isSentByMe }: { durationStr: string; isSentByMe: boolean }) {
+function VoicePlayerMockup({ durationStr, isSentByMe, audioUrl }: { durationStr: string; isSentByMe: boolean; audioUrl?: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Lecture RÉELLE quand une URL est disponible (notes vocales récentes).
   useEffect(() => {
+    if (!audioUrl) return;
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
+    const onEnd = () => { setIsPlaying(false); setProgress(0); };
+    a.addEventListener('timeupdate', onTime);
+    a.addEventListener('ended', onEnd);
+    return () => { a.removeEventListener('timeupdate', onTime); a.removeEventListener('ended', onEnd); };
+  }, [audioUrl]);
+
+  const togglePlay = () => {
+    if (audioUrl) {
+      const a = audioRef.current;
+      if (!a) return;
+      if (isPlaying) { a.pause(); setIsPlaying(false); }
+      else { a.play().then(() => setIsPlaying(true)).catch(() => {}); }
+    } else {
+      setIsPlaying((v) => !v); // ancien rendu simulé (messages hérités sans URL)
+    }
+  };
+
+  // Repli simulé pour les anciennes notes sans URL.
+  useEffect(() => {
+    if (audioUrl) return;
     if (isPlaying) {
       progressRef.current = setInterval(() => {
         setProgress(prev => {
-          if (prev >= 100) {
-            setIsPlaying(false);
-            return 0;
-          }
+          if (prev >= 100) { setIsPlaying(false); return 0; }
           return prev + 8;
         });
       }, 350);
-    } else {
-      if (progressRef.current) clearInterval(progressRef.current);
+    } else if (progressRef.current) {
+      clearInterval(progressRef.current);
     }
-    return () => {
-      if (progressRef.current) clearInterval(progressRef.current);
-    };
-  }, [isPlaying]);
+    return () => { if (progressRef.current) clearInterval(progressRef.current); };
+  }, [isPlaying, audioUrl]);
 
   return (
     <div className="flex items-center space-x-3 py-1 px-1">
-      <button 
+      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="none" />}
+      <button
         type="button"
-        onClick={() => setIsPlaying(!isPlaying)}
+        onClick={togglePlay}
         className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-95 shrink-0 ${
           isSentByMe 
             ? 'bg-purple-900/60 text-white hover:bg-purple-900/80 border border-purple-500/10' 
@@ -412,10 +434,14 @@ export default function MessagesView({
   // Search filter for new connection modal
   const [authorSearch, setAuthorSearch] = useState('');
 
-  // Voice Note Recording simulation
+  // Note vocale : enregistrement RÉEL (MediaRecorder) → upload → envoi de l'URL.
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [uploadingVoice, setUploadingVoice] = useState(false);
   const recordingTimerRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   // High fidelity simulated audio call state
   const [callState, setCallState] = useState<'idle' | 'ringing' | 'connected'>('idle');
@@ -584,26 +610,73 @@ export default function MessagesView({
     alert('Les notes vocales arriveront prochainement sur PLUME.');
   };
 
-  // Discard voice note recording
+  // Démarre l'enregistrement micro réel.
+  const startVoiceRecording = async () => {
+    if (isRecording || uploadingVoice) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      alert("L'enregistrement vocal n'est pas disponible sur cet appareil.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      audioChunksRef.current = [];
+      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+        : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mediaRecorderRef.current = rec;
+      rec.start();
+      setIsRecording(true);
+    } catch {
+      alert("Micro inaccessible. Autorise l'accès au microphone pour envoyer une note vocale.");
+    }
+  };
+
+  const stopStream = () => {
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
+  };
+
+  // Annule l'enregistrement (pas d'envoi).
   const handleDiscardVoiceNote = () => {
+    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    stopStream();
     setIsRecording(false);
     setRecordingSeconds(0);
   };
 
-  // Finalize & send vocal note
+  // Finalise : stoppe, téléverse, et envoie l'URL (privé OU groupe).
   const handleSendVoiceNote = () => {
-    const finalSecs = recordingSeconds || 4;
+    const rec = mediaRecorderRef.current;
+    if (!rec) { setIsRecording(false); return; }
+    const finalSecs = recordingSeconds || 1;
     const mins = Math.floor(finalSecs / 60);
     const secs = finalSecs % 60;
-    const finalFormattedStr = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    const voiceTag = `[🎙️ Note Vocale - ${finalFormattedStr}]`;
+    const durationStr = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 
-    if (activeGroupId) {
-      onSendGroupMessage(activeGroupId, voiceTag);
-    } else if (activeConversationId) {
-      onSendMessage(activeConversationId, voiceTag);
-    }
-
+    rec.onstop = async () => {
+      stopStream();
+      const blob = new Blob(audioChunksRef.current, { type: rec.mimeType || 'audio/webm' });
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = null;
+      if (!blob.size) { setIsRecording(false); return; }
+      setUploadingVoice(true);
+      try {
+        const url = await uploadVoiceToCloudinary(blob);
+        // Format rétro-compatible : « [🎙️ Note Vocale - mm:ss|URL] ».
+        const voiceTag = `[🎙️ Note Vocale - ${durationStr}|${url}]`;
+        if (activeGroupId) onSendGroupMessage(activeGroupId, voiceTag);
+        else if (activeConversationId) onSendMessage(activeConversationId, voiceTag);
+      } catch (e: any) {
+        alert(e?.message || "Échec de l'envoi de la note vocale.");
+      } finally {
+        setUploadingVoice(false);
+      }
+    };
+    try { rec.stop(); } catch { /* ignore */ }
     setIsRecording(false);
     setRecordingSeconds(0);
   };
@@ -1106,6 +1179,7 @@ export default function MessagesView({
                           <VoicePlayerMockup
                             durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'}
                             isSentByMe={isSentByMe}
+                            audioUrl={msg.content.match(/\|(https?:\/\/[^\]]+)\]/)?.[1]}
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
@@ -1196,6 +1270,7 @@ export default function MessagesView({
                           <VoicePlayerMockup
                             durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'}
                             isSentByMe={isSentByMe}
+                            audioUrl={msg.content.match(/\|(https?:\/\/[^\]]+)\]/)?.[1]}
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words pr-1 text-left">
@@ -1318,44 +1393,76 @@ export default function MessagesView({
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {/* Standard message input bar */}
               <form onSubmit={handleSend} className="flex items-center space-x-1.5">
-                <button
-                  type="button"
-                  className={`p-1.5 rounded-full transition-all shrink-0 ${showEmojiPicker ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
-                  title="Émojis"
-                  onClick={() => { setShowEmojiPicker((v) => !v); setShowStickers(false); }}
-                >
-                  <Smile className="w-5 h-5 shrink-0" />
-                </button>
-                <button
-                  type="button"
-                  className={`p-1.5 rounded-full transition-all shrink-0 ${showStickers ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
-                  title="Stickers"
-                  onClick={() => { setShowStickers((v) => !v); setShowEmojiPicker(false); }}
-                >
-                  <Sticker className="w-5 h-5 shrink-0" />
-                </button>
+                {isRecording || uploadingVoice ? (
+                  /* Barre d'enregistrement vocal (privé ET groupe). */
+                  <div className="flex-1 flex items-center gap-2 bg-white dark:bg-zinc-800 rounded-xl px-3 py-2 border border-red-500/30">
+                    <button type="button" onClick={handleDiscardVoiceNote} disabled={uploadingVoice} title="Annuler" className="text-red-500 disabled:opacity-40 shrink-0">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span className="flex-1 text-xs font-mono text-gray-600 dark:text-gray-300">
+                      {uploadingVoice ? 'Envoi de la note vocale…' : `Enregistrement… ${formatRecordTime(recordingSeconds)}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSendVoiceNote}
+                      disabled={uploadingVoice}
+                      title="Envoyer la note vocale"
+                      className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white p-2 rounded-full shrink-0 active:scale-95 transition"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-full transition-all shrink-0 ${showEmojiPicker ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
+                      title="Émojis"
+                      onClick={() => { setShowEmojiPicker((v) => !v); setShowStickers(false); }}
+                    >
+                      <Smile className="w-5 h-5 shrink-0" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-full transition-all shrink-0 ${showStickers ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
+                      title="Stickers"
+                      onClick={() => { setShowStickers((v) => !v); setShowEmojiPicker(false); }}
+                    >
+                      <Sticker className="w-5 h-5 shrink-0" />
+                    </button>
 
-                <input
-                  id="message-input-chat-box"
-                  type="text"
-                  placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
-                  className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                  value={messageText}
-                  onChange={(e) => handleTypingChange(e.target.value)}
-                  onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
-                />
+                    <input
+                      id="message-input-chat-box"
+                      type="text"
+                      placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
+                      className="flex-1 bg-white dark:bg-zinc-800 border border-transparent focus:border-[#7C3AED]/35 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                      value={messageText}
+                      onChange={(e) => handleTypingChange(e.target.value)}
+                      onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
+                    />
 
-                <button
-                  id="send-message-chat-btn"
-                  type="submit"
-                  disabled={!messageText.trim()}
-                  className={`bg-purple-600 hover:bg-purple-700 text-white p-2.5 rounded-full transition shrink-0 shadow-sm flex items-center justify-center ${
-                    !messageText.trim() ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
-                  }`}
-                  title="Envoyer"
-                >
-                  <Send className="w-4 h-4 transform rotate-0 shrink-0" />
-                </button>
+                    {messageText.trim() ? (
+                      <button
+                        id="send-message-chat-btn"
+                        type="submit"
+                        className="bg-purple-600 hover:bg-purple-700 text-white p-2.5 rounded-full transition shrink-0 shadow-sm flex items-center justify-center active:scale-95"
+                        title="Envoyer"
+                      >
+                        <Send className="w-4 h-4 transform rotate-0 shrink-0" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startVoiceRecording}
+                        className="bg-purple-600 hover:bg-purple-700 text-white p-2.5 rounded-full transition shrink-0 shadow-sm flex items-center justify-center active:scale-95"
+                        title="Enregistrer une note vocale"
+                      >
+                        <Mic className="w-4 h-4 shrink-0" />
+                      </button>
+                    )}
+                  </>
+                )}
               </form>
 
           </div>

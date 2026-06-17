@@ -151,6 +151,31 @@ export async function uploadVideoToCloudinary(file: File, onProgress?: (pct: num
 }
 
 /**
+ * Envoie une NOTE VOCALE (audio) et renvoie son URL sécurisée. Cloudinary range
+ * l'audio sous la ressource « video » → on passe par le même point d'entrée.
+ */
+export async function uploadVoiceToCloudinary(blob: Blob, onProgress?: (pct: number) => void): Promise<string> {
+  if (!blob || !(blob instanceof Blob)) {
+    throw new Error('Note vocale invalide.');
+  }
+  if (blob.size > 12 * 1024 * 1024) {
+    throw new Error('Note vocale trop longue (12 Mo max).');
+  }
+  const file = blob instanceof File ? blob : new File([blob], 'voice.webm', { type: blob.type || 'audio/webm' });
+  const { cloudName, uploadPreset } = await getCloudinaryConfig();
+  try {
+    return await postVideoToCloudinary(file, cloudName, uploadPreset, onProgress);
+  } catch (e: any) {
+    const msg = String(e?.message || '');
+    if (/réseau|délai/i.test(msg)) {
+      onProgress?.(0);
+      return await postVideoToCloudinary(file, cloudName, uploadPreset, onProgress);
+    }
+    throw e;
+  }
+}
+
+/**
  * Envoie une image et renvoie son URL sécurisée.
  * @param onProgress callback de progression (0..100), optionnel.
  */
