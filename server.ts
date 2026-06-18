@@ -1114,7 +1114,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Email et raison requis' });
       }
 
-      const normalizedEmail = email.toLowerCase();
+      const normalizedEmail = email.trim().toLowerCase();
 
       if (reason === 'register') {
         const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
@@ -1172,18 +1172,32 @@ export async function createServerInstance() {
     try {
       const { username, email, password, role, gender, birthDate, avatar, bio, favoriteGenres, code } = req.body;
       if (!username || !email || !password || !code) return res.status(400).json({ error: 'username, email, password et code OTP sont requis' });
-      
+
       if (!validatePassword(password)) {
         return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
       }
 
-      const normalizedEmail = email.toLowerCase();
+      // Âge minimum (13 ans) : garde-fou requis vu les classifications de contenu.
+      if (!birthDate) {
+        return res.status(400).json({ error: 'La date de naissance est requise.' });
+      }
+      const birth = new Date(birthDate);
+      if (isNaN(birth.getTime()) || birth >= new Date()) {
+        return res.status(400).json({ error: 'Date de naissance invalide.' });
+      }
+      const ageMs = Date.now() - birth.getTime();
+      const ageYears = ageMs / (365.25 * 24 * 60 * 60 * 1000);
+      if (ageYears < 13) {
+        return res.status(400).json({ error: 'Vous devez avoir au moins 13 ans pour créer un compte.' });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
 
       const existingUser = await prisma.user.findFirst({
         where: {
           OR: [
             { email: normalizedEmail },
-            { username: username }
+            { username: { equals: username, mode: 'insensitive' } }
           ]
         }
       });
@@ -1240,9 +1254,10 @@ export async function createServerInstance() {
       if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ error: 'email et password sont requis' });
       }
-      // L'email est normalisé en minuscules à l'inscription : on aligne ici.
+      // L'email est normalisé (trim + minuscules) à l'inscription : on aligne ici
+      // (un espace résiduel ne doit pas faire échouer une connexion valide).
       const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
+        where: { email: email.trim().toLowerCase() },
         include: { followers: true, following: true, blockedUsers: true },
       });
       if (!user || !user.passwordHash) return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -1316,7 +1331,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
       }
 
-      const normalizedEmail = email.toLowerCase();
+      const normalizedEmail = email.trim().toLowerCase();
 
       // Un utilisateur déjà connecté peut changer son mot de passe sans OTP ;
       // sinon le code de validation est obligatoire.
@@ -1390,7 +1405,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Email et code OTP requis.' });
       }
 
-      const normalizedEmail = email.toLowerCase();
+      const normalizedEmail = email.trim().toLowerCase();
       // Pré-vérification sans consommer le code (consume=false) : il reste
       // utilisable pour l'inscription/réinitialisation finale.
       const otpCheck = await checkOtp(normalizedEmail, code, false);

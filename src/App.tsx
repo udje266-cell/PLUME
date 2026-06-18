@@ -3122,7 +3122,6 @@ export default function App() {
       <div className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">
         {!isAuthenticated ? (
           <AuthView
-            allUsers={allUsers}
             onLoginSuccess={(user) => {
               setCurrentUser(user);
               setIsAuthenticated(true);

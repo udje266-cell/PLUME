@@ -5,18 +5,31 @@
 
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft } from 'lucide-react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 import { setAuthToken } from '../utils/auth';
 import { apiPost } from '../utils/api';
 import Logo from './Logo';
 
 interface AuthViewProps {
-  allUsers: User[];
   onLoginSuccess: (user: User) => void;
   onRegisterSuccess: (newUser: User) => void;
 }
 
-export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }: AuthViewProps) {
+// Avatar par défaut LOCAL (SVG embarqué) : toujours affichable, contrairement aux
+// anciennes URLs Unsplash qui pouvaient ne pas charger (réseau / CORS).
+function defaultAvatarFor(name: string): string {
+  const initial = (name.trim()[0] || 'P').toUpperCase();
+  const palettes = [['#7c3aed', '#c084fc'], ['#2563eb', '#60a5fa'], ['#db2777', '#f9a8d4'], ['#059669', '#6ee7b7']];
+  const idx = (initial.charCodeAt(0) || 0) % palettes.length;
+  const [c1, c2] = palettes[idx];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="160" height="160" fill="url(#g)"/><text x="80" y="80" dy="0.36em" text-anchor="middle" font-family="Inter, sans-serif" font-size="78" font-weight="700" fill="#ffffff">${initial}</text></svg>`;
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    return `data:image/svg+xml;base64,${window.btoa(svg)}`;
+  }
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthViewProps) {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'otp' | 'new-password'>('login');
   
   // Form fields
@@ -30,7 +43,6 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
   
   // OTP related states
   const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
-  const [simulatedOtp, setSimulatedOtp] = useState('');
   const [otpReason, setOtpReason] = useState<'register' | 'reset'>('register');
   const [pendingUser, setPendingUser] = useState<any>(null);
   const [verifiedOtpCode, setVerifiedOtpCode] = useState('');
@@ -73,7 +85,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/login', { email, password }, 45000);
+      // E-mail nettoyé (espaces + casse) : un espace résiduel ne doit pas faire
+      // échouer une connexion pourtant valide.
+      const data = await apiPost('/api/auth/login', { email: email.trim().toLowerCase(), password }, 45000);
       // Token gardé en mémoire (pas dans localStorage) ; le serveur a aussi posé
       // un cookie httpOnly pour la persistance après rechargement.
       setAuthToken(data.token);
@@ -101,8 +115,15 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     // Validate if birthDate is a reasonable past date
     const selectedDate = new Date(birthDate);
     const today = new Date();
-    if (selectedDate >= today) {
+    if (isNaN(selectedDate.getTime()) || selectedDate >= today) {
       setErrorMsg('La date de naissance doit se situer dans le passé.');
+      return;
+    }
+
+    // Âge minimum : 13 ans (garde-fou cohérent avec les classifications de contenu).
+    const ageYears = (today.getTime() - selectedDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    if (ageYears < 13) {
+      setErrorMsg('Vous devez avoir au moins 13 ans pour créer un compte.');
       return;
     }
 
@@ -111,20 +132,20 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: 'register' }, 45000);
+      const data = await apiPost('/api/auth/otp/request', { email: cleanEmail, reason: 'register' }, 45000);
 
       setOtpReason('register');
       setPendingUser({
-        id: `user_${Date.now()}`,
         username,
-        email,
+        email: cleanEmail,
         role,
-        avatar: role === 'Auteur' 
-          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=155' 
-          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=155',
+        // Avatar par défaut LOCAL (toujours affichable). L'id est généré par le serveur.
+        avatar: defaultAvatarFor(username),
         bio: `Nouvelle plume littéraire. Explorant les archipels de la pensée.`,
         followers: [],
         following: [],
@@ -159,7 +180,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: 'reset' }, 45000);
+      const data = await apiPost('/api/auth/otp/request', { email: email.trim().toLowerCase(), reason: 'reset' }, 45000);
       setOtpReason('reset');
       setMode('otp');
       setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
@@ -185,7 +206,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setIsLoading(true);
 
     try {
-      await apiPost('/api/auth/reset-password', { email, password, code: verifiedOtpCode }, 45000);
+      await apiPost('/api/auth/reset-password', { email: email.trim().toLowerCase(), password, code: verifiedOtpCode }, 45000);
 
       setPassword('');
       setVerifiedOtpCode('');
@@ -201,8 +222,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
   };
 
   // 4. OTP Verification Handling
-  const handleVerifyOtp = async () => {
-    const codeEntered = otpCode.join('');
+  const handleVerifyOtp = async (codeOverride?: string) => {
+    const codeEntered = codeOverride ?? otpCode.join('');
     setErrorMsg('');
 
     if (codeEntered.length < 6) {
@@ -222,15 +243,19 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
         setSuccessMsg('Votre compte Plume a été créé et activé avec succès !');
         onRegisterSuccess(data.user);
       } else {
+        // Réinitialisation : on VÉRIFIE le code côté serveur AVANT de passer à
+        // l'écran du nouveau mot de passe (un code faux est détecté tout de suite,
+        // sans consommer l'OTP — il sera consommé à l'étape finale).
+        await apiPost('/api/auth/verify-otp', { email: email.trim().toLowerCase(), code: codeEntered }, 45000);
         setVerifiedOtpCode(codeEntered);
         setPassword('');
         setOtpCode(['', '', '', '', '', '']);
         setMode('new-password');
-        setSuccessMsg('Code renseigné. Choisissez maintenant un nouveau mot de passe.');
+        setSuccessMsg('Code validé. Choisissez maintenant un nouveau mot de passe.');
       }
     } catch (error: any) {
       console.error(error);
-      setErrorMsg(error?.message || 'Inscription impossible.');
+      setErrorMsg(error?.message || (otpReason === 'register' ? 'Inscription impossible.' : 'Code invalide ou expiré.'));
     } finally {
       setIsLoading(false);
     }
@@ -241,7 +266,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     setSuccessMsg('');
     setIsLoading(true);
     try {
-      const data = await apiPost('/api/auth/otp/request', { email, reason: otpReason }, 45000);
+      const data = await apiPost('/api/auth/otp/request', { email: email.trim().toLowerCase(), reason: otpReason }, 45000);
       setSuccessMsg(data.message || 'Nouveau code OTP envoyé par e-mail.');
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (error: any) {
@@ -252,16 +277,49 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
     }
   };
 
-  const handleOtpChange = (value: string, idx: number) => {
-    if (isNaN(Number(value))) return;
+  // Distribue une suite de chiffres (saisie OU collage) à partir d'une case.
+  const fillOtpFrom = (digits: string, startIdx: number) => {
+    const clean = digits.replace(/\D/g, '');
+    if (!clean) return;
     const newOtp = [...otpCode];
-    newOtp[idx] = value.substring(value.length - 1);
+    let i = startIdx;
+    for (const ch of clean) {
+      if (i > 5) break;
+      newOtp[i] = ch;
+      i++;
+    }
     setOtpCode(newOtp);
+    // Focus la prochaine case vide (ou la dernière remplie).
+    const nextIdx = Math.min(i, 5);
+    document.getElementById(`otp-input-${nextIdx}`)?.focus();
+    // Auto-validation dès que les 6 chiffres sont saisis.
+    const joined = newOtp.join('');
+    if (joined.length === 6 && !newOtp.includes('')) {
+      handleVerifyOtp(joined);
+    }
+  };
 
-    // Auto-focus next input element
-    if (value && idx < 5) {
-      const nextInput = document.getElementById(`otp-input-${idx + 1}`);
-      nextInput?.focus();
+  const handleOtpChange = (value: string, idx: number) => {
+    if (value === '') {
+      const newOtp = [...otpCode];
+      newOtp[idx] = '';
+      setOtpCode(newOtp);
+      return;
+    }
+    // Collage d'un code complet dans une case → réparti sur les suivantes.
+    if (value.length > 1) {
+      fillOtpFrom(value, idx);
+      return;
+    }
+    if (isNaN(Number(value))) return;
+    fillOtpFrom(value, idx);
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>, idx: number) => {
+    const pasted = e.clipboardData.getData('text');
+    if (/\d/.test(pasted)) {
+      e.preventDefault();
+      fillOtpFrom(pasted, idx);
     }
   };
 
@@ -316,6 +374,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
+                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nom@exemple.com"
@@ -344,6 +405,9 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    autoComplete="current-password"
+                    required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -360,13 +424,13 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               </div>
 
               {errorMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-650 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl font-bold">
                   ⚠️ {errorMsg}
                 </div>
               )}
 
               {successMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-600/10 border border-purple-900/15 text-purple-600 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl font-bold">
                   {successMsg}
                 </div>
               )}
@@ -415,6 +479,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type="text"
+                    name="username"
+                    autoComplete="username"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -432,6 +498,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -443,14 +511,25 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
 
               <div className="space-y-1">
                 <label className="text-[9px] font-bold uppercase tracking-wider text-gray-400 font-sans">Mot de passe</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 8 caractères (lettre + chiffre)"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="new-password"
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min. 8 caractères (lettre + chiffre)"
+                    className="w-full px-3 pr-10 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -459,6 +538,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   type="date"
                   required
                   value={birthDate}
+                  max={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setBirthDate(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-purple-500 focus:outline-hidden text-gray-700 dark:text-gray-200"
                 />
@@ -529,7 +609,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               </div>
 
               {errorMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-650 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl font-bold">
                   ⚠️ {errorMsg}
                 </div>
               )}
@@ -577,6 +657,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -587,7 +669,7 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               </div>
 
               {errorMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-650 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl font-bold">
                   ⚠️ {errorMsg}
                 </div>
               )}
@@ -635,6 +717,8 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                   </span>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    name="new-password"
+                    autoComplete="new-password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -652,13 +736,13 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               </div>
 
               {errorMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-650 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl font-bold">
                   ⚠️ {errorMsg}
                 </div>
               )}
 
               {successMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-600/10 border border-purple-900/15 text-purple-600 dark:text-purple-400 rounded-xl font-bold">
+                <div className="text-[10px] p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl font-bold">
                   {successMsg}
                 </div>
               )}
@@ -718,9 +802,13 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
                     key={idx}
                     id={`otp-input-${idx}`}
                     type="text"
-                    maxLength={1}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                    maxLength={6}
                     value={digit}
                     onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                    onPaste={(e) => handleOtpPaste(e, idx)}
                     onChange={(e) => handleOtpChange(e.target.value, idx)}
                     className="w-10 h-11 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg text-center text-sm font-black focus:ring-1 focus:ring-purple-505 focus:outline-hidden"
                   />
@@ -728,20 +816,21 @@ export default function AuthView({ allUsers, onLoginSuccess, onRegisterSuccess }
               </div>
 
               {errorMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-650 dark:text-purple-400 rounded-xl font-bold text-center">
+                <div className="text-[10px] p-2.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-center">
                   ⚠️ {errorMsg}
                 </div>
               )}
 
               {successMsg && (
-                <div className="text-[10px] p-2.5 bg-purple-600/10 border border-purple-900/15 text-purple-600 dark:text-purple-400 rounded-xl font-bold text-center">
+                <div className="text-[10px] p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl font-bold text-center">
                   {successMsg}
                 </div>
               )}
 
               <button
-                onClick={handleVerifyOtp}
-                className="w-full py-2.5 bg-[#7C3AED] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer"
+                onClick={() => handleVerifyOtp()}
+                disabled={isLoading}
+                className="w-full py-2.5 bg-[#7C3AED] hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-60"
               >
                 <span>Vérifier le Code</span>
                 <Check className="w-4 h-4" />
