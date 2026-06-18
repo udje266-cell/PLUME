@@ -576,6 +576,30 @@ export default function MessagesView({
     };
   }, []);
 
+  // Mobile ? + viewport VISIBLE (suit le clavier) : la discussion ouverte
+  // s'affiche en plein ecran et la zone de saisie reste TOUJOURS au-dessus du
+  // clavier — fini la barre de texte qui disparait.
+  const [isMobileView, setIsMobileView] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [vp, setVp] = useState<{ h: number; top: number }>(() => ({ h: typeof window !== 'undefined' ? window.innerHeight : 0, top: 0 }));
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const onResize = () => {
+      setIsMobileView(window.innerWidth < 768);
+      setVp({ h: vv ? vv.height : window.innerHeight, top: vv ? vv.offsetTop : 0 });
+    };
+    onResize();
+    vv?.addEventListener('resize', onResize);
+    vv?.addEventListener('scroll', onResize);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      vv?.removeEventListener('resize', onResize);
+      vv?.removeEventListener('scroll', onResize);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
   // Modals state
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
@@ -1188,7 +1212,9 @@ export default function MessagesView({
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW */}
-        <div className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+        <div
+          style={(isMobileView && mobileShowThread) ? { position: 'fixed', left: 0, right: 0, top: vp.top, height: vp.h, zIndex: 80 } : undefined}
+          className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
@@ -1235,7 +1261,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header */}
-          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
+          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={(isMobileView && mobileShowThread && vp.top === 0) ? { paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' } : undefined}>
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1600,7 +1626,7 @@ export default function MessagesView({
             </div>
 
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER */}
-            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2">
+            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={(isMobileView && mobileShowThread && vp.top === 0) ? { paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))' } : undefined}>
             
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {showEmojiPicker && (

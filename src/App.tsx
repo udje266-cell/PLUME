@@ -1362,19 +1362,33 @@ export default function App() {
   const unreadMessagesTotal = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   useEffect(() => { setUnreadBadge(unreadMessagesTotal); }, [unreadMessagesTotal]);
 
-  // Tap sur une notification push → ouvre la messagerie (et la conversation
-  // concernee si fournie). Emis par utils/push via un CustomEvent.
+  // Tap sur une notification push → ouvre la messagerie ET la conversation
+  // concernee. Sources : utils/push (Capacitor), le Service Worker (web/PWA),
+  // et MainActivity (Android, notif de message native) via CustomEvent +
+  // variable globale `__plumePendingChat` (pour un demarrage A FROID).
+  const openChatFromPush = React.useCallback((conversationId?: string) => {
+    setActiveTab('messages');
+    if (conversationId) setActiveConversationId(String(conversationId));
+  }, []);
   useEffect(() => {
     const onPushOpen = (e: Event) => {
       const d = (e as CustomEvent).detail || {};
-      setActiveTab('messages');
-      if (d.conversationId) {
-        setActiveConversationId(String(d.conversationId));
-      }
+      openChatFromPush(d.conversationId);
     };
     window.addEventListener('plume:push-open', onPushOpen);
     return () => window.removeEventListener('plume:push-open', onPushOpen);
-  }, []);
+  }, [openChatFromPush]);
+
+  // Demarrage a froid via une notification : la conversation a ouvrir a pu etre
+  // posee sur window AVANT le montage de React. On la consomme une fois connecte.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+    const pending = (window as any).__plumePendingChat;
+    if (pending) {
+      (window as any).__plumePendingChat = null;
+      setTimeout(() => openChatFromPush(String(pending)), 300);
+    }
+  }, [isAuthenticated, currentUser, openChatFromPush]);
 
   // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
   // /api/users en échec au démarrage…). On (re)charge le profil directement via
