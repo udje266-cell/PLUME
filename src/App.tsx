@@ -308,20 +308,53 @@ export default function App() {
     }
   };
 
-  const handleSendGroupMessage = async (groupId: string, content: string) => {
+  const handleSendGroupMessage = async (groupId: string, content: string, replyToId?: string | null) => {
+    if (!currentUser) return;
+    // Affichage OPTIMISTE : on montre le message tout de suite, puis on remplace
+    // par la version serveur (ou on annule en cas d'echec).
+    const tempId = `gmsg_temp_${Date.now()}`;
+    const optimistic: GroupMessage = {
+      id: tempId, groupId, senderId: currentUser.id,
+      senderName: currentUser.username, senderAvatar: currentUser.avatar || '',
+      content, date: new Date().toISOString(), replyToId: replyToId || null,
+    } as GroupMessage;
+    setGroupMessages((prev) => [...prev, optimistic]);
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, lastMessage: content, lastMessageDate: optimistic.date } : g)));
     try {
       const res = await fetch(`/api/groups/${groupId}/messages`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, replyToId: replyToId || undefined }),
       });
-      if (!res.ok) return;
+      if (!res.ok) { setGroupMessages((prev) => prev.filter((m) => m.id !== tempId)); return; }
       const msg: GroupMessage = await res.json();
-      setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setGroupMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        return withoutTemp.some((m) => m.id === msg.id) ? withoutTemp : [...withoutTemp, msg];
+      });
       setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
     } catch (e) {
       console.error('[PLUME] Erreur envoi message de groupe :', e);
+      setGroupMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
+  };
+
+  // Edition / suppression pour tout le monde d'un message de GROUPE.
+  const applyGroupMessageUpdate = (updated: GroupMessage) => {
+    setGroupMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+  };
+  const handleEditGroupMessage = (messageId: string, content: string) => {
+    fetch(`/api/groups/messages/${messageId}`, {
+      method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ content }),
+    })
+      .then(async (res) => { if (res.ok) applyGroupMessageUpdate(await res.json()); else { const d = await res.json().catch(() => ({})); alert(d.error || 'Modification impossible.'); } })
+      .catch(() => alert('Modification impossible (réseau).'));
+  };
+  const handleDeleteGroupMessageForEveryone = (messageId: string) => {
+    fetch(`/api/groups/messages/${messageId}`, { method: 'DELETE', headers: authHeaders() })
+      .then(async (res) => { if (res.ok) applyGroupMessageUpdate(await res.json()); else { const d = await res.json().catch(() => ({})); alert(d.error || 'Suppression impossible.'); } })
+      .catch(() => alert('Suppression impossible (réseau).'));
   };
 
   // ----- Gestion des groupes (façon WhatsApp) -----
@@ -810,6 +843,12 @@ export default function App() {
       })));
     });
 
+    // Message de GROUPE modifié / supprimé pour tout le monde (temps réel).
+    socket.on('group_message_updated', (updated: GroupMessage) => {
+      if (!updated?.id) return;
+      setGroupMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+    });
+
     // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
     // du profil se met à jour sans rafraîchissement.
     socket.on('story_stats', ({ storyId, likes, favoritesCount }: { storyId: string; likes: number; favoritesCount: number }) => {
@@ -951,6 +990,7 @@ export default function App() {
       socket.off('group_typing');
       socket.off('group_stop_typing');
       socket.off('new_group_message');
+      socket.off('group_message_updated');
       callManagerRef.current?.dispose();
       groupCallManagerRef.current?.dispose();
       groupCallManagerRef.current = null;
@@ -2434,15 +2474,6 @@ export default function App() {
   const handleSendMessage = (conversationId: string, content: string, replyToId?: string | null) => {
     if (!currentUser) return;
 
-    const conv = conversations.find(c => c.id === conversationId);
-    const otherParticipant = conv?.participants.find(p => p.id !== currentUser.id);
-    const targetUserId = otherParticipant?.id;
-    console.log("currentUser.id =", currentUser.id);
-    console.log("targetUser.id =", targetUserId);
-    if (currentUser.id.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
-      console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
-    }
-    
     const tempMsgId = `msg_temp_${Date.now()}`;
     const newMsg: Message = {
       id: tempMsgId,
@@ -3207,6 +3238,8 @@ export default function App() {
                       setGroupMessages={setGroupMessages}
                       onCreateGroup={handleCreateGroup}
                       onSendGroupMessage={handleSendGroupMessage}
+                      onEditGroupMessage={handleEditGroupMessage}
+                      onDeleteGroupMessageForEveryone={handleDeleteGroupMessageForEveryone}
                       onUpdateGroup={handleUpdateGroup}
                       onAddGroupMembers={handleAddGroupMembers}
                       onRemoveGroupMember={handleRemoveGroupMember}

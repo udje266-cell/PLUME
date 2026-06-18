@@ -196,5 +196,8 @@ export interface GroupMessage {
   senderAvatar: string;
   content: string;
   date: string;
+  replyToId?: string | null;
+  editedAt?: string | null;
+  deletedForEveryone?: boolean;
 }
 

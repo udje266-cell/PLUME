@@ -209,6 +209,9 @@ function serializeGroupMessage(m: any) {
     senderName: m.sender?.username || '',
     senderAvatar: m.sender?.avatar || '',
     content: m.content,
+    replyToId: m.replyToId || null,
+    editedAt: m.editedAt ? new Date(m.editedAt).toISOString() : null,
+    deletedForEveryone: !!m.deletedForEveryone,
     date: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
   };
 }
@@ -908,18 +911,34 @@ export async function createServerInstance() {
 
     // Accusé de distribution en direct : le destinataire confirme la réception
     // d'un message ; on le marque « remis » et on prévient l'expéditeur.
-    socket.on('message_ack', async (p: { messageId: string; senderId: string }) => {
+    socket.on('message_ack', async (p: { messageId: string }) => {
       if (!authUserId || !p?.messageId) return;
-      try { await prisma.message.update({ where: { id: p.messageId }, data: { isDelivered: true } }); } catch { /* ignore */ }
-      if (p.senderId) socket.to(`user:${p.senderId}`).emit('message_delivered', { messageIds: [p.messageId] });
+      try {
+        // On ne fait confiance qu'au token : le message doit exister, l'accusé
+        // doit venir d'un PARTICIPANT (autre que l'expediteur), et on notifie le
+        // VRAI expediteur (jamais un senderId fourni par le client).
+        const msg = await prisma.message.findUnique({
+          where: { id: p.messageId },
+          include: { conversation: { include: { participants: { select: { id: true } } } } },
+        });
+        if (!msg || msg.senderId === authUserId) return;
+        if (!msg.conversation.participants.some((pp) => pp.id === authUserId)) return;
+        await prisma.message.update({ where: { id: p.messageId }, data: { isDelivered: true } }).catch(() => {});
+        socket.to(`user:${msg.senderId}`).emit('message_delivered', { messageIds: [p.messageId] });
+      } catch { /* ignore */ }
     });
 
-    socket.on('typing', (payload: { senderId: string; receiverId: string }) => {
-      if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('typing', payload);
+    // L'expediteur d'un « ecrit… » est TOUJOURS l'utilisateur du token (anti-usurpation).
+    socket.on('typing', (payload: { receiverId: string; kind?: string }) => {
+      if (authUserId && payload?.receiverId) {
+        socket.to(`user:${payload.receiverId}`).emit('typing', { senderId: authUserId, receiverId: payload.receiverId, kind: payload.kind });
+      }
     });
 
-    socket.on('stop_typing', (payload: { senderId: string; receiverId: string }) => {
-      if (payload?.receiverId) socket.to(`user:${payload.receiverId}`).emit('stop_typing', payload);
+    socket.on('stop_typing', (payload: { receiverId: string; kind?: string }) => {
+      if (authUserId && payload?.receiverId) {
+        socket.to(`user:${payload.receiverId}`).emit('stop_typing', { senderId: authUserId, receiverId: payload.receiverId, kind: payload.kind });
+      }
     });
 
     // Saisie dans un GROUPE : relayée aux VRAIS membres (issus de la base), et
@@ -2689,16 +2708,16 @@ export async function createServerInstance() {
       let spamBlocked = false;
       if (redis) {
         try {
-          const ok = await redis.set(`spam:msg:${req.user.id}`, '1', 'PX', 300, 'NX');
+          const ok = await redis.set(`spam:msg:${req.user.id}`, '1', 'PX', 150, 'NX');
           spamBlocked = ok !== 'OK';
         } catch {
           const now = Date.now();
-          spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 300;
+          spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 150;
           if (!spamBlocked) lastMessageTimes.set(req.user.id, now);
         }
       } else {
         const now = Date.now();
-        spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 300;
+        spamBlocked = now - (lastMessageTimes.get(req.user.id) || 0) < 150;
         if (!spamBlocked) lastMessageTimes.set(req.user.id, now);
       }
       if (spamBlocked) {
@@ -2967,13 +2986,14 @@ export async function createServerInstance() {
   app.post('/api/groups/:id/messages', requireAuth, async (req: any, res) => {
     try {
       const content = String(req.body?.content || '').trim();
+      const replyToId = req.body?.replyToId ? String(req.body.replyToId) : null;
       if (!content) return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide.' });
       if (content.length > 2000) return res.status(400).json({ error: 'Message trop long (2000 caractères max).' });
       const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
       if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
       const message = await prisma.groupMessage.create({
-        data: { groupId: req.params.id, senderId: req.user.id, content },
+        data: { groupId: req.params.id, senderId: req.user.id, content, replyToId },
         include: { sender: true },
       });
       await prisma.readingGroup.update({ where: { id: req.params.id }, data: { updatedAt: new Date() } });
@@ -3012,6 +3032,50 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de l’envoi du message de groupe.' });
+    }
+  });
+
+  // Modifier son propre message de groupe (texte, <= 5 min).
+  app.put('/api/groups/messages/:id', requireAuth, async (req: any, res) => {
+    try {
+      const content = String(req.body?.content || '').trim();
+      if (!content) return res.status(400).json({ error: 'Contenu vide.' });
+      if (content.length > 2000) return res.status(400).json({ error: 'Message trop long (2000 caractères max).' });
+      const msg = await prisma.groupMessage.findUnique({ where: { id: req.params.id } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      if (msg.senderId !== req.user.id) return res.status(403).json({ error: 'Action interdite' });
+      if (msg.deletedForEveryone) return res.status(400).json({ error: 'Message supprimé' });
+      if (Date.now() - new Date(msg.createdAt).getTime() > 5 * 60 * 1000) {
+        return res.status(403).json({ error: 'Delai depasse (5 min) pour modifier' });
+      }
+      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: true } });
+      const serialized = serializeGroupMessage(updated);
+      const members = await getGroupMemberIds(msg.groupId);
+      members.forEach((id) => io.to(`user:${id}`).emit('group_message_updated', serialized));
+      res.json(serialized);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la modification.' });
+    }
+  });
+
+  // Supprimer pour tout le monde son propre message de groupe (<= 6 min).
+  app.delete('/api/groups/messages/:id', requireAuth, async (req: any, res) => {
+    try {
+      const msg = await prisma.groupMessage.findUnique({ where: { id: req.params.id } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      if (msg.senderId !== req.user.id) return res.status(403).json({ error: 'Action interdite' });
+      if (Date.now() - new Date(msg.createdAt).getTime() > 6 * 60 * 1000) {
+        return res.status(403).json({ error: 'Delai depasse (6 min) pour supprimer pour tout le monde' });
+      }
+      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: true } });
+      const serialized = serializeGroupMessage(updated);
+      const members = await getGroupMemberIds(msg.groupId);
+      members.forEach((id) => io.to(`user:${id}`).emit('group_message_updated', serialized));
+      res.json(serialized);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suppression.' });
     }
   });
 

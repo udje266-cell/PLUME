@@ -134,7 +134,9 @@ interface MessagesViewProps {
   groupMessages: GroupMessage[];
   setGroupMessages: React.Dispatch<React.SetStateAction<GroupMessage[]>>;
   onCreateGroup: (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }) => Promise<ReadingGroup | null>;
-  onSendGroupMessage: (groupId: string, content: string) => void;
+  onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null) => void;
+  onEditGroupMessage?: (messageId: string, content: string) => void;
+  onDeleteGroupMessageForEveryone?: (messageId: string) => void;
   onUpdateGroup?: (groupId: string, data: { name?: string; description?: string; avatar?: string }) => void;
   onAddGroupMembers?: (groupId: string, memberIds: string[]) => void;
   onRemoveGroupMember?: (groupId: string, userId: string) => void;
@@ -269,6 +271,8 @@ export default function MessagesView({
   setGroupMessages,
   onCreateGroup,
   onSendGroupMessage,
+  onEditGroupMessage,
+  onDeleteGroupMessageForEveryone,
   onUpdateGroup,
   onAddGroupMembers,
   onRemoveGroupMember,
@@ -505,13 +509,14 @@ export default function MessagesView({
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
+  const deletedMsgsKey = `plume_deleted_msgs_${currentUser.id}`;
   const [deletedForMe, setDeletedForMe] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('plume_deleted_msgs') || '[]')); } catch { return new Set(); }
+    try { return new Set(JSON.parse(localStorage.getItem(deletedMsgsKey) || '[]')); } catch { return new Set(); }
   });
   const deleteForMe = (id: string) => {
     setDeletedForMe((prev) => {
       const next = new Set(prev); next.add(id);
-      try { localStorage.setItem('plume_deleted_msgs', JSON.stringify([...next].slice(-500))); } catch { /* ignore */ }
+      try { localStorage.setItem(deletedMsgsKey, JSON.stringify([...next].slice(-500))); } catch { /* ignore */ }
       return next;
     });
     setActionMsg(null);
@@ -824,17 +829,18 @@ export default function MessagesView({
     e.preventDefault();
     if (!messageText.trim()) return;
 
-    // Modification d'un message existant (privé) plutôt qu'un nouvel envoi.
-    if (editingMsg && !activeGroupId) {
-      onEditMessage?.(editingMsg.id, messageText.trim());
+    // Modification d'un message existant (privé OU groupe) plutôt qu'un envoi.
+    if (editingMsg) {
+      if (activeGroupId) onEditGroupMessage?.(editingMsg.id, messageText.trim());
+      else onEditMessage?.(editingMsg.id, messageText.trim());
       setEditingMsg(null);
       setMessageText('');
       return;
     }
 
     if (activeGroupId) {
-      // Message de groupe persisté côté serveur (diffusé en temps réel).
-      onSendGroupMessage(activeGroupId, messageText.trim());
+      // Message de groupe persisté côté serveur (avec éventuelle réponse).
+      onSendGroupMessage(activeGroupId, messageText.trim(), replyTo?.id || null);
     } else if (activeConversationId) {
       // Envoi privé (avec éventuelle réponse à un message).
       onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
@@ -846,12 +852,6 @@ export default function MessagesView({
       clearTimeout(typingStopRef.current);
       onTyping?.(interlocutor.id, false);
     }
-  };
-
-  // Les notes vocales ne sont pas encore implémentées (pas d'enregistrement/
-  // upload audio réel) : on n'envoie plus de fausse note (un simple libellé texte).
-  const handleStartVoiceNote = () => {
-    alert('Les notes vocales arriveront prochainement sur PLUME.');
   };
 
   // Démarre l'enregistrement micro réel.
@@ -1221,6 +1221,18 @@ export default function MessagesView({
           {/* Wallpaper dynamic subtle visual anchor motif */}
           <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.015] pointer-events-none bg-[radial-gradient(#7C3AED_1px,transparent_1px)] [background-size:16px_16px] bg-repeat"></div>
 
+          {/* Aucune discussion selectionnee (desktop) : on n'affiche PAS un faux
+              interlocuteur, mais une invite claire. */}
+          {!activeConversationId && !activeGroupId && (
+            <div className="hidden md:flex absolute inset-0 z-20 flex-col items-center justify-center text-center p-8 bg-white dark:bg-black select-none">
+              <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
+                <Feather className="w-8 h-8" />
+              </div>
+              <h5 className="font-bold text-[#7C3AED] dark:text-white text-sm">Ta messagerie PLUME</h5>
+              <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">Sélectionne une discussion à gauche pour commencer à échanger.</p>
+            </div>
+          )}
+
           {/* Caller Screen overlay simulation (HIGH CRAFT INTERACTION) */}
           {callState !== 'idle' && (
             <div className="absolute inset-0 z-50 bg-zinc-950/95 flex flex-col justify-between items-center py-20 px-8 text-center animate-fade-in backdrop-blur-md">
@@ -1413,15 +1425,34 @@ export default function MessagesView({
                 </div>
               ) : (
                 activeGroupMessages.map((msg) => {
+                  if (deletedForMe.has(msg.id)) return null; // supprimé pour moi
                   const isSentByMe = msg.senderId === currentUser.id;
-                  const isVoiceStr = msg.content.startsWith('[🎙️ Note Vocale');
+                  const isVoiceStr = (msg.content || '').startsWith('[🎙️ Note Vocale');
+
+                  // Message supprimé pour tout le monde.
+                  if (msg.deletedForEveryone) {
+                    return (
+                      <div key={msg.id} className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+                        <div className="max-w-[80%] px-3 py-1.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 italic text-xs flex items-center gap-1.5">
+                          <Trash2 className="w-3 h-3" /> Ce message a été supprimé
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const repliedMsg = msg.replyToId ? activeGroupMessages.find((m) => m.id === msg.replyToId) : null;
 
                   return (
-                    <div 
+                    <div
                       key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
-                      <div className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
+                      <div
+                        onTouchStart={() => startLongPress(msg as any)}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                        onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg as any); }}
+                        className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
                           ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md text-right'
                           : 'bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-bl-md border border-transparent text-left'
@@ -1430,14 +1461,22 @@ export default function MessagesView({
                         {/* Group member identifier tag top */}
                         {!isSentByMe && (
                           <div className="flex items-center space-x-1 mb-1 border-b border-gray-200/70 dark:border-zinc-700/50 pb-0.5">
-                            <img 
-                              src={msg.senderAvatar} 
-                              alt={msg.senderName} 
+                            <img
+                              src={msg.senderAvatar}
+                              alt={msg.senderName}
                               className="w-3.5 h-3.5 rounded-full object-cover ring-1 ring-purple-400/20"
                             />
                             <span className="text-[9px] font-sans font-black text-purple-400">
                               {msg.senderName}
                             </span>
+                          </div>
+                        )}
+
+                        {/* Citation du message auquel on répond. */}
+                        {repliedMsg && (
+                          <div className={`mb-1 px-2 py-1 rounded-lg border-l-2 text-left ${isSentByMe ? 'bg-white/15 border-white/60' : 'bg-purple-500/10 border-purple-500'}`}>
+                            <p className={`text-[9px] font-black truncate ${isSentByMe ? 'opacity-90' : 'text-purple-600 dark:text-purple-400'}`}>{repliedMsg.senderId === currentUser.id ? 'Vous' : repliedMsg.senderName}</p>
+                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : (repliedMsg.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : repliedMsg.content}</p>
                           </div>
                         )}
 
@@ -1463,6 +1502,7 @@ export default function MessagesView({
                         <div className={`flex items-center justify-end space-x-1 mt-1 text-[8.5px] font-mono ${
                           isSentByMe ? 'text-purple-200' : 'text-zinc-400'
                         }`}>
+                          {msg.editedAt && <span className="italic opacity-80">modifié</span>}
                           <span>
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -1770,6 +1810,7 @@ export default function MessagesView({
                       id="message-input-chat-box"
                       ref={messageInputRef}
                       rows={1}
+                      maxLength={2000}
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
                       className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 leading-relaxed scrollbar-none"
                       value={messageText}
@@ -2097,7 +2138,7 @@ export default function MessagesView({
               <Trash2 className="w-4 h-4 text-gray-500" /><span className="text-sm font-bold">Supprimer pour moi</span>
             </button>
             {canDeleteForEveryone(actionMsg) && (
-              <button onClick={() => { onDeleteMessageForEveryone?.(actionMsg.id); setActionMsg(null); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
+              <button onClick={() => { if (activeGroupId) onDeleteGroupMessageForEveryone?.(actionMsg.id); else onDeleteMessageForEveryone?.(actionMsg.id); setActionMsg(null); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
                 <Trash2 className="w-4 h-4 text-red-500" /><span className="text-sm font-bold text-red-500">Supprimer pour tout le monde</span>
               </button>
             )}

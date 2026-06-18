@@ -387,6 +387,10 @@ model GroupMessage {
   groupId   String
   senderId  String
   content   String
+  // Réponse à un autre message + édition + suppression pour tout le monde.
+  replyToId String?
+  editedAt  DateTime?
+  deletedForEveryone Boolean @default(false)
   group     ReadingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender    User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now())
