@@ -548,64 +548,28 @@ export default function MessagesView({
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   // Recherche dans la liste des discussions / groupes.
   const [convSearch, setConvSearch] = useState('');
-  // Hauteur disponible pour le panneau messagerie : suit le viewport visible
-  // (clavier compris) afin que la zone de saisie ne disparaisse jamais.
+  // Hauteur du panneau messagerie = 100dvh - en-tête de l'app - barre du bas.
+  // Les deux offsets sont mesurés et exposés en variables CSS ; comme on part de
+  // 100dvh, le clavier (WebView redimensionnée) réduit la hauteur → la zone de
+  // saisie reste TOUJOURS visible, et l'en-tête reste collé au corps.
   const messagingCardRef = useRef<HTMLDivElement>(null);
-  const [messagingCardMaxH, setMessagingCardMaxH] = useState<number | null>(null);
   useEffect(() => {
-    const vv = window.visualViewport;
-    const compute = () => {
-      const el = messagingCardRef.current;
-      if (!el) return;
-      const vh = vv ? vv.height : window.innerHeight;
-      const top = el.getBoundingClientRect().top;
-      // Clavier ouvert ? (le viewport visible est nettement plus court que la
-      // fenetre). Dans ce cas la barre de navigation du bas est masquee.
-      const keyboardOpen = (window.innerHeight - vh) > 120;
-      // Hauteur de la barre de navigation du bas a NE PAS recouvrir, sinon le
-      // champ de saisie passe dessous et "disparait".
-      const navEl = document.getElementById('plume-bottom-nav');
-      const navH = !keyboardOpen && navEl ? navEl.offsetHeight : 0;
-      const avail = Math.max(320, Math.round(vh - top - navH - 6));
-      setMessagingCardMaxH(window.innerWidth >= 768 ? null : avail);
+    const setVars = () => {
+      const root = document.documentElement;
+      const top = messagingCardRef.current?.getBoundingClientRect().top;
+      const navH = document.getElementById('plume-bottom-nav')?.offsetHeight;
+      if (typeof top === 'number' && top >= 0 && top < 400) root.style.setProperty('--plume-msg-top', `${Math.round(top)}px`);
+      if (navH) root.style.setProperty('--plume-nav-h', `${Math.round(navH)}px`);
     };
-    compute();
-    const t1 = setTimeout(compute, 150);
-    const t2 = setTimeout(compute, 400);
-    vv?.addEventListener('resize', compute);
-    vv?.addEventListener('scroll', compute);
-    window.addEventListener('resize', compute);
-    window.addEventListener('orientationchange', compute);
+    setVars();
+    const t1 = window.setTimeout(setVars, 200);
+    const t2 = window.setTimeout(setVars, 600);
+    window.addEventListener('resize', setVars);
+    window.addEventListener('orientationchange', setVars);
     return () => {
       clearTimeout(t1); clearTimeout(t2);
-      vv?.removeEventListener('resize', compute);
-      vv?.removeEventListener('scroll', compute);
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('orientationchange', compute);
-    };
-  }, []);
-
-  // Mobile ? + viewport VISIBLE (suit le clavier) : la discussion ouverte
-  // s'affiche en plein ecran et la zone de saisie reste TOUJOURS au-dessus du
-  // clavier — fini la barre de texte qui disparait.
-  const [isMobileView, setIsMobileView] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [vp, setVp] = useState<{ h: number; top: number }>(() => ({ h: typeof window !== 'undefined' ? window.innerHeight : 0, top: 0 }));
-  useEffect(() => {
-    const vv = window.visualViewport;
-    const onResize = () => {
-      setIsMobileView(window.innerWidth < 768);
-      setVp({ h: vv ? vv.height : window.innerHeight, top: vv ? vv.offsetTop : 0 });
-    };
-    onResize();
-    vv?.addEventListener('resize', onResize);
-    vv?.addEventListener('scroll', onResize);
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
-    return () => {
-      vv?.removeEventListener('resize', onResize);
-      vv?.removeEventListener('scroll', onResize);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
+      window.removeEventListener('resize', setVars);
+      window.removeEventListener('orientationchange', setVars);
     };
   }, []);
 
@@ -826,11 +790,13 @@ export default function MessagesView({
     if (!initialAnchorDoneRef.current) {
       if (activeThreadCount > 0) {
         initialAnchorDoneRef.current = true;
+        // On colle au DERNIER message. Plusieurs passes car le contenu (images)
+        // ET la hauteur de la carte (variables CSS mesurees) se stabilisent
+        // apres le 1er rendu — sinon on resterait coince plus haut.
         const stick = () => { container.scrollTop = container.scrollHeight; };
         stick();
-        const t1 = window.setTimeout(stick, 60);
-        const t2 = window.setTimeout(stick, 240);
-        return () => { clearTimeout(t1); clearTimeout(t2); };
+        const ids = [60, 250, 500, 750].map((d) => window.setTimeout(stick, d));
+        return () => { ids.forEach(clearTimeout); };
       }
       return; // pas encore de messages : on attend leur arrivee
     }
@@ -1016,8 +982,7 @@ export default function MessagesView({
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
       <div
         ref={messagingCardRef}
-        style={messagingCardMaxH ? { height: messagingCardMaxH, minHeight: 0 } : undefined}
-        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[86vh] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
+        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
 
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
         <div className={`md:col-span-4 bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
@@ -1233,9 +1198,7 @@ export default function MessagesView({
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW */}
-        <div
-          style={(isMobileView && mobileShowThread) ? { position: 'fixed', left: 0, right: 0, top: vp.top, height: vp.h, zIndex: 80 } : undefined}
-          className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+        <div className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
@@ -1294,7 +1257,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header */}
-          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={(isMobileView && mobileShowThread && vp.top === 0) ? { paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' } : undefined}>
+          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1692,7 +1655,7 @@ export default function MessagesView({
             </div>
 
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER */}
-            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={(isMobileView && mobileShowThread && vp.top === 0) ? { paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))' } : undefined}>
+            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2">
             
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {showEmojiPicker && (
