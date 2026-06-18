@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Send, 
@@ -775,7 +775,9 @@ export default function MessagesView({
   // les changements de taille (ResizeObserver) et on recolle a chaque fois. Des
   // que l'utilisateur fait un geste (doigt/molette) ou remonte, on relache.
   // → A l'ouverture on tombe TOUJOURS sur le message le plus recent, jamais en haut.
-  useEffect(() => {
+  // useLayoutEffect : on positionne le bas AVANT le 1er affichage → aucun flash
+  // ni mouvement vers le 1er message.
+  useLayoutEffect(() => {
     const container = scrollContainerRef.current;
     lastThreadKeyRef.current = threadKey;
     lastMsgCountRef.current = activeThreadCount;
@@ -783,12 +785,16 @@ export default function MessagesView({
 
     let pinned = true;
     pinningActiveRef.current = true;
+    // Defilement INSTANTANE (jamais anime) pendant l'epinglage.
+    const prevBehavior = container.style.scrollBehavior;
+    container.style.scrollBehavior = 'auto';
     const toBottom = () => { if (pinned) container.scrollTop = container.scrollHeight; };
 
     const release = () => {
       if (!pinned) return;
       pinned = false;
       pinningActiveRef.current = false;
+      container.style.scrollBehavior = prevBehavior;
       ro.disconnect();
       mo.disconnect();
       clearTimeout(deadline);
