@@ -1222,8 +1222,12 @@ export default function MessagesView({
           </div>
         </div>
 
-        {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW */}
-        <div className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+        {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW
+            Sur mobile, la discussion ouverte passe en PLEIN ECRAN (fixed inset-0)
+            au-dessus de la barre du bas — comme WhatsApp — avec marges de securite
+            (barre d'etat en haut, home indicator en bas). En CSS pur : applique
+            des le 1er affichage, donc aucun saut. Sur grand ecran : grille normale. */}
+        <div className={`md:col-span-8 max-md:fixed max-md:inset-0 max-md:z-[60] md:static flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
@@ -1281,8 +1285,8 @@ export default function MessagesView({
             </div>
           )}
 
-          {/* Thread Header */}
-          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0">
+          {/* Thread Header (passe SOUS la barre d'etat en plein ecran mobile). */}
+          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1679,8 +1683,8 @@ export default function MessagesView({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER */}
-            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2">
+            {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER (au-dessus du home indicator). */}
+            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
             
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {showEmojiPicker && (
