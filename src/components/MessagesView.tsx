@@ -507,7 +507,7 @@ export default function MessagesView({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastMsgCountRef = useRef(0);
   const lastThreadKeyRef = useRef<string | null>(null);
-  const initialAnchorDoneRef = useRef(false);
+  const pinningActiveRef = useRef(false);
 
   // Répondre / modifier / supprimer (messages privés, façon WhatsApp).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -769,47 +769,66 @@ export default function MessagesView({
     try { setChatBg(key ? (localStorage.getItem(key) || '') : ''); } catch { setChatBg(''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
+  // OUVERTURE D'UNE DISCUSSION : on EPINGLE le bas (dernier message) tant que le
+  // contenu n'est pas pose (messages charges en asynchrone, images, hauteur dvh
+  // qui se stabilise…). On observe les ajouts de contenu (MutationObserver) ET
+  // les changements de taille (ResizeObserver) et on recolle a chaque fois. Des
+  // que l'utilisateur fait un geste (doigt/molette) ou remonte, on relache.
+  // → A l'ouverture on tombe TOUJOURS sur le message le plus recent, jamais en haut.
   useEffect(() => {
     const container = scrollContainerRef.current;
-    const end = messagesEndRef.current;
-    const switchedThread = lastThreadKeyRef.current !== threadKey;
-    if (switchedThread) {
-      lastThreadKeyRef.current = threadKey;
-      initialAnchorDoneRef.current = false; // ancrage initial pas encore fait
-      lastMsgCountRef.current = 0;
-    }
-    const prevCount = lastMsgCountRef.current;
+    lastThreadKeyRef.current = threadKey;
     lastMsgCountRef.current = activeThreadCount;
-
     if (!container) return;
 
-    // ANCRAGE INITIAL : on colle au DERNIER message des que la discussion a des
-    // messages — que ce soit immediatement a l'ouverture OU apres leur
-    // chargement asynchrone (sinon, ouvrir une conv vide puis recevoir les
-    // messages laissait l'utilisateur tout en haut, sur le 1er message).
-    if (!initialAnchorDoneRef.current) {
-      if (activeThreadCount > 0) {
-        initialAnchorDoneRef.current = true;
-        // On colle au DERNIER message. Plusieurs passes car le contenu (images)
-        // ET la hauteur de la carte (variables CSS mesurees) se stabilisent
-        // apres le 1er rendu — sinon on resterait coince plus haut.
-        const stick = () => { container.scrollTop = container.scrollHeight; };
-        stick();
-        const ids = [60, 250, 500, 750].map((d) => window.setTimeout(stick, d));
-        return () => { ids.forEach(clearTimeout); };
-      }
-      return; // pas encore de messages : on attend leur arrivee
-    }
+    let pinned = true;
+    pinningActiveRef.current = true;
+    const toBottom = () => { if (pinned) container.scrollTop = container.scrollHeight; };
 
-    // Apres l'ancrage : un NOUVEAU message ne ramene en bas que si l'utilisateur
-    // y etait deja (sinon on le laisse lire l'historique).
-    if (activeThreadCount > prevCount) {
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < 160) {
-        end?.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-  }, [threadKey, activeThreadCount]);
+    const release = () => {
+      if (!pinned) return;
+      pinned = false;
+      pinningActiveRef.current = false;
+      ro.disconnect();
+      mo.disconnect();
+      clearTimeout(deadline);
+      container.removeEventListener('wheel', onGesture);
+      container.removeEventListener('touchmove', onGesture);
+      container.removeEventListener('scroll', onScroll);
+    };
+    const onGesture = () => release();
+    const onScroll = () => {
+      // L'utilisateur a remonte volontairement → on arrete d'epingler.
+      const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (dist > 120) release();
+    };
+
+    const ro = new ResizeObserver(() => toBottom());
+    const mo = new MutationObserver(() => toBottom());
+    ro.observe(container);
+    mo.observe(container, { childList: true, subtree: true });
+    container.addEventListener('wheel', onGesture, { passive: true });
+    container.addEventListener('touchmove', onGesture, { passive: true });
+    container.addEventListener('scroll', onScroll, { passive: true });
+
+    toBottom();
+    // Filet : on relache au bout de 1,5 s quoi qu'il arrive (le contenu est pose).
+    const deadline = window.setTimeout(release, 1500);
+
+    return release;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadKey]);
+
+  // NOUVEAU message pendant qu'on lit : on ne descend que si l'utilisateur etait
+  // deja en bas (sinon on le laisse tranquille). Ignore pendant l'epinglage initial.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const grew = activeThreadCount > lastMsgCountRef.current;
+    lastMsgCountRef.current = activeThreadCount;
+    if (!container || pinningActiveRef.current || !grew) return;
+    const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (dist < 160) container.scrollTop = container.scrollHeight;
+  }, [activeThreadCount]);
 
   // Submit send message
   const handleSend = (e: React.FormEvent) => {
