@@ -139,6 +139,8 @@ export default function App() {
   const recordingTimeoutsRef = useRef<Record<string, any>>({});
   const [groupRecording, setGroupRecording] = useState<Record<string, string>>({});
   const groupRecordingTimeoutsRef = useRef<Record<string, any>>({});
+  // Accuses de lecture de GROUPE : groupId → (userId → horodatage du dernier lu).
+  const [groupReads, setGroupReads] = useState<Record<string, Record<string, string>>>({});
   // Passe à true une fois le token restauré (natif) → évite d'ouvrir le socket
   // temps réel sans authentification au démarrage de l'app.
   const [tokenRestored, setTokenRestored] = useState(false);
@@ -286,6 +288,16 @@ export default function App() {
         } catch { return []; }
       }));
       setGroupMessages(lists.flat());
+      // Etat de lecture par membre (accuses de reception groupe).
+      try {
+        const rr = await fetch('/api/groups/reads', { headers: authHeaders() });
+        if (rr.ok) {
+          const reads: { groupId: string; userId: string; at: string }[] = await rr.json();
+          const map: Record<string, Record<string, string>> = {};
+          reads.forEach((r) => { (map[r.groupId] ||= {})[r.userId] = r.at; });
+          setGroupReads(map);
+        }
+      } catch { /* best-effort */ }
     } catch (e) {
       console.error('[PLUME] Erreur chargement groupes :', e);
     }
@@ -355,6 +367,13 @@ export default function App() {
     fetch(`/api/groups/messages/${messageId}`, { method: 'DELETE', headers: authHeaders() })
       .then(async (res) => { if (res.ok) applyGroupMessageUpdate(await res.json()); else { const d = await res.json().catch(() => ({})); alert(d.error || 'Suppression impossible.'); } })
       .catch(() => alert('Suppression impossible (réseau).'));
+  };
+
+  // Marque un groupe comme LU (accuses de reception groupe).
+  const handleMarkGroupRead = (groupId: string) => {
+    if (!currentUser) return;
+    setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [currentUser.id]: new Date().toISOString() } }));
+    fetch(`/api/groups/${groupId}/read`, { method: 'PUT', headers: authHeaders() }).catch(() => {});
   };
 
   // ----- Gestion des groupes (façon WhatsApp) -----
@@ -849,6 +868,11 @@ export default function App() {
       setGroupMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
     });
 
+    // Accusé de lecture de groupe (un membre a lu jusqu'à un certain horaire).
+    socket.on('group_read', ({ groupId, userId, at }: { groupId: string; userId: string; at: string }) => {
+      setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [userId]: at } }));
+    });
+
     // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
     // du profil se met à jour sans rafraîchissement.
     socket.on('story_stats', ({ storyId, likes, favoritesCount }: { storyId: string; likes: number; favoritesCount: number }) => {
@@ -991,6 +1015,7 @@ export default function App() {
       socket.off('group_stop_typing');
       socket.off('new_group_message');
       socket.off('group_message_updated');
+      socket.off('group_read');
       callManagerRef.current?.dispose();
       groupCallManagerRef.current?.dispose();
       groupCallManagerRef.current = null;
@@ -3240,6 +3265,8 @@ export default function App() {
                       onSendGroupMessage={handleSendGroupMessage}
                       onEditGroupMessage={handleEditGroupMessage}
                       onDeleteGroupMessageForEveryone={handleDeleteGroupMessageForEveryone}
+                      groupReads={groupReads}
+                      onMarkGroupRead={handleMarkGroupRead}
                       onUpdateGroup={handleUpdateGroup}
                       onAddGroupMembers={handleAddGroupMembers}
                       onRemoveGroupMember={handleRemoveGroupMember}

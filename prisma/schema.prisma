@@ -382,6 +382,18 @@ model ReadingGroup {
   @@index([creatorId])
 }
 
+// Suivi de LECTURE par membre d'un groupe (accuses de reception groupe) :
+// horodatage du dernier message lu par chaque membre.
+model GroupRead {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  lastRead DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+}
+
 model GroupMessage {
   id        String       @id @default(cuid())
   groupId   String

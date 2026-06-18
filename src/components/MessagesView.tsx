@@ -137,6 +137,8 @@ interface MessagesViewProps {
   onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null) => void;
   onEditGroupMessage?: (messageId: string, content: string) => void;
   onDeleteGroupMessageForEveryone?: (messageId: string) => void;
+  groupReads?: Record<string, Record<string, string>>;
+  onMarkGroupRead?: (groupId: string) => void;
   onUpdateGroup?: (groupId: string, data: { name?: string; description?: string; avatar?: string }) => void;
   onAddGroupMembers?: (groupId: string, memberIds: string[]) => void;
   onRemoveGroupMember?: (groupId: string, userId: string) => void;
@@ -273,6 +275,8 @@ export default function MessagesView({
   onSendGroupMessage,
   onEditGroupMessage,
   onDeleteGroupMessageForEveryone,
+  groupReads,
+  onMarkGroupRead,
   onUpdateGroup,
   onAddGroupMembers,
   onRemoveGroupMember,
@@ -770,6 +774,23 @@ export default function MessagesView({
   const activeGroupMessages = groupMessages.filter(
     m => m.groupId === activeGroupId
   ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Ouverture d'un groupe → on le marque comme LU (accuses de reception groupe).
+  useEffect(() => {
+    if (activeGroupId) onMarkGroupRead?.(activeGroupId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId, activeGroupMessages.length]);
+
+  // Un message de groupe est « lu par tous » si chaque AUTRE membre a un dernier
+  // accuse de lecture posterieur a la date du message.
+  const groupReadByAll = (msgDate: string): boolean => {
+    if (!activeGroupId || !activeGroup) return false;
+    const reads = groupReads?.[activeGroupId] || {};
+    const others = (activeGroup.members || []).filter((id) => id !== currentUser.id);
+    if (!others.length) return false;
+    const t = new Date(msgDate).getTime();
+    return others.every((id) => { const at = reads[id]; return at && new Date(at).getTime() >= t; });
+  };
 
   // Auto-scroll intelligent : on descend tout en bas quand on ouvre une
   // discussion ou qu'un NOUVEAU message arrive ET que l'utilisateur est deja
@@ -1424,27 +1445,31 @@ export default function MessagesView({
                   </p>
                 </div>
               ) : (
-                activeGroupMessages.map((msg) => {
+                activeGroupMessages.map((msg, mi) => {
                   if (deletedForMe.has(msg.id)) return null; // supprimé pour moi
                   const isSentByMe = msg.senderId === currentUser.id;
                   const isVoiceStr = (msg.content || '').startsWith('[🎙️ Note Vocale');
+                  const showDate = mi === 0 || !isSameDay(activeGroupMessages[mi - 1]?.date, msg.date);
+                  const dateSep = showDate ? <DateSeparator date={msg.date} /> : null;
 
                   // Message supprimé pour tout le monde.
                   if (msg.deletedForEveryone) {
                     return (
-                      <div key={msg.id} className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+                      <React.Fragment key={msg.id}>{dateSep}
+                      <div className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
                         <div className="max-w-[80%] px-3 py-1.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 italic text-xs flex items-center gap-1.5">
                           <Trash2 className="w-3 h-3" /> Ce message a été supprimé
                         </div>
                       </div>
+                      </React.Fragment>
                     );
                   }
 
                   const repliedMsg = msg.replyToId ? activeGroupMessages.find((m) => m.id === msg.replyToId) : null;
 
                   return (
+                    <React.Fragment key={msg.id}>{dateSep}
                     <div
-                      key={msg.id}
                       className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
                       <div
@@ -1506,10 +1531,11 @@ export default function MessagesView({
                           <span>
                             {new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {isSentByMe && <Feather className="w-3 h-3 text-white/70 shrink-0 inline animate-feather-in" />}
+                          {isSentByMe && <MessageTicks isDelivered isRead={groupReadByAll(msg.date)} />}
                         </div>
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })
               )

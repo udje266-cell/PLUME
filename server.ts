@@ -3079,6 +3079,46 @@ export async function createServerInstance() {
     }
   });
 
+  // Marque le groupe comme LU jusqu'a maintenant pour l'utilisateur courant.
+  app.put('/api/groups/:id/read', requireAuth, async (req: any, res) => {
+    try {
+      const members = await getGroupMemberIds(req.params.id);
+      if (!members.includes(req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      const now = new Date();
+      await prisma.groupRead.upsert({
+        where: { groupId_userId: { groupId: req.params.id, userId: req.user.id } },
+        update: { lastRead: now },
+        create: { groupId: req.params.id, userId: req.user.id, lastRead: now },
+      });
+      const at = now.toISOString();
+      members.forEach((id) => io.to(`user:${id}`).emit('group_read', { groupId: req.params.id, userId: req.user.id, at }));
+      res.json({ success: true, at });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Etat de lecture (par membre) de TOUS les groupes de l'utilisateur.
+  app.get('/api/groups/reads', requireAuth, async (req: any, res) => {
+    try {
+      const groups = await prisma.readingGroup.findMany({
+        where: { members: { some: { id: req.user.id } } },
+        select: { id: true },
+      });
+      const ids = groups.map((g) => g.id);
+      if (!ids.length) return res.json([]);
+      const reads = await prisma.groupRead.findMany({
+        where: { groupId: { in: ids } },
+        select: { groupId: true, userId: true, lastRead: true },
+      });
+      res.json(reads.map((r) => ({ groupId: r.groupId, userId: r.userId, at: r.lastRead.toISOString() })));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
   // Helper : renvoie le groupe (avec membres) et notifie ses membres en direct.
   const broadcastGroupUpdate = async (groupId: string) => {
     const fresh = await prisma.readingGroup.findUnique({
