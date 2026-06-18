@@ -139,6 +139,7 @@ interface MessagesViewProps {
   onDeleteGroupMessageForEveryone?: (messageId: string) => void;
   groupReads?: Record<string, Record<string, string>>;
   onMarkGroupRead?: (groupId: string) => void;
+  onChatFullscreen?: (open: boolean) => void;
   onUpdateGroup?: (groupId: string, data: { name?: string; description?: string; avatar?: string }) => void;
   onAddGroupMembers?: (groupId: string, memberIds: string[]) => void;
   onRemoveGroupMember?: (groupId: string, userId: string) => void;
@@ -277,6 +278,7 @@ export default function MessagesView({
   onDeleteGroupMessageForEveryone,
   groupReads,
   onMarkGroupRead,
+  onChatFullscreen,
   onUpdateGroup,
   onAddGroupMembers,
   onRemoveGroupMember,
@@ -557,6 +559,15 @@ export default function MessagesView({
     mq.addEventListener?.('change', on);
     return () => mq.removeEventListener?.('change', on);
   }, []);
+
+  // Discussion ouverte en PLEIN ECRAN sur mobile → on prévient App pour masquer
+  // l'en-tete + la barre du bas de l'app (comportement WhatsApp). La zone de
+  // saisie reste dans le portal, donc non affectee.
+  const mobileShowThread_signal = isMobile && mobileShowThread;
+  useEffect(() => {
+    onChatFullscreen?.(mobileShowThread_signal);
+    return () => onChatFullscreen?.(false);
+  }, [mobileShowThread_signal, onChatFullscreen]);
   // Hauteur du panneau messagerie = 100dvh - en-tête de l'app - barre du bas.
   // Les deux offsets sont mesurés et exposés en variables CSS ; comme on part de
   // 100dvh, le clavier (WebView redimensionnée) réduit la hauteur → la zone de

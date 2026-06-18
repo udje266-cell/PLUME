@@ -1144,6 +1144,9 @@ export default function App() {
 
   // UI state variables
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements'>('home');
+  // Vrai quand une discussion est ouverte en plein ecran (mobile) → on masque
+  // l'en-tete + la barre du bas de l'app (comme WhatsApp).
+  const [chatFullscreen, setChatFullscreen] = useState(false);
   const [activeInterlocutorId, setActiveInterlocutorId] = useState<string>(() => {
     if (!currentUser?.id) return 'user_author';
     const scopedKey = getActiveInterlocutorStorageKey(currentUser.id);
@@ -3110,7 +3113,9 @@ export default function App() {
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-screen">
-            {/* Top Header navbar navigation */}
+            {/* Top Header navbar navigation — masque quand une discussion est
+                ouverte en plein ecran (comme WhatsApp). */}
+            {!chatFullscreen && (
             <MainNavigation
               activeTab={activeTab}
               onChangeTab={(tab) => {
@@ -3133,6 +3138,7 @@ export default function App() {
               onOpenNotification={handleOpenNotification}
               unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
             />
+            )}
 
             {/* Side-Drawer filter checklist menu */}
             <LateralMenu
@@ -3269,6 +3275,7 @@ export default function App() {
                       onDeleteGroupMessageForEveryone={handleDeleteGroupMessageForEveryone}
                       groupReads={groupReads}
                       onMarkGroupRead={handleMarkGroupRead}
+                      onChatFullscreen={setChatFullscreen}
                       onUpdateGroup={handleUpdateGroup}
                       onAddGroupMembers={handleAddGroupMembers}
                       onRemoveGroupMember={handleRemoveGroupMember}
