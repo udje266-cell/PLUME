@@ -1458,6 +1458,36 @@ export default function App() {
     }
   }, [isAuthenticated, currentUser, openChatFromPush]);
 
+  // Lien profond de partage : `?recit=<id>` ouvre directement le récit en lecture.
+  // On attend que les récits soient chargés, puis on consomme le paramètre une
+  // seule fois (nettoyage de l'URL pour ne pas le rejouer).
+  const deepLinkConsumedRef = React.useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current) return;
+    if (!isAuthenticated || !currentUser || stories.length === 0) return;
+    let recitId: string | null = null;
+    try {
+      recitId = new URLSearchParams(window.location.search).get('recit');
+    } catch {
+      recitId = null;
+    }
+    if (!recitId) return;
+    deepLinkConsumedRef.current = true;
+    const target = stories.find((s) => s.id === recitId);
+    if (target) {
+      setActiveTab('home');
+      handleSelectStoryForReading(target);
+    }
+    // Retire le paramètre de l'URL (évite de rouvrir au prochain rendu/refresh).
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('recit');
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      /* history indisponible */
+    }
+  }, [isAuthenticated, currentUser, stories]);
+
   // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
   // /api/users en échec au démarrage…). On (re)charge le profil directement via
   // /auth/me, indépendamment du reste du bootstrap, et on tranche toujours :

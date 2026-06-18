@@ -35,6 +35,7 @@ import { Skeleton } from './Skeleton';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
+import { storyShareUrl, shareStoryNative, openShareIntent, ShareNetwork } from '../utils/share';
 
 /** Formate un compteur de façon compacte : 1234 → « 1,2 k », 1500000 → « 1,5 M ». */
 function formatStat(n: number): string {
@@ -136,10 +137,11 @@ export default function HomeView({
     return hasReadChapter || isLastRead;
   });
 
-  // Fallback to avoid empty screen on a pristine environment
-  const displayOngoing = ongoingStories.length > 0 
-    ? ongoingStories 
-    : publishedStories.slice(0, 1); // fallback to suggest the first available book
+  // Vrai état : a-t-on au moins une lecture en cours ?
+  const hasOngoing = ongoingStories.length > 0;
+  // S'il n'y a aucune lecture commencée, on ne ment pas avec un faux « Chapitre 1 · 0% » :
+  // on propose honnêtement quelques récits à COMMENCER (section relabellisée plus bas).
+  const displayOngoing = hasOngoing ? ongoingStories : publishedStories.slice(0, 6);
 
   // Calculate read progress percentages and last read dates
   const getStoryProgressInfo = (story: Story) => {
@@ -219,21 +221,33 @@ export default function HomeView({
   const newsStories = publishedStories.slice()
     .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 
-  // 5. "Nouveaux auteurs" (comptes de rôle Auteur récemment actifs)
-  const authorsList = allUsers.filter(u => u && u.role === 'Auteur' && u.id !== currentUser.id);
+  // Texte d'accroche partagé avec le récit.
+  const shareTextFor = (story: Story) => `« ${story.title} » de ${story.authorName} sur PLUME`;
 
-  // Header quick share links
+  // Copie le VRAI lien profond du récit (atteignable, ouvre le récit dans l'app).
   const handleCopyLink = (story: Story) => {
-    navigator.clipboard.writeText(`https://plume.app/recits/${story.id}`);
+    navigator.clipboard.writeText(storyShareUrl(story.id)).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shareServices = [
-    { name: 'WhatsApp', color: 'bg-[#25D366]', action: () => alert('Partagé sur WhatsApp !') },
-    { name: 'Facebook', color: 'bg-[#1877F2]', action: () => alert('Partagé sur Facebook !') },
-    { name: 'X / Twitter', color: 'bg-[#0F1419]', action: () => alert('Partagé sur X !') },
-    { name: 'Telegram', color: 'bg-[#0088cc]', action: () => alert('Partagé sur Telegram !') },
+  // Point d'entrée du partage : feuille système native si disponible (mobile/PWA),
+  // sinon ouverture de la fenêtre de partage (liens d'intention réels + copie).
+  const handleShareStory = async (story: Story) => {
+    const ok = await shareStoryNative({
+      title: story.title,
+      text: shareTextFor(story),
+      url: storyShareUrl(story.id),
+    });
+    if (!ok) setShareStory(story);
+  };
+
+  // Réseaux de partage : liens d'intention RÉELS (plus aucune simulation).
+  const shareServices: { name: string; network: ShareNetwork; color: string }[] = [
+    { name: 'WhatsApp', network: 'whatsapp', color: 'bg-[#25D366]' },
+    { name: 'Facebook', network: 'facebook', color: 'bg-[#1877F2]' },
+    { name: 'X / Twitter', network: 'twitter', color: 'bg-[#0F1419]' },
+    { name: 'Telegram', network: 'telegram', color: 'bg-[#0088cc]' },
   ];
 
   return (
@@ -438,12 +452,13 @@ export default function HomeView({
         </section>
       )}
 
-      {/* SECTION 1: CONTINUER LA LECTURE (cartes horizontales facon maquette) */}
+      {/* SECTION 1: CONTINUER / COMMENCER LA LECTURE (libellé honnête selon l'état) */}
+      {displayOngoing.length > 0 && (
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-purple-600" />
-            <span>Continuer la lecture</span>
+            <span>{hasOngoing ? 'Continuer la lecture' : 'Commencer une lecture'}</span>
           </h3>
         </div>
 
@@ -451,28 +466,34 @@ export default function HomeView({
           {displayOngoing.slice(0, 6).map((story) => {
             const { percent } = getStoryProgressInfo(story);
             const readCh = story.chapters.filter((ch) => readChapters.includes(ch.id)).length;
+            const started = readCh > 0 || lastReadProgress?.storyId === story.id;
             return (
               <div key={story.id} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
                 <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
                   <img src={optimizedImage(story.cover, 220)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
-                    <div className="h-full bg-purple-500" style={{ width: `${percent}%` }} />
-                  </div>
+                  {started && (
+                    <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
+                      <div className="h-full bg-purple-500" style={{ width: `${percent}%` }} />
+                    </div>
+                  )}
                 </div>
                 <h4 className="mt-2 font-serif font-black text-[11px] text-gray-900 dark:text-white line-clamp-1">{story.title}</h4>
                 <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
-                <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">Chapitre {Math.max(1, readCh)} · {percent}%</p>
+                <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">
+                  {started ? `Chapitre ${Math.max(1, readCh)} · ${percent}%` : `${story.chapters.length} chapitre${story.chapters.length > 1 ? 's' : ''}`}
+                </p>
                 <button
                   onClick={() => onSelectStory(story)}
                   className="mt-2 w-full flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase tracking-wider py-1.5 rounded-lg transition"
                 >
-                  <BookOpen className="w-3 h-3" /> Reprendre
+                  <BookOpen className="w-3 h-3" /> {started ? 'Reprendre' : 'Commencer'}
                 </button>
               </div>
             );
           })}
         </div>
       </section>
+      )}
 
       {/* SECTION : REPRENEZ VOTRE ÉCRITURE (auteurs) */}
       {currentUser.role !== 'Lecteur' && (() => {
@@ -525,18 +546,29 @@ export default function HomeView({
         </div>
 
         {(() => {
+          const forYou = displayForYou.map((d) => d.story);
           const list = discoverTab === 'tendances'
             ? trendingStories
             : discoverTab === 'nouveautes'
               ? newsStories
-              : displayForYou.map((d) => d.story);
+              // « Recommandés » exclut les récits déjà lus/favoris : pour un lecteur
+              // assidu cela peut être vide → repli honnête sur les tendances.
+              : (forYou.length > 0 ? forYou : trendingStories);
           return (
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
               {list.slice(0, 12).map((story, i) => (
                 <div key={story.id} className="w-28 flex-shrink-0">
-                  <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
-                    <img src={optimizedImage(story.cover, 180)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden">
+                    <img onClick={() => onSelectStory(story)} src={optimizedImage(story.cover, 180)} alt={story.title} className="w-full h-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
                     <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>
+                    <button
+                      aria-label="Partager"
+                      title="Partager"
+                      onClick={(e) => { e.stopPropagation(); handleShareStory(story); }}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition"
+                    >
+                      <Share2 className="w-3 h-3" />
+                    </button>
                   </div>
                   <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-[10px] font-black text-gray-900 dark:text-white line-clamp-1 cursor-pointer">{story.title}</h4>
                   <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
@@ -555,7 +587,7 @@ export default function HomeView({
       </div>
       )}
 
-      {/* SHARING MODAL - TIKTOK / SOCIAL SHARING SIMULATION */}
+      {/* FEUILLE DE PARTAGE (repli quand la Web Share API native est absente) */}
       {shareStory && (
         <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in select-none">
           <div 
@@ -582,14 +614,14 @@ export default function HomeView({
               </button>
             </div>
 
-            {/* Simulated target Share networks */}
+            {/* Réseaux de partage : liens d'intention réels */}
             <div className="grid grid-cols-4 gap-2 pt-1.5 select-none text-center">
               {shareServices.map((srv) => (
                 <button
                   key={srv.name}
                   id={`share-srv-${srv.name.toLowerCase().replace(/\s+/g, '-')}`}
                   onClick={() => {
-                    srv.action();
+                    openShareIntent(srv.network, { url: storyShareUrl(shareStory.id), text: shareTextFor(shareStory) });
                     setShareStory(null);
                   }}
                   className="flex flex-col items-center justify-center space-y-1.5 cursor-pointer"
@@ -602,10 +634,10 @@ export default function HomeView({
               ))}
             </div>
 
-            {/* Quick manual copy link action */}
+            {/* Copie manuelle du lien réel */}
             <div className="pt-3 border-t border-gray-100 dark:border-zinc-900 flex items-center space-x-2">
               <div className="flex-1 bg-gray-50 dark:bg-zinc-950 p-2.5 rounded-xl text-[11px] text-gray-500 font-mono truncate select-all">
-                https://plume.app/recits/{shareStory.id}
+                {storyShareUrl(shareStory.id)}
               </div>
               <button
                 id="home-copy-link-btn"
