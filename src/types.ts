@@ -51,6 +51,8 @@ export interface User {
   confirmDeleteStory?: boolean;
   activeConnections?: string[];
   emailVerified?: boolean;
+  // Vitrine de trophees mis en avant (snapshots), visible par tous les visiteurs.
+  showcase?: { id: string; title: string }[];
 }
 
 export interface Chapter {

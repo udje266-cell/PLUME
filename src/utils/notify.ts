@@ -45,6 +45,51 @@ export function saveNotifSettings(s: NotifSettings): void {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
+/* --------- Préférences PAR CATÉGORIE : recevoir ou non l'alerte (son + bannière
+   système + toast). Distinct des sons : ici on décide si la notification est
+   émise du tout, pour chaque type d'activité. Persisté localement. ----------- */
+
+export type NotifCategory =
+  | 'newChapters'   // nouveaux chapitres d'auteurs suivis
+  | 'comments'      // commentaires reçus sur mes histoires
+  | 'replies'       // réponses à mes commentaires
+  | 'followers'     // nouveaux abonnés
+  | 'achievements'  // accomplissements débloqués
+  | 'dms';          // messages privés
+
+export type NotifCategories = Record<NotifCategory, boolean>;
+
+const CATEGORIES_KEY = 'plume_notif_categories';
+
+const CATEGORY_DEFAULTS: NotifCategories = {
+  newChapters: true,
+  comments: true,
+  replies: true,
+  followers: true,
+  achievements: true,
+  dms: true,
+};
+
+export function getNotifCategories(): NotifCategories {
+  try {
+    const raw = localStorage.getItem(CATEGORIES_KEY);
+    if (!raw) return { ...CATEGORY_DEFAULTS };
+    const p = JSON.parse(raw);
+    return { ...CATEGORY_DEFAULTS, ...(p || {}) };
+  } catch {
+    return { ...CATEGORY_DEFAULTS };
+  }
+}
+
+export function saveNotifCategories(c: NotifCategories): void {
+  try { localStorage.setItem(CATEGORIES_KEY, JSON.stringify(c)); } catch { /* ignore */ }
+}
+
+/** Une catégorie d'alerte est-elle activée par l'utilisateur ? (défaut : oui) */
+export function isNotifCategoryEnabled(cat: NotifCategory): boolean {
+  return getNotifCategories()[cat] !== false;
+}
+
 /* ----------------------------- Sons synthétisés ----------------------------- */
 
 let audioCtx: AudioContext | null = null;

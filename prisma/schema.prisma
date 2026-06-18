@@ -66,6 +66,8 @@ model User {
   readingFullscreen Boolean  @default(false)
   autoSaveEnabled   Boolean  @default(true)
   confirmDeleteStory Boolean @default(true)
+  // Vitrine de trophees mis en avant (snapshots {id,title}) visible par tous.
+  showcase          Json?
 
   stories           Story[]
   comments          Comment[]

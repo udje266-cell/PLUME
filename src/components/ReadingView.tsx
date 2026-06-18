@@ -548,10 +548,38 @@ export default function ReadingView({
     }
   };
 
-  const [fontSize, setFontSize] = useState<number>(18); // Font Size Slider (14px - 32px)
-  const [fontStyle, setFontStyle] = useState<FontStyleType>('serif'); // Typography presets
+  // Valeurs initiales issues des PRÉFÉRENCES DE LECTURE du profil (réellement
+  // appliquées ici ; l'utilisateur peut toujours ajuster ensuite dans la liseuse).
+  const prefFontSize = ((): number => {
+    switch (currentUser.readingFontSize) {
+      case 'Petit': return 16;
+      case 'Grand': return 24;
+      case 'Tres Grand': return 30;
+      case 'Standard': return 18;
+      default: return 18;
+    }
+  })();
+  const prefFontStyle = ((): FontStyleType => {
+    switch (currentUser.readingFontFamily) {
+      case 'Sans-Serif': return 'sans';
+      case 'Monospace': return 'mono';
+      case 'Serif': return 'serif';
+      default: return 'serif';
+    }
+  })();
+  const prefTheme = ((): ReadingTheme => {
+    switch (currentUser.readingTheme) {
+      case 'Clair': return 'light';
+      case 'Sombre': return 'dark';
+      case 'Sépia': return 'sepia';
+      default: return 'sepia';
+    }
+  })();
+
+  const [fontSize, setFontSize] = useState<number>(prefFontSize); // Font Size Slider (14px - 32px)
+  const [fontStyle, setFontStyle] = useState<FontStyleType>(prefFontStyle); // Typography presets
   const [lineSpacing, setLineSpacing] = useState<LineSpacingType>('normal');
-  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('sepia');
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(prefTheme);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
   
   // Interactive Custom controls

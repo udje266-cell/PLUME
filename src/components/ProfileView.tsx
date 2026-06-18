@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -51,7 +51,7 @@ import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { authHeaders } from '../utils/auth';
-import { getNotifSettings, saveNotifSettings, notificationPermission, requestNotificationPermission, playNotificationSound, type NotifSettings, type NotifType } from '../utils/notify';
+import { getNotifSettings, saveNotifSettings, notificationPermission, requestNotificationPermission, playNotificationSound, getNotifCategories, saveNotifCategories, type NotifSettings, type NotifType, type NotifCategories, type NotifCategory } from '../utils/notify';
 import { ensureWebPush } from '../utils/pwa';
 import {
   getUserStats,
@@ -90,6 +90,7 @@ interface ProfileViewProps {
   onOpenDiscussion?: (userId: string) => void;
   friendIds?: string[];
   onViewProfile?: (userId: string) => void;
+  onBlockUser?: (userId: string, block: boolean) => void;
   allUsers?: User[];
 }
 
@@ -280,6 +281,7 @@ export default function ProfileView({
   onFollowAuthor,
   onOpenDiscussion,
   onViewProfile,
+  onBlockUser,
   allUsers = [],
   friendIds,
 }: ProfileViewProps) {
@@ -451,13 +453,12 @@ const user = freshViewedUser || freshCurrentUser;
   };
   const [showStatusToast, setShowStatusToast] = useState<string | null>(null);
 
-  // Notification toggles
-  const [notifNewChapters, setNotifNewChapters] = useState(true);
-  const [notifComments, setNotifComments] = useState(true);
-  const [notifReplies, setNotifReplies] = useState(true);
-  const [notifAbonnes, setNotifAbonnes] = useState(true);
-  const [notifTrophies, setNotifTrophies] = useState(true);
-  const [notifDMs, setNotifDMs] = useState(true);
+  // Préférences de notification PAR CATÉGORIE (persistées + réellement appliquées
+  // dans App : coupe son + bannière + toast pour la catégorie désactivée).
+  const [notifCats, setNotifCats] = useState<NotifCategories>(() => getNotifCategories());
+  const toggleNotifCat = (k: NotifCategory, v: boolean) => {
+    setNotifCats((prev) => { const next = { ...prev, [k]: v }; saveNotifCategories(next); return next; });
+  };
 
   // Sons de notification + autorisation push (PWA / navigateur).
   const [soundCfg, setSoundCfg] = useState<NotifSettings>(() => getNotifSettings());
@@ -560,9 +561,28 @@ const user = freshViewedUser || freshCurrentUser;
   // y compris les badges cachés qui conservent leur apparence « ??? »).
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
 
+  // Liste complète des accomplissements de l'utilisateur courant (pour résoudre
+  // les titres des trophées mis en vitrine et alimenter le sélecteur).
+  const myAchievementsList = useMemo(() => {
+    const uStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
+    const ownerAllUnlocked = currentUser.role === 'Administrateur';
+    return [
+      ...generateReaderAchievements(uStats, currentUser.id, ownerAllUnlocked),
+      ...generateAuthorAchievements(uStats, currentUser.id, ownerAllUnlocked),
+    ];
+  }, [currentUser.id, currentUser.role, currentUser.username]);
+  const resolveAchTitle = (id: string | null) => (id ? (myAchievementsList.find((a) => a.id === id)?.title || id) : '');
+
   // Étagère à 3 trophées mis en avant sur le profil (choisis par l'utilisateur).
+  // Source de vérité : le serveur (currentUser.showcase, visible par TOUS les
+  // visiteurs et synchronisé entre appareils). Repli localStorage pour l'édition
+  // immédiate hors-ligne / migration des anciennes données.
   const showcaseKey = `plume_showcase_${currentUser.id}`;
   const [showcase, setShowcase] = useState<(string | null)[]>(() => {
+    const fromServer = currentUser.showcase;
+    if (Array.isArray(fromServer) && fromServer.length) {
+      return [fromServer[0]?.id || null, fromServer[1]?.id || null, fromServer[2]?.id || null];
+    }
     try {
       const raw = localStorage.getItem(showcaseKey);
       const arr = raw ? JSON.parse(raw) : [];
@@ -584,6 +604,11 @@ const user = freshViewedUser || freshCurrentUser;
       const next = [...prev];
       next[slot] = achId;
       try { localStorage.setItem(showcaseKey, JSON.stringify(next)); } catch { /* ignore */ }
+      // Persistance serveur (snapshots {id,title}) → visible par les visiteurs.
+      const snapshots = next
+        .filter((id): id is string => !!id)
+        .map((id) => ({ id, title: resolveAchTitle(id) }));
+      onUpdateProfile({ showcase: snapshots });
       return next;
     });
     setPickerSlot(null);
@@ -823,6 +848,32 @@ const user = freshViewedUser || freshCurrentUser;
   // Compile personal writings
   const writtenStories = stories.filter(s => s.authorId === user.id);
 
+  // Liste réelle des comptes bloqués par l'utilisateur courant (résolus via allUsers).
+  const blockedUserList = (currentUser.blockedUsers || [])
+    .map((id) => allUsers.find((u) => u.id === id))
+    .filter((u): u is User => !!u);
+
+  // Petit rendu réutilisable de la liste des comptes bloqués (avec « Débloquer »).
+  const renderBlockedList = () => (
+    blockedUserList.length === 0 ? (
+      <p className="text-[9.5px] text-zinc-400 italic">Aucun utilisateur n'est actuellement bloqué.</p>
+    ) : (
+      <div className="space-y-1.5">
+        {blockedUserList.map((u) => (
+          <div key={u.id} className="flex items-center justify-between p-2 bg-white dark:bg-zinc-950 rounded-lg border border-gray-150 dark:border-zinc-850">
+            <span className="text-[10px] font-bold text-gray-800 dark:text-zinc-200 truncate">@{u.username}</span>
+            <button
+              onClick={() => onBlockUser?.(u.id, false)}
+              className="text-[9px] font-black uppercase tracking-wide text-purple-600 hover:text-purple-700 px-2 py-1 rounded-lg hover:bg-purple-500/10 shrink-0"
+            >
+              Débloquer
+            </button>
+          </div>
+        ))}
+      </div>
+    )
+  );
+
   const renderSingleBook = (story: Story, globalIndex: number, isDraft: boolean) => {
     // Determine context menu position to prevent overflow/clipping on mobile edges
     const colIndex = globalIndex % 3;
@@ -930,7 +981,13 @@ const user = freshViewedUser || freshCurrentUser;
                         onClick={(e) => {
                           e.stopPropagation();
                           setExpandedMenuStoryId(null);
-                          setStoryToDelete(story);
+                          // Réglage « Confirmation avant suppression » réellement appliqué :
+                          // si désactivé, on supprime directement, sinon on ouvre la modale.
+                          if (currentUser.confirmDeleteStory === false) {
+                            onDeleteStory(story.id);
+                          } else {
+                            setStoryToDelete(story);
+                          }
                         }}
                         className="w-full px-3.5 py-2 text-[10.5px] font-black text-red-600 hover:bg-red-500/10 transition flex items-center gap-2 cursor-pointer"
                       >
@@ -1522,6 +1579,35 @@ const user = freshViewedUser || freshCurrentUser;
             >
               <ShieldAlert className="w-4 h-4" />
             </button>
+
+            {/* BUTTON 4: BLOQUER / DÉBLOQUER */}
+            {(() => {
+              const isBlocked = (currentUser.blockedUsers || []).includes(user.id);
+              return (
+                <button
+                  id={`profile-block-toggle-${user.id}`}
+                  onClick={() => {
+                    if (isBlocked) {
+                      onBlockUser?.(user.id, false);
+                      setShowStatusToast(`@${user.username} débloqué.`);
+                    } else {
+                      if (!window.confirm(`Bloquer @${user.username} ? Vous ne verrez plus son contenu et vos échanges seront coupés.`)) return;
+                      onBlockUser?.(user.id, true);
+                      setShowStatusToast(`@${user.username} bloqué.`);
+                    }
+                    setTimeout(() => setShowStatusToast(null), 2500);
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-black transition duration-200 cursor-pointer flex items-center justify-center border ${
+                    isBlocked
+                      ? 'bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-950 border-zinc-700 dark:border-zinc-300'
+                      : 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-500/20 border-zinc-500/20 hover:border-zinc-500/40'
+                  }`}
+                  title={isBlocked ? 'Débloquer ce profil' : 'Bloquer ce profil'}
+                >
+                  <Lock className="w-4 h-4" />
+                </button>
+              );
+            })()}
           </div>
         )}
 
@@ -1859,6 +1945,40 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         );
       })()}
+
+      {/* Vitrine de trophées d'un AUTRE utilisateur (lecture seule, snapshots serveur). */}
+      {!isOwnProfile && Array.isArray(user.showcase) && user.showcase.length > 0 && (
+        <div className="p-4 rounded-2xl space-y-3 font-sans text-left bg-zinc-50/70 dark:bg-white/[0.03]">
+          <div className="flex items-center space-x-2">
+            <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="font-bold text-[10px] uppercase tracking-wider text-zinc-700 dark:text-zinc-300">Ses trophées</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((slot) => {
+              const ach = user.showcase?.[slot];
+              return (
+                <div
+                  key={slot}
+                  className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center p-2 text-center ${
+                    ach
+                      ? 'border-amber-400/50 bg-gradient-to-br from-amber-400/15 to-orange-500/5'
+                      : 'border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40'
+                  }`}
+                >
+                  {ach ? (
+                    <>
+                      <Trophy className="w-6 h-6 text-amber-500 mb-1" />
+                      <span className="text-[9px] font-black text-gray-800 dark:text-gray-100 leading-tight line-clamp-2">{ach.title}</span>
+                    </>
+                  ) : (
+                    <span className="text-2xl text-zinc-300 dark:text-zinc-700 font-black">·</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 5. TABS NAVIGATION WITH HIGHLY LITERARY MOOD */}
       <div className="grid grid-cols-2 border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl">
@@ -3951,10 +4071,10 @@ const user = freshViewedUser || freshCurrentUser;
                         </select>
                       </div>
 
-                      {/* Comptes Bloqués */}
-                      <div className="pt-2">
+                      {/* Comptes Bloqués (liste réelle) */}
+                      <div className="pt-2 space-y-1.5">
                         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1 font-mono">Comptes bloqués</label>
-                        <p className="text-[9.5px] text-zinc-400 italic">Aucun utilisateur n'est actuellement inscrit dans votre liste de blocage.</p>
+                        {renderBlockedList()}
                       </div>
                     </div>
                   </div>
@@ -4050,9 +4170,17 @@ const user = freshViewedUser || freshCurrentUser;
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-bold text-zinc-550 uppercase tracking-wider block font-mono">Historique de lecture</label>
                           <button
-                            onClick={() => {
-                              alert("L'historique des livres consultés a été vidé.");
-                              setShowStatusToast("Historique de lecture nettoyé !");
+                            onClick={async () => {
+                              if (!window.confirm("Effacer tout votre historique de lecture ? Cette action est irréversible.")) return;
+                              try {
+                                const res = await fetch('/api/me/history', { method: 'DELETE', headers: authHeaders() });
+                                if (!res.ok && res.status !== 204) throw new Error(`history ${res.status}`);
+                                window.dispatchEvent(new CustomEvent('plume:history-cleared'));
+                                setShowStatusToast("Historique de lecture effacé !");
+                              } catch (e) {
+                                console.error('[PLUME] Effacement historique :', e);
+                                setShowStatusToast("Échec de l'effacement. Réessayez.");
+                              }
                               setTimeout(() => setShowStatusToast(null), 2500);
                             }}
                             className="text-[9px] uppercase font-black text-purple-600 hover:text-purple-750 font-serif cursor-pointer"
@@ -4060,7 +4188,7 @@ const user = freshViewedUser || freshCurrentUser;
                             Effacer tout l’historique
                           </button>
                         </div>
-                        <p className="text-[9.5px] text-zinc-400 italic">Dernier ouvrage lu : "Les Échos du Cosmos" (Chapitre 1)</p>
+                        <p className="text-[9.5px] text-zinc-400 italic">Votre historique de lecture reste privé et n'est visible que par vous.</p>
                       </div>
                     </div>
                   </div>
@@ -4084,27 +4212,14 @@ const user = freshViewedUser || freshCurrentUser;
                           <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Statut des Brouillons</label>
                           <span className="text-[9px] text-zinc-455 block">Réseau d'oeuvres archivées ou non-publiées.</span>
                         </div>
-                        <span className="text-[10px] bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded-full font-bold">
-                          1 brouillon sauvegardé
-                        </span>
-                      </div>
-
-                      {/* Sauvegarde automatique */}
-                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
-                        <div className="space-y-0.5">
-                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Sauvegarde automatique cloud</label>
-                          <span className="text-[9px] text-zinc-455 block font-medium">Enregistrer automatiquement vos chapitres toutes les 35 secondes d'activité.</span>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={currentUser.autoSaveEnabled ?? true}
-                          onChange={(e) => {
-                            onUpdateProfile({ autoSaveEnabled: e.target.checked });
-                            setShowStatusToast(e.target.checked ? "Sauvegarde auto activée !" : "Sauvegarde auto désactivée !");
-                            setTimeout(() => setShowStatusToast(null), 2500);
-                          }}
-                          className="w-4 h-4 text-purple-650 rounded cursor-pointer"
-                        />
+                        {(() => {
+                          const draftCount = stories.filter((s) => s.authorId === currentUser.id && s.status === 'Brouillon').length;
+                          return (
+                            <span className="text-[10px] bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded-full font-bold">
+                              {draftCount} brouillon{draftCount > 1 ? 's' : ''} sauvegardé{draftCount > 1 ? 's' : ''}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       {/* Confirmation suppression */}
@@ -4217,8 +4332,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifNewChapters}
-                          onChange={(e) => setNotifNewChapters(e.target.checked)}
+                          checked={notifCats.newChapters}
+                          onChange={(e) => toggleNotifCat('newChapters', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4231,8 +4346,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifComments}
-                          onChange={(e) => setNotifComments(e.target.checked)}
+                          checked={notifCats.comments}
+                          onChange={(e) => toggleNotifCat('comments', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4245,8 +4360,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifReplies}
-                          onChange={(e) => setNotifReplies(e.target.checked)}
+                          checked={notifCats.replies}
+                          onChange={(e) => toggleNotifCat('replies', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4259,8 +4374,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifAbonnes}
-                          onChange={(e) => setNotifAbonnes(e.target.checked)}
+                          checked={notifCats.followers}
+                          onChange={(e) => toggleNotifCat('followers', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4273,8 +4388,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifTrophies}
-                          onChange={(e) => setNotifTrophies(e.target.checked)}
+                          checked={notifCats.achievements}
+                          onChange={(e) => toggleNotifCat('achievements', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4287,8 +4402,8 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifDMs}
-                          onChange={(e) => setNotifDMs(e.target.checked)}
+                          checked={notifCats.dms}
+                          onChange={(e) => toggleNotifCat('dms', e.target.checked)}
                           className="w-4 h-4 text-purple-650 rounded cursor-pointer"
                         />
                       </div>
@@ -4313,13 +4428,10 @@ const user = freshViewedUser || freshCurrentUser;
                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block font-mono">Sessions de Connexion Actives</label>
                         <div className="space-y-1.5 font-mono text-[9px] leading-tight text-zinc-500">
                           <div className="flex items-center justify-between p-2 bg-white dark:bg-zinc-950 rounded-lg border border-purple-500/10">
-                            <span>📱 iPhone 15 Pro • Paris (Session courante)</span>
+                            <span>🔓 Cet appareil • Session courante</span>
                             <span className="text-purple-650 font-bold uppercase text-[7.5px]">Actif</span>
                           </div>
-                          <div className="flex items-center justify-between p-2 bg-white dark:bg-zinc-950/40 rounded-lg border border-gray-150 dark:border-zinc-850">
-                            <span>💻 MacBook Pro • Lyon (Dernière synchro)</span>
-                            <span className="text-zinc-400">Il y a 2h</span>
-                          </div>
+                          <p className="text-[8.5px] text-zinc-400 italic font-sans px-0.5">Le suivi multi-appareils n'est pas activé : seule votre session actuelle est affichée.</p>
                         </div>
                       </div>
 
@@ -4386,15 +4498,21 @@ const user = freshViewedUser || freshCurrentUser;
                       {/* E-mail activé */}
                       <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-zinc-850">
                         <label className="text-[11.5px] font-bold text-gray-900 dark:text-white block font-sans">Statut d'authentification</label>
-                        <span className="text-[9.5px] bg-purple-100 dark:bg-purple-900/40 text-purple-655 dark:text-purple-400 font-bold px-2.5 py-0.5 rounded-full font-sans">
-                          Compte Vérifié ✓
-                        </span>
+                        {currentUser.isVerified ? (
+                          <span className="text-[9.5px] bg-purple-100 dark:bg-purple-900/40 text-purple-655 dark:text-purple-400 font-bold px-2.5 py-0.5 rounded-full font-sans">
+                            Compte Vérifié ✓
+                          </span>
+                        ) : (
+                          <span className="text-[9.5px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-bold px-2.5 py-0.5 rounded-full font-sans">
+                            Non vérifié
+                          </span>
+                        )}
                       </div>
 
-                      {/* Blocage */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-550 uppercase tracking-wider block font-mono">Comptes signalés ou bloqués</label>
-                        <p className="text-[9.5px] text-zinc-450 leading-relaxed font-serif">Historique vierge. Plume applique une conduite stricte et bienveillante.</p>
+                      {/* Blocage (liste réelle) */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-550 uppercase tracking-wider block font-mono">Comptes bloqués</label>
+                        {renderBlockedList()}
                       </div>
                     </div>
                   </div>

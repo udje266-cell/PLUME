@@ -1646,6 +1646,7 @@ export async function createServerInstance() {
         readingFullscreen: user.readingFullscreen,
         autoSaveEnabled: user.autoSaveEnabled,
         confirmDeleteStory: user.confirmDeleteStory,
+        showcase: user.showcase === undefined ? undefined : (Array.isArray(user.showcase) ? user.showcase.slice(0, 3) : null),
         hasChangedRole: user.hasChangedRole,
       };
 
@@ -3579,6 +3580,17 @@ export async function createServerInstance() {
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
     const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
     res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
+  });
+
+  // Effacer tout l'historique de lecture de l'utilisateur courant.
+  app.delete('/api/me/history', requireAuth, async (req: any, res) => {
+    try {
+      await prisma.readingHistory.deleteMany({ where: { userId: req.user.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Erreur lors de l'effacement de l'historique" });
+    }
   });
 
   app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {

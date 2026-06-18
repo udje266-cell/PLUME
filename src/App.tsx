@@ -51,7 +51,7 @@ import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAu
 import { API_BASE } from './utils/api';
 import { applyStatusBarTheme } from './utils/native';
 import { ensureWebPush } from './utils/pwa';
-import { playNotificationSound, showAppNotification, setUnreadBadge, type NotifType } from './utils/notify';
+import { playNotificationSound, showAppNotification, setUnreadBadge, isNotifCategoryEnabled, type NotifType, type NotifCategory } from './utils/notify';
 import { 
   getUserStats,
   saveUserStats,
@@ -745,17 +745,31 @@ export default function App() {
         return next;
       });
 
-      // Son + notification système selon le type. Les messages PRIVÉS sont déjà
-      // sonorisés par « new_message » → on évite le doublon ici.
+      // Catégorie d'alerte (réglages utilisateur « Notifications ») : si l'utilisateur
+      // a coupé cette catégorie, on n'émet ni son, ni bannière, ni toast.
       const st = String(notification?.type || '').toUpperCase();
       const nd = (notification?.data && typeof notification.data === 'object') ? notification.data : {};
+      const category: NotifCategory | null =
+        st === 'MESSAGE' ? 'dms'
+        : st === 'COMMENT' ? 'comments'
+        : st === 'REPLY' ? 'replies'
+        : st === 'FOLLOW' ? 'followers'
+        : st === 'ACHIEVEMENT' ? 'achievements'
+        : (st === 'NEW_CHAPTER' || st === 'CHAPTER') ? 'newChapters'
+        : null;
+      const categoryEnabled = category ? isNotifCategoryEnabled(category) : true;
+
+      // Son + notification système selon le type. Les messages PRIVÉS sont déjà
+      // sonorisés par « new_message » → on évite le doublon ici.
       let soundType: NotifType | null = null;
       if (st === 'MESSAGE') { if (nd.groupId) soundType = 'message'; }
       else soundType = 'reply';
-      if (soundType) {
+      if (soundType && categoryEnabled) {
         playNotificationSound(soundType);
         showAppNotification(soundType, { title: mapped.title || 'PLUME', body: mapped.message || '', conversationId: nd.conversationId, groupId: nd.groupId });
       }
+
+      if (!categoryEnabled) return; // catégorie désactivée → pas de toast non plus
 
       const toastId = mapped.id;
       const nextToast: RealtimeNotificationToast = {
@@ -789,7 +803,7 @@ export default function App() {
 
       // Son + notification système (si onglet en arrière-plan) pour un nouveau
       // message reçu, sauf si on est déjà dans la conversation au premier plan.
-      if (!(isCurrentActive && document.visibilityState === 'visible')) {
+      if (!(isCurrentActive && document.visibilityState === 'visible') && isNotifCategoryEnabled('dms')) {
         playNotificationSound('message');
         const senderName = message.sender?.username || message.senderName || 'Nouveau message';
         const preview = typeof message.content === 'string'
@@ -1879,6 +1893,35 @@ export default function App() {
       setCurrentUser(originalCurrentUser);
       setAllUsers(originalAllUsers);
     });
+  };
+
+  // Bloquer / débloquer un utilisateur. Met à jour currentUser.blockedUsers de
+  // façon optimiste puis synchronise avec le serveur (endpoints déjà existants).
+  const handleBlockUser = async (targetId: string, block: boolean) => {
+    if (!currentUser?.id || !targetId || targetId === currentUser.id) return;
+    const prevUser = currentUser;
+    const prevAll = allUsers;
+    const currentBlocked = currentUser.blockedUsers || [];
+    const nextBlocked = block
+      ? (currentBlocked.includes(targetId) ? currentBlocked : [...currentBlocked, targetId])
+      : currentBlocked.filter((id) => id !== targetId);
+    // Bloquer rompt aussi le lien d'abonnement dans les deux sens (comme le serveur).
+    const nextFollowing = block ? (currentUser.following || []).filter((id) => id !== targetId) : (currentUser.following || []);
+    const nextUser: User = { ...currentUser, blockedUsers: nextBlocked, following: nextFollowing };
+    setCurrentUser(nextUser);
+    setAllUsers((prev) => prev.map((u) => (u.id === nextUser.id ? nextUser : u)));
+    try {
+      const res = await fetch(`/api/users/${targetId}/block`, {
+        method: block ? 'POST' : 'DELETE',
+        headers: authHeaders(),
+      });
+      if (!res.ok && res.status !== 204 && res.status !== 201) throw new Error(`block ${res.status}`);
+    } catch (e) {
+      console.error('[PLUME] Erreur (dé)blocage :', e);
+      alert("L'action de blocage n'a pas pu être enregistrée. Réessayez.");
+      setCurrentUser(prevUser);
+      setAllUsers(prevAll);
+    }
   };
 
   const syncStoryMetricsToServer = (storyId: string, nextStoryObj: Story) => {
@@ -3145,7 +3188,7 @@ export default function App() {
           <div className="flex flex-col flex-1 min-h-screen">
             {/* Top Header navbar navigation — masque quand une discussion est
                 ouverte en plein ecran (comme WhatsApp). */}
-            {!chatFullscreen && (
+            {!chatFullscreen && !(selectedStoryForReading && currentUser?.readingFullscreen) && (
             <MainNavigation
               activeTab={activeTab}
               onChangeTab={(tab) => {
@@ -3344,6 +3387,7 @@ export default function App() {
                       onFollowAuthor={handleFollowAuthor}
                       onOpenDiscussion={handleOpenDiscussion}
                       onViewProfile={handleViewUserProfile}
+                      onBlockUser={handleBlockUser}
                       allUsers={allUsers}
                       friendIds={!viewedUser ? serverFriendIds : undefined}
                     />
