@@ -548,6 +548,15 @@ export default function MessagesView({
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   // Recherche dans la liste des discussions / groupes.
   const [convSearch, setConvSearch] = useState('');
+  // Mobile ? (uniquement sur changement de point de rupture → stable, ne se
+  // declenche PAS a l'ouverture du clavier). Sert au plein ecran de la discussion.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const on = () => setIsMobile(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
   // Hauteur du panneau messagerie = 100dvh - en-tête de l'app - barre du bas.
   // Les deux offsets sont mesurés et exposés en variables CSS ; comme on part de
   // 100dvh, le clavier (WebView redimensionnée) réduit la hauteur → la zone de
@@ -1223,11 +1232,13 @@ export default function MessagesView({
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW
-            Sur mobile, la discussion ouverte passe en PLEIN ECRAN (fixed inset-0)
-            au-dessus de la barre du bas — comme WhatsApp — avec marges de securite
-            (barre d'etat en haut, home indicator en bas). En CSS pur : applique
-            des le 1er affichage, donc aucun saut. Sur grand ecran : grille normale. */}
-        <div className={`md:col-span-8 max-md:fixed max-md:inset-0 max-md:z-[60] md:static flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+            Sur mobile, la discussion ouverte passe en PLEIN ECRAN (fixed inset-0,
+            style inline + z-index maximal) AU-DESSUS de la barre du bas — comme
+            WhatsApp — avec marges de securite (barre d'etat en haut, home
+            indicator en bas). Sur grand ecran : grille normale. */}
+        <div
+          style={(isMobile && mobileShowThread) ? { position: 'fixed', inset: 0, zIndex: 2147483000 } : undefined}
+          className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
