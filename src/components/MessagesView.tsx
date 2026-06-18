@@ -1232,12 +1232,15 @@ export default function MessagesView({
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW
-            Sur mobile, la discussion ouverte passe en PLEIN ECRAN (fixed inset-0,
-            style inline + z-index maximal) AU-DESSUS de la barre du bas — comme
-            WhatsApp — avec marges de securite (barre d'etat en haut, home
-            indicator en bas). Sur grand ecran : grille normale. */}
+            Sur mobile, la discussion ouverte est rendue via un PORTAL vers
+            document.body (fixed inset-0, z-index max) : garanti AU-DESSUS de la
+            barre du bas, hors de tout contexte d'empilement piege. La zone de
+            saisie est donc toujours visible. Sur grand ecran : reste dans la grille. */}
+        {(() => {
+          const fullscreen = isMobile && mobileShowThread;
+          const __thread = (
         <div
-          style={(isMobile && mobileShowThread) ? { position: 'fixed', inset: 0, zIndex: 2147483000 } : undefined}
+          style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2147483000 } : undefined}
           className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
@@ -1880,6 +1883,9 @@ export default function MessagesView({
           </div>
 
         </div>
+          );
+          return fullscreen ? createPortal(__thread, document.body) : __thread;
+        })()}
 
       </div>
 
