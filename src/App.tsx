@@ -3040,8 +3040,15 @@ export default function App() {
       {/* Bandeau d'installation PWA (web uniquement, masqué si déjà installée). */}
       <InstallPrompt />
 
-      {/* Main Responsive Mobile-First Centered Container */}
-      <div className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">
+      {/* Main Responsive Mobile-First Centered Container.
+          Marge de securite HAUTE (barre d'etat) appliquee ici en inline env() —
+          fiable sur tous les appareils, contrairement au padding du body. Tout le
+          contenu en flux (en-tete, vues) commence donc SOUS la barre systeme. Les
+          elements `fixed` (barre du bas, bannieres, chat plein ecran) gerent leur
+          propre marge. */}
+      <div
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">
         {!isAuthenticated ? (
           <AuthView
             allUsers={allUsers}

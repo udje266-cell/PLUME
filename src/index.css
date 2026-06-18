@@ -47,15 +47,13 @@ img, video, canvas, svg {
   }
 }
 
-/* Safe-areas (encoche, barre d'état, home indicator) : appliquées uniquement
-   dans le build natif (classe posée par initNative) pour ne pas décaler le web. */
+/* Safe-areas (encoche / barre d'état / home indicator). Les marges HAUT/BAS sont
+   désormais appliquées directement sur l'en-tête de l'app et la barre du bas
+   (plus fiable que le padding du body, qui ne décalait pas le contenu sur
+   certains appareils). On garde ici les marges latérales (encoche en paysage). */
 .native-app body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  /* La zone de la barre d'etat (heure/wifi/batterie) prend la couleur du fond
-     de l'app pour eviter une bande blanche et tout chevauchement. */
   background: #ffffff;
 }
 .native-app.dark body {
