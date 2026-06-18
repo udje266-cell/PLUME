@@ -52,6 +52,7 @@ import { API_BASE } from './utils/api';
 import { applyStatusBarTheme } from './utils/native';
 import { ensureWebPush } from './utils/pwa';
 import { playNotificationSound, showAppNotification, setUnreadBadge, isNotifCategoryEnabled, type NotifType, type NotifCategory } from './utils/notify';
+import { generateCoverDataUri } from './utils/coverImage';
 import { 
   getUserStats,
   saveUserStats,
@@ -2438,7 +2439,7 @@ export default function App() {
       authorName: currentUser.username,
       authorAvatar: currentUser.avatar,
       authorVerified: currentUser.isVerified,
-      cover: storyData.cover || 'https://picsum.photos/400/600',
+      cover: storyData.cover || generateCoverDataUri(storyData.title || 'PLUME'),
       genre: storyData.genre || 'Science-Fiction',
       category: storyData.category || 'Roman',
       ambiance: storyData.ambiance || 'Mystérieux',
@@ -2497,14 +2498,24 @@ export default function App() {
       st.wordsWritten = st.wordsWritten + wordCount;
     });
 
+    // Ordre croissant fiable : on se base sur le nombre de chapitres existants
+    // (le serveur conserve l'id et l'ordre fournis par le client).
+    const existingStory = stories.find(s => s.id === storyId);
+    const nextOrder = (existingStory?.chapters?.length || 0) + 1;
+
     const newChapter: Chapter = {
       id: `chapter_${Date.now()}`,
-      title: chapterData.title || `Chapitre ${Date.now()}`,
+      title: chapterData.title || `Chapitre ${nextOrder}`,
       content: chapterData.content || '',
       publishDate: new Date().toISOString(),
-      isPublished: true,
-      views: 1,
-      reads: 1
+      // Le statut de publication est piloté par l'éditeur (brouillon possible),
+      // plus jamais forcé à « publié ». Par défaut publié si non précisé.
+      isPublished: chapterData.isPublished ?? true,
+      order: chapterData.order ?? nextOrder,
+      // Compteurs à 0 (alignés sur le serveur) : un chapitre tout neuf n'a pas
+      // « 1 vue / 1 lecture ».
+      views: 0,
+      reads: 0
     };
 
     setStories(prev => prev.map(s => {

@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag, Wand2, Quote } from 'lucide-react';
+import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag, Wand2, Quote, Eye, EyeOff } from 'lucide-react';
 import { Story, Chapter } from '../types';
 
 interface ImmersiveEditorProps {
@@ -482,6 +482,14 @@ export default function ImmersiveEditor({
 }: ImmersiveEditorProps) {
   const isNew = !chapter;
   const [title, setTitle] = useState(chapter ? chapter.title : `Chapitre ${story.chapters.length + 1} : `);
+  // Statut de publication PAR CHAPITRE. Un nouveau chapitre d'un récit DÉJÀ publié
+  // démarre en BROUILLON (pour ne pas exposer un chapitre à moitié écrit) ; sinon
+  // publié par défaut (le récit lui-même est encore masqué).
+  const [isPublished, setIsPublished] = useState<boolean>(
+    chapter ? chapter.isPublished : story.status !== 'Publié'
+  );
+  const isPublishedRef = useRef(isPublished);
+  isPublishedRef.current = isPublished;
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [chromeVisible, setChromeVisible] = useState(true);
   const [showSommaire, setShowSommaire] = useState(false);
@@ -526,15 +534,19 @@ export default function ImmersiveEditor({
     if (!(opts && opts.force) && sig === lastSavedRef.current) return;
     if (!createdIdRef.current && !plainTextOf(nextContent)) return; // pas de chapitre fantome
 
+    // Titre nettoyé : on retire un éventuel deux-points/espace orphelin en fin
+    // (le gabarit « Chapitre N : » laissé tel quel ne doit pas être enregistré).
+    const cleanTitle = nextTitle.replace(/[\s:]+$/, '').trim();
+
     setSaveState('saving');
     try {
       if (createdIdRef.current) {
-        onPersistUpdate(createdIdRef.current, { title: nextTitle.trim() || 'Chapitre', content: nextContent });
+        onPersistUpdate(createdIdRef.current, { title: cleanTitle || 'Chapitre', content: nextContent, isPublished: isPublishedRef.current });
       } else {
         const created = onPersistNew({
-          title: nextTitle.trim() || `Chapitre ${story.chapters.length + 1}`,
+          title: cleanTitle || `Chapitre ${story.chapters.length + 1}`,
           content: nextContent,
-          isPublished: true,
+          isPublished: isPublishedRef.current,
           publishDate: new Date().toISOString(),
           views: 0, reads: 0,
         });
@@ -560,6 +572,16 @@ export default function ImmersiveEditor({
   const saveManually = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     persistRef.current({ force: true });
+  };
+
+  // Bascule brouillon <-> publié, persistée immédiatement.
+  const togglePublish = () => {
+    const next = !isPublishedRef.current;
+    isPublishedRef.current = next;
+    setIsPublished(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    window.setTimeout(() => persistRef.current({ force: true }), 0);
+    wakeChrome();
   };
 
   // Planifie une sauvegarde + brouillon local (appele a chaque frappe/edition).
@@ -634,8 +656,17 @@ export default function ImmersiveEditor({
     setAiMode('paragraphs');
   };
 
+  // Avertit si du texte mis en forme va etre reecrit en texte simple (les outils
+  // qui restructurent le texte ne peuvent pas conserver les <b>/<i>/<u>).
+  const confirmFormattingLoss = (): boolean => {
+    const html = editorRef.current?.innerHTML || '';
+    if (!/<(b|strong|i|em|u)\b/i.test(html)) return true;
+    return window.confirm('Cette action réorganise le texte : la mise en forme (gras / italique / souligné) sera perdue. Continuer ?');
+  };
+
   const applyAIParagraphs = () => {
     if (!aiParas.length || !editorRef.current) { setAiOpen(false); return; }
+    if (!confirmFormattingLoss()) return;
     const html = paragraphsToEditorHtml(aiParas);
     editorRef.current.innerHTML = html;
     contentRef.current = html;
@@ -661,6 +692,7 @@ export default function ImmersiveEditor({
 
   const applyAITypo = () => {
     if (!aiTypo || !editorRef.current) { setAiOpen(false); return; }
+    if (!confirmFormattingLoss()) return;
     const html = paragraphsToEditorHtml(aiTypo.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
     editorRef.current.innerHTML = html;
     contentRef.current = html;
@@ -744,8 +776,19 @@ export default function ImmersiveEditor({
     if (Math.abs(dx) > window.innerWidth * 0.32) goRelative(dx < 0 ? 1 : -1);
   };
 
-  const familyClass = fontFamily === 'sans' ? 'font-sans' : fontFamily === 'mono' ? 'font-mono' : 'font-serif';
-  const sizeStyle = fontSize === 'small' ? '16px' : fontSize === 'large' ? '21px' : '18px';
+  // Mapping ROBUSTE des préférences de police : accepte les valeurs du profil
+  // ('Sans-Serif'/'Serif'/'Monospace', 'Petit'/'Standard'/'Grand'/'Tres Grand')
+  // ET les anciennes valeurs courtes ('sans'/'mono'/'small'/'large').
+  const familyClass =
+    fontFamily === 'sans' || fontFamily === 'Sans-Serif' ? 'font-sans'
+    : fontFamily === 'mono' || fontFamily === 'Monospace' ? 'font-mono'
+    : 'font-serif';
+  const sizeStyle =
+    fontSize === 'small' || fontSize === 'Petit' ? '16px'
+    : fontSize === 'Grand' ? '24px'
+    : fontSize === 'Tres Grand' ? '30px'
+    : fontSize === 'large' ? '21px'
+    : '18px';
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#FBFAF7] dark:bg-[#15130F] flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -764,6 +807,19 @@ export default function ImmersiveEditor({
             : saveState === 'saved' ? <Check className="w-4 h-4 text-emerald-500" />
             : saveState === 'dirty' ? <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-zinc-600 block" /> : null}
         </span>
+        <button
+          onClick={togglePublish}
+          className={`flex items-center gap-1 text-[9px] font-black uppercase tracking-wide px-2 py-1.5 rounded-lg shrink-0 transition ${
+            isPublished
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+              : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+          }`}
+          title={isPublished ? 'Chapitre publié — toucher pour repasser en brouillon' : 'Brouillon — toucher pour publier'}
+          aria-label={isPublished ? 'Repasser en brouillon' : 'Publier le chapitre'}
+        >
+          {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">{isPublished ? 'Publié' : 'Brouillon'}</span>
+        </button>
         <button onClick={saveManually} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-white bg-purple-600 hover:bg-purple-700 px-2.5 py-1.5 rounded-lg shrink-0" aria-label="Enregistrer">
           <Save className="w-3.5 h-3.5" />
         </button>

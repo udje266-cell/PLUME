@@ -35,6 +35,7 @@ import { Story, Chapter, User, Comment } from '../types';
 import ImmersiveEditor from './ImmersiveEditor';
 import { GENRES, CATEGORIES, AMBIANCES, FORMATS, LANGUAGES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
+import { generateCoverDataUri } from '../utils/coverImage';
 
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -253,8 +254,9 @@ export default function WriteView({
         cover: coverImage || selectedStoryToEdit.cover
       });
     } else {
-      const coverSeed = title.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const finalCover = coverImage || `https://picsum.photos/seed/${coverSeed}/400/600`;
+      // Couverture par défaut GÉNÉRÉE localement (titre + dégradé) plutôt qu'une
+      // image aléatoire externe (picsum) qui pouvait ne pas charger.
+      const finalCover = coverImage || generateCoverDataUri(title);
       const newStoryId = `story_${Date.now()}`;
       const newStory: Story = {
         id: newStoryId,
@@ -329,6 +331,19 @@ export default function WriteView({
   // Retrieve comments specifically for this author's books
   const myBookIds = userStories.map(s => s.id);
   const authorWorkComments = comments.filter(c => myBookIds.includes(c.storyId));
+
+  // Libellé lisible du chapitre/œuvre concerné par un commentaire (au lieu de
+  // l'ID brut du chapitre).
+  const commentLocationLabel = (c: Comment): string => {
+    const story = userStories.find(s => s.id === c.storyId);
+    if (!story) return 'Œuvre';
+    const idx = story.chapters.findIndex(ch => ch.id === c.chapterId);
+    if (idx >= 0) {
+      const t = story.chapters[idx].title?.trim();
+      return t ? `Chapitre ${idx + 1} · ${t}` : `Chapitre ${idx + 1}`;
+    }
+    return story.title;
+  };
 
   // Auto-find latest version for live updates
   const currentStoryToManage = userStories.find(s => s.id === managingStoryChapters?.id);
@@ -473,6 +488,11 @@ export default function WriteView({
                       alt="Aperçu de la couverture"
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        img.onerror = null;
+                        img.src = generateCoverDataUri(title || 'PLUME');
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 text-center px-2">
@@ -708,7 +728,9 @@ export default function WriteView({
                               {chapter.title}
                             </h4>
                             <p className="text-[10px] text-gray-450 dark:text-gray-400 font-mono mt-0.5">
-                              Publié le {new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — {chapter.views || 0} vues
+                              {chapter.isPublished
+                                ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vues`
+                                : 'Brouillon — non visible des lecteurs'}
                             </p>
                           </div>
                         </div>
@@ -801,12 +823,12 @@ export default function WriteView({
                     {/* Lecteurs uniques */}
                     <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lecteurs Uniques</span>
+                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Vues</span>
                         <Compass className="w-4 h-4 text-[#7C3AED]" />
                       </div>
                       <div>
                         <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{totalViews}</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Visites de fiches d'œuvres</p>
+                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Cumul des visites de fiches</p>
                       </div>
                     </div>
 
@@ -906,12 +928,12 @@ export default function WriteView({
                             <div key={c.id} className="p-3 bg-gray-55 dark:bg-zinc-900/40 rounded-xl border border-gray-150 dark:border-[#2a2a3a] text-xs">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="font-bold text-gray-800 dark:text-gray-200">{c.username}</span>
-                                <span className="text-[9px] text-gray-400 font-mono">{new Date(c.date).toLocaleDateString()}</span>
+                                <span className="text-[9px] text-gray-400 font-mono">{new Date(c.date).toLocaleDateString('fr-FR')}</span>
                               </div>
                               <p className="text-gray-600 dark:text-gray-400 italic">"{c.content}"</p>
                               <div className="mt-2 text-[10px] text-purple-600 dark:text-purple-400 flex items-center space-x-1 font-bold">
-                                <CornerDownRight className="w-3.5 h-3.5" />
-                                <span>Chapitre {c.chapterId}</span>
+                                <CornerDownRight className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{commentLocationLabel(c)}</span>
                               </div>
                             </div>
                           ))
@@ -962,6 +984,11 @@ export default function WriteView({
                                 alt={story.title}
                                 className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                                 referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  const img = e.currentTarget;
+                                  img.onerror = null;
+                                  img.src = generateCoverDataUri(story.title);
+                                }}
                               />
                               <div className="absolute top-2 left-2">
                                 <span className={`text-[8.5px] px-2 py-0.5 rounded-md font-extrabold uppercase shadow-xs ${

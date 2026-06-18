@@ -1908,7 +1908,7 @@ export async function createServerInstance() {
       if (ids.length === 0) return res.json([]);
       const stories = await prisma.story.findMany({
         where: { id: { in: ids } },
-        include: { author: true, chapters: true, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       // On restaure l'ordre du tri SQL (createdAt DESC), perdu par le `in`.
       const order = new Map(ids.map((id, i) => [id, i]));
@@ -1959,7 +1959,7 @@ export async function createServerInstance() {
         where: { status: 'PUBLIE' },
         include: {
           author: true,
-          chapters: true,
+          chapters: { orderBy: { order: 'asc' } },
           likes: { select: { userId: true } },
           favorites: { select: { userId: true } },
         },
@@ -2007,7 +2007,7 @@ export async function createServerInstance() {
         : requester
           ? { OR: [{ status: 'PUBLIE' }, { authorId: requester.id }] }
           : { status: 'PUBLIE' };
-      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
+      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
       res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin))));
     } catch (error) {
       console.error(error);
@@ -2019,7 +2019,7 @@ export async function createServerInstance() {
     try {
       const story = await prisma.story.findUnique({
         where: { id: req.params.id },
-        include: { author: true, chapters: true, likes: true, favorites: true, comments: { include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true, comments: { include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
       });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const requester = await getUserFromAuthorizationHeader(req);
@@ -2068,7 +2068,7 @@ export async function createServerInstance() {
           authorId: req.user.id,
           publishedAt: story.status === 'Publié' ? new Date() : null,
         },
-        include: { author: true, chapters: true, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       await recomputeCertification(req.user.id);
       res.status(201).json(serializeStory(newStory));
@@ -2114,7 +2114,7 @@ export async function createServerInstance() {
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },
         data,
-        include: { author: true, chapters: true, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       await recomputeCertification(existing.authorId);
       // XP auteur : +80 à la PREMIÈRE publication d'un récit (transition vers Publié).
@@ -2167,13 +2167,22 @@ export async function createServerInstance() {
       if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
         return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
       }
+      // Ordre calculé CÔTÉ SERVEUR (max existant + 1) pour garantir l'unicité
+      // imposée par @@unique([storyId, order]). Auparavant l'ordre valait toujours
+      // 1 → le 2e chapitre violait la contrainte et n'était jamais enregistré.
+      const lastChapter = await prisma.chapter.findFirst({
+        where: { storyId: req.params.storyId },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      });
+      const nextOrder = (lastChapter?.order ?? 0) + 1;
       const newChapter = await prisma.chapter.create({
         data: {
           id: chapter.id || undefined,
           title: chapter.title || 'Chapitre sans titre',
           content: chapter.content || '',
-          order: chapter.order || 1,
-          isPublished: Boolean(chapter.isPublished || chapter.status === 'Publié'),
+          order: nextOrder,
+          isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
           // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
           storyId: req.params.storyId,
           publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
@@ -3559,7 +3568,7 @@ export async function createServerInstance() {
   });
 
   app.get('/api/me/favorites', requireAuth, async (req: any, res) => {
-    const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
+    const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
     res.json(favorites.map((f: any) => serializeStory(f.story)));
   });
 
@@ -3593,7 +3602,7 @@ export async function createServerInstance() {
   });
 
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
-    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
+    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
     res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
   });
 

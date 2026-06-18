@@ -61,6 +61,7 @@ export interface Chapter {
   content: string;
   publishDate: string;
   isPublished: boolean;
+  order?: number;
   views: number;
   viewedBy?: string[];
   reads: number;
