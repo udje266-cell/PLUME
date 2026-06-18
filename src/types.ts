@@ -179,16 +179,47 @@ export interface AppNotification {
   excerpt?: string;
 }
 
+export type GroupRole = 'owner' | 'admin' | 'moderator' | 'member';
+export type GroupMemberStatus = 'active' | 'pending' | 'banned' | 'removed';
+export type GroupVisibility = 'public' | 'private' | 'invite';
+
+export interface GroupMembership {
+  userId: string;
+  role: GroupRole;
+  status: GroupMemberStatus;
+  joinedAt?: string;
+  username: string;
+  avatar: string;
+  isVerified?: boolean;
+}
+
 export interface ReadingGroup {
   id: string;
   name: string;
   description: string;
   avatar?: string;
-  creatorId?: string; // admin du groupe
-  members: string[]; // User IDs
+  creatorId?: string; // proprietaire du groupe
+  members: string[]; // User IDs (membres actifs)
+  roster?: GroupMembership[]; // roles/statuts/dates d'entree
   lastMessage?: string;
   lastMessageDate?: string;
   storyId?: string; // Tying group to a specific story
+  // Parametres (style WhatsApp).
+  visibility?: GroupVisibility;
+  whoCanEditInfo?: 'all' | 'admins';
+  messagePermission?: 'all' | 'admins';
+  allowReactions?: boolean;
+  allowMedia?: boolean;
+  requireApproval?: boolean;
+  inviteCode?: string;
+  inviteEnabled?: boolean;
+}
+
+export interface GroupReaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  userIds: string[];
 }
 
 export interface GroupMessage {
@@ -202,5 +233,10 @@ export interface GroupMessage {
   replyToId?: string | null;
   editedAt?: string | null;
   deletedForEveryone?: boolean;
+  deletedByAdmin?: boolean;
+  pinned?: boolean;
+  pinnedAt?: string | null;
+  isAnnouncement?: boolean;
+  reactions?: GroupReaction[];
 }
 

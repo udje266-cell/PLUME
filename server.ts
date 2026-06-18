@@ -200,7 +200,20 @@ function serializeComment(comment: any) {
   };
 }
 
-function serializeGroupMessage(m: any) {
+function serializeReactions(reactions: any[], meId?: string) {
+  if (!Array.isArray(reactions) || !reactions.length) return [];
+  const byEmoji = new Map<string, { emoji: string; count: number; mine: boolean; userIds: string[] }>();
+  for (const r of reactions) {
+    const e = byEmoji.get(r.emoji) || { emoji: r.emoji, count: 0, mine: false, userIds: [] };
+    e.count += 1;
+    e.userIds.push(r.userId);
+    if (meId && r.userId === meId) e.mine = true;
+    byEmoji.set(r.emoji, e);
+  }
+  return Array.from(byEmoji.values());
+}
+
+function serializeGroupMessage(m: any, meId?: string) {
   if (!m) return m;
   return {
     id: m.id,
@@ -212,13 +225,36 @@ function serializeGroupMessage(m: any) {
     replyToId: m.replyToId || null,
     editedAt: m.editedAt ? new Date(m.editedAt).toISOString() : null,
     deletedForEveryone: !!m.deletedForEveryone,
+    deletedByAdmin: !!m.deletedByAdmin,
+    pinned: !!m.pinned,
+    pinnedAt: m.pinnedAt ? new Date(m.pinnedAt).toISOString() : null,
+    isAnnouncement: !!m.isAnnouncement,
+    reactions: serializeReactions(m.reactions, meId),
     date: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+  };
+}
+
+// Hierarchie des roles de groupe.
+const GROUP_ROLE_RANK: Record<string, number> = { owner: 3, admin: 2, moderator: 1, member: 0 };
+function groupRoleRank(role?: string): number { return GROUP_ROLE_RANK[role || 'member'] ?? 0; }
+
+function serializeMembership(gm: any) {
+  if (!gm) return gm;
+  return {
+    userId: gm.userId,
+    role: gm.role || 'member',
+    status: gm.status || 'active',
+    joinedAt: gm.joinedAt ? new Date(gm.joinedAt).toISOString() : undefined,
+    username: gm.user?.username || '',
+    avatar: gm.user?.avatar || '',
+    isVerified: !!gm.user?.isVerified,
   };
 }
 
 function serializeGroup(group: any) {
   if (!group) return group;
   const last = Array.isArray(group.messages) && group.messages.length ? group.messages[0] : null;
+  const roster = Array.isArray(group.memberships) ? group.memberships.map(serializeMembership) : undefined;
   return {
     id: group.id,
     name: group.name,
@@ -227,6 +263,17 @@ function serializeGroup(group: any) {
     storyId: group.storyId || undefined,
     creatorId: group.creatorId,
     members: Array.isArray(group.members) ? group.members.map((m: any) => m.id || m) : [],
+    // Parametres.
+    visibility: group.visibility || 'private',
+    whoCanEditInfo: group.whoCanEditInfo || 'admins',
+    messagePermission: group.messagePermission || 'all',
+    allowReactions: group.allowReactions !== false,
+    allowMedia: group.allowMedia !== false,
+    requireApproval: !!group.requireApproval,
+    inviteCode: group.inviteCode || undefined,
+    inviteEnabled: group.inviteEnabled !== false,
+    // Roster (roles/statuts) si charge.
+    roster,
     lastMessage: last ? last.content : undefined,
     lastMessageDate: last?.createdAt ? new Date(last.createdAt).toISOString() : undefined,
     createdAt: group.createdAt ? new Date(group.createdAt).toISOString() : undefined,
@@ -2944,7 +2991,30 @@ export async function createServerInstance() {
   // ── Groupes de lecture ──────────────────────────────────────────────────────
   const GROUP_INCLUDE = {
     members: true,
+    memberships: { include: { user: { select: { id: true, username: true, avatar: true, isVerified: true } } } },
     messages: { include: { sender: true }, orderBy: { createdAt: 'desc' as const }, take: 1 },
+  };
+
+  // ---- Helpers de roles/permissions de groupe -----------------------------
+  // Renvoie l'adhesion (role/statut) d'un utilisateur dans un groupe.
+  const getMembership = async (groupId: string, userId: string) =>
+    prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
+
+  // Role EFFECTIF (le createur est toujours owner, meme si la ligne manque).
+  const effectiveRole = async (group: any, userId: string): Promise<string | null> => {
+    if (group.creatorId === userId) return 'owner';
+    const gm = await getMembership(group.id, userId);
+    if (!gm || gm.status !== 'active') return null;
+    return gm.role || 'member';
+  };
+
+  // Garantit l'existence d'une ligne d'adhesion (utile pour les anciens groupes).
+  const ensureMembership = async (groupId: string, userId: string, role: string, status = 'active') => {
+    await prisma.groupMember.upsert({
+      where: { groupId_userId: { groupId, userId } },
+      update: { status, ...(role ? { role } : {}) },
+      create: { groupId, userId, role: role || 'member', status },
+    });
   };
 
   app.post('/api/groups', requireAuth, async (req: any, res) => {
@@ -2965,6 +3035,14 @@ export async function createServerInstance() {
           storyId: storyId || null,
           creatorId: req.user.id,
           members: { connect: validIds.map((id) => ({ id })) },
+          // Roles : le createur est PROPRIETAIRE, les autres membres simples.
+          memberships: {
+            create: validIds.map((id) => ({
+              userId: id,
+              role: id === req.user.id ? 'owner' : 'member',
+              status: 'active',
+            })),
+          },
         },
         include: GROUP_INCLUDE,
       });
@@ -2998,10 +3076,10 @@ export async function createServerInstance() {
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
       const messages = await prisma.groupMessage.findMany({
         where: { groupId: req.params.id },
-        include: { sender: true },
+        include: { sender: true, reactions: true },
         orderBy: { createdAt: 'asc' },
       });
-      res.json(messages.map(serializeGroupMessage));
+      res.json(messages.map((m: any) => serializeGroupMessage(m, req.user.id)));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des messages du groupe.' });
@@ -3012,14 +3090,28 @@ export async function createServerInstance() {
     try {
       const content = String(req.body?.content || '').trim();
       const replyToId = req.body?.replyToId ? String(req.body.replyToId) : null;
+      const wantAnnouncement = !!req.body?.isAnnouncement;
       if (!content) return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide.' });
       if (content.length > 2000) return res.status(400).json({ error: 'Message trop long (2000 caractères max).' });
       const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
       if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      const myRole = await effectiveRole(group, req.user.id);
+      const isAdminPlus = groupRoleRank(myRole || 'member') >= GROUP_ROLE_RANK.admin;
+      // Mode annonce : seuls les admins peuvent ecrire.
+      if (group.messagePermission === 'admins' && !isAdminPlus) {
+        return res.status(403).json({ error: 'Seuls les administrateurs peuvent envoyer des messages dans ce groupe.' });
+      }
+      // Partage de medias desactive.
+      const isMedia = /^\[(img|🎙️|sticker|video|file)/i.test(content) || content.startsWith('[Image]');
+      if (!group.allowMedia && isMedia) {
+        return res.status(403).json({ error: 'Le partage de médias est désactivé dans ce groupe.' });
+      }
+      // Seuls les admins peuvent marquer un message comme annonce.
+      const isAnnouncement = wantAnnouncement && isAdminPlus;
       const message = await prisma.groupMessage.create({
-        data: { groupId: req.params.id, senderId: req.user.id, content, replyToId },
-        include: { sender: true },
+        data: { groupId: req.params.id, senderId: req.user.id, content, replyToId, isAnnouncement },
+        include: { sender: true, reactions: true },
       });
       await prisma.readingGroup.update({ where: { id: req.params.id }, data: { updatedAt: new Date() } });
       const serialized = serializeGroupMessage(message);
@@ -3144,29 +3236,79 @@ export async function createServerInstance() {
     }
   });
 
-  // Helper : renvoie le groupe (avec membres) et notifie ses membres en direct.
+  // Helper : renvoie le groupe (roster complet) et notifie ses membres en direct.
   const broadcastGroupUpdate = async (groupId: string) => {
-    const fresh = await prisma.readingGroup.findUnique({
-      where: { id: groupId },
-      include: { members: { select: { id: true } }, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
-    });
+    const fresh = await prisma.readingGroup.findUnique({ where: { id: groupId }, include: GROUP_INCLUDE });
     if (!fresh) return null;
     const serialized = serializeGroup(fresh);
-    fresh.members.forEach((m) => io.to(`user:${m.id}`).emit('group_updated', serialized));
+    // On notifie aussi bien les membres actifs que les personnes en attente/bannies
+    // (pour qu'elles voient leur statut evoluer).
+    const ids = new Set<string>([
+      ...fresh.members.map((m: any) => m.id),
+      ...(fresh.memberships || []).map((gm: any) => gm.userId),
+    ]);
+    ids.forEach((id) => io.to(`user:${id}`).emit('group_updated', serialized));
     return serialized;
   };
 
-  // Modifier un groupe (nom, description, photo) — RÉSERVÉ à l'admin (créateur).
+  // Charge un groupe et le role effectif de l'appelant ; gere 404/403 standard.
+  const loadGroupForActor = async (groupId: string, userId: string) => {
+    const group = await prisma.readingGroup.findUnique({ where: { id: groupId } });
+    if (!group) return { error: 404 as const };
+    const role = await effectiveRole(group, userId);
+    return { group, role };
+  };
+
+  const genInviteCode = () => crypto.randomBytes(6).toString('base64url');
+
+  // GET un groupe complet (roster) — reserve aux membres actifs.
+  app.get('/api/groups/:id', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: GROUP_INCLUDE });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (!group.members.some((m: any) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      res.json(serializeGroup(group));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Modifier un groupe : infos (nom/desc/photo) + parametres (visibilite,
+  // permissions, approbation...). Permissions par champ.
   app.put('/api/groups/:id', requireAuth, async (req: any, res) => {
     try {
-      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
-      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
-      if (group.creatorId !== req.user.id) return res.status(403).json({ error: 'Seul l’administrateur du groupe peut le modifier.' });
-      const { name, description, avatar } = req.body || {};
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (!role) return res.status(403).json({ error: 'Action interdite' });
+      const isAdminPlus = groupRoleRank(role) >= GROUP_ROLE_RANK.admin;
+      const b = req.body || {};
       const data: any = {};
-      if (typeof name === 'string' && name.trim()) data.name = name.trim().slice(0, 120);
-      if (typeof description === 'string') data.description = description.slice(0, 1000);
-      if (typeof avatar === 'string') data.avatar = avatar;
+
+      // Infos du groupe : selon whoCanEditInfo.
+      const canEditInfo = group!.whoCanEditInfo === 'all' || isAdminPlus;
+      const wantsInfo = ['name', 'description', 'avatar'].some((k) => b[k] !== undefined);
+      if (wantsInfo) {
+        if (!canEditInfo) return res.status(403).json({ error: 'Vous n’êtes pas autorisé à modifier les infos du groupe.' });
+        if (typeof b.name === 'string' && b.name.trim()) data.name = b.name.trim().slice(0, 120);
+        if (typeof b.description === 'string') data.description = b.description.slice(0, 1000);
+        if (typeof b.avatar === 'string') data.avatar = b.avatar;
+      }
+
+      // Parametres de gouvernance : admin minimum.
+      const govKeys = ['visibility', 'whoCanEditInfo', 'messagePermission', 'allowReactions', 'allowMedia', 'requireApproval'];
+      const wantsGov = govKeys.some((k) => b[k] !== undefined);
+      if (wantsGov) {
+        if (!isAdminPlus) return res.status(403).json({ error: 'Seuls les administrateurs peuvent modifier les paramètres.' });
+        if (['public', 'private', 'invite'].includes(b.visibility)) data.visibility = b.visibility;
+        if (['all', 'admins'].includes(b.whoCanEditInfo)) data.whoCanEditInfo = b.whoCanEditInfo;
+        if (['all', 'admins'].includes(b.messagePermission)) data.messagePermission = b.messagePermission;
+        if (typeof b.allowReactions === 'boolean') data.allowReactions = b.allowReactions;
+        if (typeof b.allowMedia === 'boolean') data.allowMedia = b.allowMedia;
+        if (typeof b.requireApproval === 'boolean') data.requireApproval = b.requireApproval;
+      }
+
+      if (!Object.keys(data).length) return res.json(await broadcastGroupUpdate(req.params.id));
       await prisma.readingGroup.update({ where: { id: req.params.id }, data });
       res.json(await broadcastGroupUpdate(req.params.id));
     } catch (error) {
@@ -3175,47 +3317,349 @@ export async function createServerInstance() {
     }
   });
 
-  // Ajouter des membres — RÉSERVÉ à l'admin.
+  // Ajouter des membres directement — admin minimum.
   app.post('/api/groups/:id/members', requireAuth, async (req: any, res) => {
     try {
-      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
-      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
-      if (group.creatorId !== req.user.id) return res.status(403).json({ error: 'Seul l’administrateur peut ajouter des membres.' });
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Seuls les administrateurs peuvent ajouter des membres.' });
       const ids: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
       if (!ids.length) return res.status(400).json({ error: 'Aucun membre à ajouter.' });
+      const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
+      const validIds = users.map((u) => u.id);
       await prisma.readingGroup.update({
         where: { id: req.params.id },
-        data: { members: { connect: ids.map((id) => ({ id })) } },
+        data: { members: { connect: validIds.map((id) => ({ id })) } },
       });
-      groupMembersCache.delete(req.params.id); // invalide le cache des relais socket
-      res.json(await broadcastGroupUpdate(req.params.id));
+      for (const id of validIds) await ensureMembership(req.params.id, id, 'member', 'active');
+      groupMembersCache.delete(req.params.id);
+      const serialized = await broadcastGroupUpdate(req.params.id);
+      // Les nouveaux membres recoivent le groupe complet (group_updated ne suffit
+      // pas : le groupe n'est pas encore dans leur liste).
+      validIds.forEach((id) => io.to(`user:${id}`).emit('group_created', serialized));
+      res.json(serialized);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de l’ajout de membres.' });
     }
   });
 
-  // Retirer un membre — admin retire n'importe qui ; un membre peut se retirer.
+  // Retirer / exclure un membre — admin (sur role inferieur) ; ou depart volontaire.
   app.delete('/api/groups/:id/members/:userId', requireAuth, async (req: any, res) => {
     try {
-      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id } });
-      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
-      const isAdmin = group.creatorId === req.user.id;
-      const isSelf = req.params.userId === req.user.id;
-      if (!isAdmin && !isSelf) return res.status(403).json({ error: 'Action interdite.' });
-      if (req.params.userId === group.creatorId) return res.status(400).json({ error: 'L’administrateur ne peut pas être retiré du groupe.' });
-      await prisma.readingGroup.update({
-        where: { id: req.params.id },
-        data: { members: { disconnect: { id: req.params.userId } } },
-      });
-      groupMembersCache.delete(req.params.id); // invalide le cache des relais socket
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      const targetId = req.params.userId;
+      const isSelf = targetId === req.user.id;
+      const targetRole = await effectiveRole(group!, targetId);
+      if (targetId === group!.creatorId) return res.status(400).json({ error: 'Le propriétaire ne peut pas être retiré du groupe.' });
+      if (!isSelf) {
+        if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+        if (groupRoleRank(targetRole || 'member') >= groupRoleRank(role || '')) {
+          return res.status(403).json({ error: 'Vous ne pouvez pas exclure un membre de rang égal ou supérieur.' });
+        }
+      }
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { members: { disconnect: { id: targetId } } } });
+      await prisma.groupMember.updateMany({ where: { groupId: req.params.id, userId: targetId }, data: { status: 'removed' } });
+      groupMembersCache.delete(req.params.id);
       await broadcastGroupUpdate(req.params.id);
-      // Prévient l'utilisateur retiré pour qu'il enlève le groupe de sa liste.
-      io.to(`user:${req.params.userId}`).emit('group_removed', { groupId: req.params.id });
+      io.to(`user:${targetId}`).emit('group_removed', { groupId: req.params.id });
       res.status(204).end();
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du retrait du membre.' });
+    }
+  });
+
+  // Definir le ROLE d'un membre (admin/moderateur/membre) ou TRANSFERER la propriete.
+  app.post('/api/groups/:id/members/:userId/role', requireAuth, async (req: any, res) => {
+    try {
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      const newRole = String(req.body?.role || '');
+      if (!['admin', 'moderator', 'member', 'owner'].includes(newRole)) return res.status(400).json({ error: 'Rôle invalide.' });
+      const targetId = req.params.userId;
+      if (targetId === req.user.id) return res.status(400).json({ error: 'Vous ne pouvez pas changer votre propre rôle.' });
+      const actorRank = groupRoleRank(role || '');
+      if (actorRank < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      const targetRole = await effectiveRole(group!, targetId);
+      if (!targetRole) return res.status(404).json({ error: 'Membre introuvable.' });
+
+      // Transfert de propriete : reserve au proprietaire.
+      if (newRole === 'owner') {
+        if (role !== 'owner') return res.status(403).json({ error: 'Seul le propriétaire peut transférer la propriété.' });
+        await ensureMembership(req.params.id, targetId, 'owner', 'active');
+        await ensureMembership(req.params.id, req.user.id, 'admin', 'active');
+        await prisma.readingGroup.update({ where: { id: req.params.id }, data: { creatorId: targetId } });
+        return res.json(await broadcastGroupUpdate(req.params.id));
+      }
+
+      // Nommer/retirer un ADMIN : reserve au proprietaire.
+      if ((newRole === 'admin' || targetRole === 'admin') && role !== 'owner') {
+        return res.status(403).json({ error: 'Seul le propriétaire peut nommer ou retirer un administrateur.' });
+      }
+      // On ne touche pas a un rang superieur/egal au sien (hors owner).
+      if (role !== 'owner' && groupRoleRank(targetRole) >= actorRank) {
+        return res.status(403).json({ error: 'Action interdite sur ce membre.' });
+      }
+      if (targetId === group!.creatorId) return res.status(400).json({ error: 'Le rôle du propriétaire ne peut pas être modifié.' });
+
+      await ensureMembership(req.params.id, targetId, newRole, 'active');
+      res.json(await broadcastGroupUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du changement de rôle.' });
+    }
+  });
+
+  // Bannir un membre — admin (sur rang inferieur).
+  app.post('/api/groups/:id/members/:userId/ban', requireAuth, async (req: any, res) => {
+    try {
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      const targetId = req.params.userId;
+      if (targetId === group!.creatorId) return res.status(400).json({ error: 'Le propriétaire ne peut pas être banni.' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      const targetRole = await effectiveRole(group!, targetId);
+      if (groupRoleRank(targetRole || 'member') >= groupRoleRank(role || '')) return res.status(403).json({ error: 'Action interdite sur ce membre.' });
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { members: { disconnect: { id: targetId } } } });
+      await ensureMembership(req.params.id, targetId, 'member', 'banned');
+      groupMembersCache.delete(req.params.id);
+      await broadcastGroupUpdate(req.params.id);
+      io.to(`user:${targetId}`).emit('group_removed', { groupId: req.params.id });
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du bannissement.' });
+    }
+  });
+
+  // Lever un bannissement (le membre n'est PAS reintegre automatiquement).
+  app.post('/api/groups/:id/members/:userId/unban', requireAuth, async (req: any, res) => {
+    try {
+      const { role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      await prisma.groupMember.updateMany({ where: { groupId: req.params.id, userId: req.params.userId, status: 'banned' }, data: { status: 'removed' } });
+      res.json(await broadcastGroupUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // ---- Lien d'invitation ---------------------------------------------------
+  app.get('/api/groups/:id/invite', requireAuth, async (req: any, res) => {
+    try {
+      const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      let code = group!.inviteCode;
+      if (!code) {
+        code = genInviteCode();
+        await prisma.readingGroup.update({ where: { id: req.params.id }, data: { inviteCode: code } });
+      }
+      res.json({ code, enabled: group!.inviteEnabled !== false });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  app.post('/api/groups/:id/invite/reset', requireAuth, async (req: any, res) => {
+    try {
+      const { role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      const code = genInviteCode();
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { inviteCode: code } });
+      res.json({ code });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  app.post('/api/groups/:id/invite/toggle', requireAuth, async (req: any, res) => {
+    try {
+      const { role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      const enabled = !!req.body?.enabled;
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { inviteEnabled: enabled } });
+      res.json({ enabled });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Apercu d'un groupe via code (avant de rejoindre).
+  app.get('/api/groups/preview/:code', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { inviteCode: req.params.code }, include: { members: { select: { id: true } } } });
+      if (!group || group.inviteEnabled === false) return res.status(404).json({ error: 'Lien d’invitation invalide ou désactivé.' });
+      res.json({ id: group.id, name: group.name, avatar: group.avatar || undefined, description: group.description || '', memberCount: group.members.length, requireApproval: !!group.requireApproval });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Rejoindre via code d'invitation.
+  app.post('/api/groups/join', requireAuth, async (req: any, res) => {
+    try {
+      const code = String(req.body?.code || '').trim();
+      if (!code) return res.status(400).json({ error: 'Code requis.' });
+      const group = await prisma.readingGroup.findUnique({ where: { inviteCode: code }, include: { members: { select: { id: true } } } });
+      if (!group || group.inviteEnabled === false) return res.status(404).json({ error: 'Lien d’invitation invalide ou désactivé.' });
+      const existing = await getMembership(group.id, req.user.id);
+      if (existing?.status === 'banned') return res.status(403).json({ error: 'Vous avez été banni de ce groupe.' });
+      if (group.members.some((m: any) => m.id === req.user.id)) {
+        return res.json({ status: 'member', group: serializeGroup(await prisma.readingGroup.findUnique({ where: { id: group.id }, include: GROUP_INCLUDE })) });
+      }
+      if (group.requireApproval) {
+        await ensureMembership(group.id, req.user.id, 'member', 'pending');
+        await broadcastGroupUpdate(group.id);
+        return res.json({ status: 'pending' });
+      }
+      await prisma.readingGroup.update({ where: { id: group.id }, data: { members: { connect: { id: req.user.id } } } });
+      await ensureMembership(group.id, req.user.id, 'member', 'active');
+      groupMembersCache.delete(group.id);
+      const serialized = await broadcastGroupUpdate(group.id);
+      io.to(`user:${req.user.id}`).emit('group_created', serialized);
+      res.json({ status: 'joined', group: serialized });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de l’adhésion.' });
+    }
+  });
+
+  // Approuver / refuser une demande d'adhesion (approbation manuelle).
+  app.post('/api/groups/:id/requests/:userId/approve', requireAuth, async (req: any, res) => {
+    try {
+      const { role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      const pending = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: req.params.id, userId: req.params.userId } } });
+      if (!pending || pending.status !== 'pending') return res.status(404).json({ error: 'Demande introuvable.' });
+      await prisma.readingGroup.update({ where: { id: req.params.id }, data: { members: { connect: { id: req.params.userId } } } });
+      await prisma.groupMember.update({ where: { groupId_userId: { groupId: req.params.id, userId: req.params.userId } }, data: { status: 'active' } });
+      groupMembersCache.delete(req.params.id);
+      const serialized = await broadcastGroupUpdate(req.params.id);
+      io.to(`user:${req.params.userId}`).emit('group_created', serialized);
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  app.post('/api/groups/:id/requests/:userId/reject', requireAuth, async (req: any, res) => {
+    try {
+      const { role, error } = await loadGroupForActor(req.params.id, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Action interdite.' });
+      await prisma.groupMember.updateMany({ where: { groupId: req.params.id, userId: req.params.userId, status: 'pending' }, data: { status: 'removed' } });
+      res.json(await broadcastGroupUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // ---- Contenu : epingles, suppression admin, reactions -------------------
+  const relayMessageUpdate = async (messageId: string) => {
+    const fresh = await prisma.groupMessage.findUnique({ where: { id: messageId }, include: { sender: true, reactions: true } });
+    if (!fresh) return null;
+    const serialized = serializeGroupMessage(fresh);
+    const members = await getGroupMemberIds(fresh.groupId);
+    members.forEach((id) => io.to(`user:${id}`).emit('group_message_updated', serialized));
+    return serialized;
+  };
+
+  const pinHandler = (pin: boolean) => async (req: any, res: any) => {
+    try {
+      const msg = await prisma.groupMessage.findUnique({ where: { id: req.params.id } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      const { group, role, error } = await loadGroupForActor(msg.groupId, req.user.id);
+      if (error || !group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.moderator) return res.status(403).json({ error: 'Action interdite.' });
+      await prisma.groupMessage.update({ where: { id: req.params.id }, data: { pinned: pin, pinnedAt: pin ? new Date() : null } });
+      res.json(await relayMessageUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  };
+  app.post('/api/groups/messages/:id/pin', requireAuth, pinHandler(true));
+  app.post('/api/groups/messages/:id/unpin', requireAuth, pinHandler(false));
+
+  app.get('/api/groups/:id/pinned', requireAuth, async (req: any, res) => {
+    try {
+      const members = await getGroupMemberIds(req.params.id);
+      if (!members.includes(req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      const pins = await prisma.groupMessage.findMany({ where: { groupId: req.params.id, pinned: true, deletedForEveryone: false }, include: { sender: true, reactions: true }, orderBy: { pinnedAt: 'desc' } });
+      res.json(pins.map((m: any) => serializeGroupMessage(m, req.user.id)));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Suppression de N'IMPORTE QUEL message par un moderateur/admin.
+  app.delete('/api/groups/messages/:id/admin', requireAuth, async (req: any, res) => {
+    try {
+      const msg = await prisma.groupMessage.findUnique({ where: { id: req.params.id } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      const { role, error } = await loadGroupForActor(msg.groupId, req.user.id);
+      if (error) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (groupRoleRank(role || '') < GROUP_ROLE_RANK.moderator) return res.status(403).json({ error: 'Action interdite.' });
+      await prisma.groupMessage.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, deletedByAdmin: true, content: '', pinned: false } });
+      res.json(await relayMessageUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  // Reagir a un message (toggle) — si les reactions sont autorisees.
+  // Supprimer un groupe entierement — reserve au proprietaire.
+  app.delete('/api/groups/:id', requireAuth, async (req: any, res) => {
+    try {
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } }, memberships: { select: { userId: true } } } });
+      if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
+      if (group.creatorId !== req.user.id) return res.status(403).json({ error: 'Seul le propriétaire peut supprimer le groupe.' });
+      const recipients = new Set<string>([...group.members.map((m: any) => m.id), ...group.memberships.map((g: any) => g.userId)]);
+      await prisma.readingGroup.delete({ where: { id: req.params.id } });
+      groupMembersCache.delete(req.params.id);
+      recipients.forEach((id) => io.to(`user:${id}`).emit('group_removed', { groupId: req.params.id }));
+      res.status(204).end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors de la suppression du groupe.' });
+    }
+  });
+
+  app.post('/api/groups/messages/:id/react', requireAuth, async (req: any, res) => {
+    try {
+      const emoji = String(req.body?.emoji || '').slice(0, 8);
+      if (!emoji) return res.status(400).json({ error: 'Emoji requis.' });
+      const msg = await prisma.groupMessage.findUnique({ where: { id: req.params.id }, include: { group: true } });
+      if (!msg) return res.status(404).json({ error: 'Message introuvable' });
+      const members = await getGroupMemberIds(msg.groupId);
+      if (!members.includes(req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      if (msg.group.allowReactions === false) return res.status(403).json({ error: 'Les réactions sont désactivées dans ce groupe.' });
+      const existing = await prisma.groupMessageReaction.findUnique({ where: { messageId_userId_emoji: { messageId: req.params.id, userId: req.user.id, emoji } } });
+      if (existing) {
+        await prisma.groupMessageReaction.delete({ where: { id: existing.id } });
+      } else {
+        await prisma.groupMessageReaction.create({ data: { messageId: req.params.id, userId: req.user.id, emoji } });
+      }
+      res.json(await relayMessageUpdate(req.params.id));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur.' });
     }
   });
 

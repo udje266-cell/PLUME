@@ -44,6 +44,7 @@ import { uploadImageToCloudinary, uploadVideoToCloudinary, uploadVoiceToCloudina
 import { getCroppedImageFile } from '../utils/cropImage';
 import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl, isVideoSticker, buildVideoStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
+import GroupSettingsView from './GroupSettingsView';
 
 /**
  * Accusés de lecture « façon plume » (style WhatsApp) :
@@ -640,6 +641,22 @@ export default function MessagesView({
     ?? allUsers[0]
     ?? currentUser;
   const activeGroup = groups.find(g => g.id === activeGroupId);
+
+  // Role de l'utilisateur dans le groupe actif + helpers de moderation (epingle,
+  // suppression admin, reactions). Appellent l'API ; le rafraichissement passe
+  // par l'event socket group_message_updated gere dans App.
+  const GROUP_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+  const GROUP_RANK: Record<string, number> = { owner: 3, admin: 2, moderator: 1, member: 0 };
+  const myGroupRole: string = activeGroup
+    ? (activeGroup.creatorId === currentUser.id ? 'owner' : (activeGroup.roster?.find((m) => m.userId === currentUser.id)?.role || 'member'))
+    : 'member';
+  const myGroupRank = GROUP_RANK[myGroupRole] ?? 0;
+  const isGroupModPlus = myGroupRank >= GROUP_RANK.moderator;
+  const groupModApi = (path: string, method: string, body?: any) =>
+    fetch(path, { method, headers: authHeaders(body ? { 'Content-Type': 'application/json' } : undefined), body: body ? JSON.stringify(body) : undefined }).catch(() => {});
+  const reactGroupMsg = (id: string, emoji: string) => { groupModApi(`/api/groups/messages/${id}/react`, 'POST', { emoji }); setActionMsg(null); };
+  const pinGroupMsg = (m: any) => { groupModApi(`/api/groups/messages/${m.id}/${m.pinned ? 'unpin' : 'pin'}`, 'POST'); setActionMsg(null); };
+  const adminDeleteGroupMsg = (id: string) => { groupModApi(`/api/groups/messages/${id}/admin`, 'DELETE'); setActionMsg(null); };
 
   // Indique « enregistre un audio… » à l'interlocuteur / au groupe.
   const emitRecording = (isRec: boolean) => {
@@ -1522,8 +1539,18 @@ export default function MessagesView({
                           </div>
                         )}
 
+                        {/* Indicateur epingle / annonce */}
+                        {(msg.pinned || msg.isAnnouncement) && (
+                          <div className={`flex items-center gap-2 mb-1 text-[8.5px] font-black uppercase tracking-wider ${isSentByMe ? 'text-purple-100' : 'text-purple-500 dark:text-purple-400'}`}>
+                            {msg.isAnnouncement && <span>📣 Annonce</span>}
+                            {msg.pinned && <span>📌 Épinglé</span>}
+                          </div>
+                        )}
+
                         {/* Content text / Voice / Sticker */}
-                        {parseSticker(msg.content) ? (
+                        {msg.deletedForEveryone ? (
+                          <p className="text-xs italic opacity-70 break-words text-left">{msg.deletedByAdmin ? '🛡️ Message supprimé par un administrateur' : 'Message supprimé'}</p>
+                        ) : parseSticker(msg.content) ? (
                           isStickerUrl(parseSticker(msg.content)!)
                             ? (isVideoSticker(parseSticker(msg.content)!)
                                 ? <video src={parseSticker(msg.content)!} className="w-24 h-24 object-contain rounded-lg" muted loop autoPlay playsInline />
@@ -1550,6 +1577,24 @@ export default function MessagesView({
                           </span>
                           {isSentByMe && <MessageTicks isDelivered isRead={groupReadByAll(msg.date)} />}
                         </div>
+
+                        {/* Reactions */}
+                        {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5 justify-start">
+                            {msg.reactions.map((r) => {
+                              const mine = r.mine || (Array.isArray(r.userIds) && r.userIds.includes(currentUser.id));
+                              return (
+                                <button
+                                  key={r.emoji}
+                                  onClick={() => reactGroupMsg(msg.id, r.emoji)}
+                                  className={`text-[11px] leading-none px-1.5 py-1 rounded-full font-bold transition ${mine ? 'bg-white/30 dark:bg-white/20 ring-1 ring-white/40' : isSentByMe ? 'bg-black/15' : 'bg-black/10 dark:bg-white/10'}`}
+                                >
+                                  {r.emoji} {r.count}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                     </React.Fragment>
@@ -2079,99 +2124,28 @@ export default function MessagesView({
       )}
 
       {/* MODALE : RÉGLAGES DU GROUPE (façon WhatsApp) */}
-      {showGroupSettings && activeGroup && (() => {
-        const isGroupAdmin = activeGroup.creatorId === currentUser.id;
-        const memberUsers = (activeGroup.members || []).map((id) => allUsers.find((u) => u.id === id)).filter(Boolean) as User[];
-        const addableUsers = allUsers.filter((u) => u.id !== currentUser.id && !(activeGroup.members || []).includes(u.id));
-        return (
-          <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={() => { setShowGroupSettings(false); setGroupAddOpen(false); }}>
-            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[88vh] overflow-hidden flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
-                <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100">Infos du groupe</h3>
-                <button onClick={() => { setShowGroupSettings(false); setGroupAddOpen(false); }} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {/* Photo + nom */}
-                <div className="flex flex-col items-center gap-2">
-                  <div className="relative">
-                    <div className="w-24 h-24 rounded-full bg-purple-100 dark:bg-purple-950/30 overflow-hidden flex items-center justify-center text-purple-500">
-                      {activeGroup.avatar ? <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <BookOpen className="w-9 h-9" />}
-                    </div>
-                    {isGroupAdmin && (
-                      <>
-                        <input ref={groupPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleGroupPhoto(e.target.files?.[0] || null, activeGroup.id)} />
-                        <button onClick={() => groupPhotoRef.current?.click()} disabled={uploadingGroupPhoto} className="absolute bottom-0 right-0 bg-purple-600 text-white rounded-full p-1.5 shadow disabled:opacity-50" title="Changer la photo">
-                          {uploadingGroupPhoto ? <span className="w-3.5 h-3.5 block rounded-full border-2 border-white/40 border-t-white animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {isGroupAdmin ? (
-                    <input
-                      defaultValue={activeGroup.name}
-                      onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== activeGroup.name) onUpdateGroup?.(activeGroup.id, { name: v }); }}
-                      className="text-center text-sm font-black bg-transparent border-b border-transparent focus:border-purple-500 outline-none text-gray-900 dark:text-white"
-                    />
-                  ) : (
-                    <span className="text-sm font-black text-gray-900 dark:text-white">{activeGroup.name}</span>
-                  )}
-                  <span className="text-[10px] text-zinc-400">{memberUsers.length} membre{memberUsers.length > 1 ? 's' : ''}</span>
-                </div>
-
-                {/* Membres */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] uppercase font-black tracking-wider text-zinc-400">Membres</span>
-                    {isGroupAdmin && <button onClick={() => setGroupAddOpen((v) => !v)} className="text-[10px] font-black uppercase text-purple-600 flex items-center gap-1"><Plus className="w-3 h-3" />Ajouter</button>}
-                  </div>
-
-                  {groupAddOpen && isGroupAdmin && (
-                    <div className="mb-3 max-h-40 overflow-y-auto rounded-xl border border-gray-150 dark:border-zinc-800 divide-y divide-gray-100 dark:divide-zinc-850">
-                      {addableUsers.length === 0 ? <p className="text-[10px] text-zinc-400 p-3 text-center">Aucun utilisateur à ajouter.</p> : addableUsers.slice(0, 50).map((u) => (
-                        <button key={u.id} onClick={() => { onAddGroupMembers?.(activeGroup.id, [u.id]); setGroupAddOpen(false); }} className="w-full flex items-center gap-2 p-2 hover:bg-purple-500/10 text-left">
-                          <img src={u.avatar} alt={u.username} className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
-                          <span className="text-xs font-bold text-gray-800 dark:text-gray-100 flex-1 truncate">{u.username}</span>
-                          <Plus className="w-3.5 h-3.5 text-purple-600" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="space-y-1">
-                    {memberUsers.map((u) => (
-                      <div key={u.id} className="flex items-center gap-2 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-850/50">
-                        <img src={u.avatar} alt={u.username} onClick={() => onViewProfile?.(u.id)} className="w-8 h-8 rounded-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
-                        <span className="text-xs font-bold text-gray-800 dark:text-gray-100 flex-1 truncate">{u.username}</span>
-                        {u.id === activeGroup.creatorId && <span className="text-[8px] font-black uppercase bg-purple-500/15 text-purple-600 px-1.5 py-0.5 rounded">Admin</span>}
-                        {isGroupAdmin && u.id !== activeGroup.creatorId && (
-                          <button onClick={() => onRemoveGroupMember?.(activeGroup.id, u.id)} className="p-1 text-gray-400 hover:text-red-500" title="Retirer"><X className="w-3.5 h-3.5" /></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Quitter le groupe (sauf l'admin) */}
-              <div className="p-4 border-t border-gray-100 dark:border-zinc-850">
-                {activeGroup.creatorId !== currentUser.id ? (
-                  <button onClick={() => { if (confirm('Quitter ce groupe ?')) { onRemoveGroupMember?.(activeGroup.id, currentUser.id); setShowGroupSettings(false); } }} className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider">
-                    Quitter le groupe
-                  </button>
-                ) : (
-                  <p className="text-[10px] text-center text-zinc-400">Vous êtes l'administrateur de ce groupe.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {showGroupSettings && activeGroup && (
+        <GroupSettingsView
+          group={activeGroup}
+          currentUser={currentUser}
+          allUsers={allUsers}
+          onClose={() => setShowGroupSettings(false)}
+          onLeftOrDeleted={() => { setShowGroupSettings(false); setActiveGroupId(null); setMobileShowThread(false); }}
+        />
+      )}
 
       {/* MENU D'ACTIONS SUR UN MESSAGE (appui long) — répondre / modifier / supprimer. */}
       {actionMsg && createPortal(
         <div className="fixed inset-0 z-[2147483000] bg-black/50 flex items-end justify-center" onClick={() => setActionMsg(null)}>
           <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-t-3xl p-2 animate-fade-in" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}>
+            {/* Reactions rapides (groupe) */}
+            {activeGroupId && activeGroup?.allowReactions !== false && !(actionMsg as any).deletedForEveryone && (
+              <div className="flex items-center justify-around px-3 py-2 mb-1 border-b border-gray-100 dark:border-zinc-800">
+                {GROUP_EMOJIS.map((e) => (
+                  <button key={e} onClick={() => reactGroupMsg(actionMsg.id, e)} className="text-2xl hover:scale-125 active:scale-95 transition" aria-label={`Réagir ${e}`}>{e}</button>
+                ))}
+              </div>
+            )}
             <button onClick={() => startReply(actionMsg)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
               <Send className="w-4 h-4 text-purple-600 -scale-x-100" /><span className="text-sm font-bold">Répondre</span>
             </button>
@@ -2186,6 +2160,17 @@ export default function MessagesView({
             {canDeleteForEveryone(actionMsg) && (
               <button onClick={() => { if (activeGroupId) onDeleteGroupMessageForEveryone?.(actionMsg.id); else onDeleteMessageForEveryone?.(actionMsg.id); setActionMsg(null); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
                 <Trash2 className="w-4 h-4 text-red-500" /><span className="text-sm font-bold text-red-500">Supprimer pour tout le monde</span>
+              </button>
+            )}
+            {/* Moderation de groupe (moderateur / admin / proprietaire) */}
+            {activeGroupId && isGroupModPlus && !(actionMsg as any).deletedForEveryone && (
+              <button onClick={() => pinGroupMsg(actionMsg)} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-zinc-900 text-left">
+                <span className="w-4 text-center text-sm">📌</span><span className="text-sm font-bold">{(actionMsg as any).pinned ? 'Désépingler' : 'Épingler le message'}</span>
+              </button>
+            )}
+            {activeGroupId && isGroupModPlus && !(actionMsg as any).deletedForEveryone && actionMsg.senderId !== currentUser.id && (
+              <button onClick={() => { if (confirm('Supprimer ce message pour tout le groupe ?')) adminDeleteGroupMsg(actionMsg.id); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-red-500/10 text-left">
+                <Trash2 className="w-4 h-4 text-red-500" /><span className="text-sm font-bold text-red-500">Supprimer (modération)</span>
               </button>
             )}
             <button onClick={() => setActionMsg(null)} className="w-full px-4 py-3 mt-1 text-center text-sm font-black text-gray-400">Annuler</button>

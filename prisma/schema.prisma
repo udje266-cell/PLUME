@@ -76,6 +76,8 @@ model User {
   messages          Message[]
   readingGroups     ReadingGroup[] @relation("GroupMembers")
   createdGroups     ReadingGroup[] @relation("GroupCreator")
+  groupMemberships  GroupMember[]
+  groupReactions    GroupMessageReaction[]
   groupMessages     GroupMessage[]
   following         Follow[]  @relation("UserFollowing")
   followers         Follow[]  @relation("UserFollowers")
@@ -377,11 +379,60 @@ model ReadingGroup {
   creatorId   String
   creator     User           @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   members     User[]         @relation("GroupMembers")
+  memberships GroupMember[]
   messages    GroupMessage[]
+
+  // Parametres (style WhatsApp). visibility: public | private | invite.
+  visibility        String  @default("private")
+  // Qui peut modifier les infos du groupe : all | admins.
+  whoCanEditInfo    String  @default("admins")
+  // Qui peut envoyer des messages : all | admins (mode annonce).
+  messagePermission String  @default("all")
+  allowReactions    Boolean @default(true)
+  allowMedia        Boolean @default(true)
+  // Approbation manuelle des demandes d'adhesion.
+  requireApproval   Boolean @default(false)
+  // Lien d'invitation.
+  inviteCode        String? @unique
+  inviteEnabled     Boolean @default(true)
+
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([creatorId])
+}
+
+// Adhesion d'un utilisateur a un groupe : ROLE + STATUT + date d'entree.
+// Source de verite des roles/statuts (la relation members reste la presence
+// "active" effective, pour ne pas casser le chat existant).
+//   role   : owner | admin | moderator | member
+//   status : active | pending | banned | removed
+model GroupMember {
+  id       String       @id @default(cuid())
+  groupId  String
+  userId   String
+  role     String       @default("member")
+  status   String       @default("active")
+  joinedAt DateTime     @default(now())
+  group    ReadingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+model GroupMessageReaction {
+  id        String       @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime     @default(now())
+  message   GroupMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
 }
 
 // Suivi de LECTURE par membre d'un groupe (accuses de reception groupe) :
@@ -405,8 +456,14 @@ model GroupMessage {
   replyToId String?
   editedAt  DateTime?
   deletedForEveryone Boolean @default(false)
+  // Moderation / mise en avant.
+  pinned         Boolean   @default(false)
+  pinnedAt       DateTime?
+  isAnnouncement Boolean   @default(false)
+  deletedByAdmin Boolean   @default(false)
   group     ReadingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender    User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  reactions GroupMessageReaction[]
   createdAt DateTime     @default(now())
 
   @@index([groupId])

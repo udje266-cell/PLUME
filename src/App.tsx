@@ -949,10 +949,12 @@ export default function App() {
     });
 
     socket.on('group_created', (group: ReadingGroup) => {
-      setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev : [group, ...prev]));
+      if (!group || !group.id) return;
+      setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev.map((g) => (g.id === group.id ? { ...g, ...group } : g)) : [group, ...prev]));
     });
 
     socket.on('group_updated', (group: ReadingGroup) => {
+      if (!group || !group.id) return;
       setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, ...group } : g)));
     });
     socket.on('group_removed', ({ groupId }: { groupId: string }) => {
@@ -1502,6 +1504,42 @@ export default function App() {
       /* history indisponible */
     }
   }, [isAuthenticated, currentUser, stories]);
+
+  // Lien profond d'invitation a un GROUPE : `?joingroup=<code>` -> rejoint (ou
+  // depose une demande si l'approbation manuelle est active).
+  const joinGroupConsumedRef = React.useRef(false);
+  useEffect(() => {
+    if (joinGroupConsumedRef.current) return;
+    if (!isAuthenticated || !currentUser) return;
+    let code: string | null = null;
+    try { code = new URLSearchParams(window.location.search).get('joingroup'); } catch { code = null; }
+    if (!code) return;
+    joinGroupConsumedRef.current = true;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('joingroup');
+      window.history.replaceState({}, '', url.toString());
+    } catch { /* ignore */ }
+    (async () => {
+      try {
+        const res = await fetch('/api/groups/join', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { alert(data.error || "Lien d'invitation invalide."); return; }
+        if (data.status === 'pending') {
+          alert("Votre demande d'adhésion a été envoyée. Un administrateur doit l'approuver.");
+        } else if (data.group) {
+          setGroups((prev) => (prev.some((g) => g.id === data.group.id) ? prev.map((g) => g.id === data.group.id ? { ...g, ...data.group } : g) : [data.group, ...prev]));
+          setActiveTab('messages');
+        }
+      } catch {
+        alert("Impossible de rejoindre le groupe (erreur réseau).");
+      }
+    })();
+  }, [isAuthenticated, currentUser]);
 
   // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
   // /api/users en échec au démarrage…). On (re)charge le profil directement via
