@@ -1820,25 +1820,28 @@ const user = freshViewedUser || freshCurrentUser;
               })}
             </div>
 
-            {/* Sélecteur de trophée (parmi les succès débloqués). */}
-            {pickerSlot !== null && (
-              <div className="fixed inset-0 z-[120] bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPickerSlot(null)}>
-                <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl p-4 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                  <div className="flex items-center justify-between mb-3">
+            {/* Sélecteur de trophée (parmi les succès débloqués). Rendu via un
+                PORTAL pour passer AU-DESSUS de la barre de navigation du bas
+                (sinon les derniers trophées passaient dessous et n'étaient pas
+                cliquables → la sélection ne se sauvegardait pas). */}
+            {pickerSlot !== null && createPortal(
+              <div className="fixed inset-0 z-[2147483000] bg-black/60 flex items-end sm:items-center justify-center p-3 sm:p-4" onClick={() => setPickerSlot(null)}>
+                <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between p-4 pb-2 shrink-0">
                     <h3 className="font-serif font-black text-sm">Choisir un trophée</h3>
                     {showcase[pickerSlot] && (
                       <button onClick={() => setShowcaseSlot(pickerSlot, null)} className="text-red-500 text-xs font-bold">Retirer</button>
                     )}
                   </div>
                   {unlocked.length === 0 ? (
-                    <p className="text-sm text-gray-400 py-8 text-center">Aucun trophée débloqué pour le moment. Continue ton aventure !</p>
+                    <p className="text-sm text-gray-400 py-8 px-4 text-center">Aucun trophée débloqué pour le moment. Continue ton aventure !</p>
                   ) : (
-                    <div className="grid grid-cols-1 gap-1.5">
+                    <div className="grid grid-cols-1 gap-1.5 overflow-y-auto px-4 pt-1" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
                       {unlocked.map((a) => (
                         <button
                           key={a.id}
                           onClick={() => setShowcaseSlot(pickerSlot, a.id)}
-                          className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-purple-500/10 text-left"
+                          className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-purple-500/10 active:bg-purple-500/15 text-left shrink-0"
                         >
                           <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
                           <span className="min-w-0 flex-1">
@@ -1850,7 +1853,8 @@ const user = freshViewedUser || freshCurrentUser;
                     </div>
                   )}
                 </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         );
