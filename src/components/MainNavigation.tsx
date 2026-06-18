@@ -153,8 +153,10 @@ export default function MainNavigation({
   return (
     <div className="w-full flex flex-col z-30 select-none">
       
-      {/* TOP ACTIONS APP HEADER */}
-      <header className="w-full bg-white/90 dark:bg-black/90 backdrop-blur-md transition-colors pt-1.5 pb-1 px-4">
+      {/* TOP ACTIONS APP HEADER — fond OPAQUE qui remonte jusqu'en haut de
+          l'ecran (integre la barre systeme) : un seul bloc continu avec le corps,
+          sans bande separee ni transparence qui se superpose. */}
+      <header className="w-full bg-white dark:bg-black transition-colors pb-1 px-4" style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top))' }}>
         <div className="flex items-center justify-between">
           
           {/* Left: Filter Toggle Button */}
