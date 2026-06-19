@@ -47,6 +47,7 @@ import { getCroppedImageFile } from '../utils/cropImage';
 import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl, isVideoSticker, buildVideoStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
 import GroupSettingsView from './GroupSettingsView';
+import { generateCoverDataUri } from '../utils/coverImage';
 
 /**
  * Accusés de lecture « façon plume » (style WhatsApp) :
@@ -1367,10 +1368,11 @@ export default function MessagesView({
               <div className="px-4 py-2 bg-purple-50/70 dark:bg-purple-950/20 border-b border-gray-200/50 dark:border-purple-500/10 backdrop-blur-md flex items-center justify-between shrink-0 animate-fade-in select-none">
                 <div className="flex items-center space-x-3 min-w-0">
                   <img
-                    src={story.cover || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=150'}
+                    src={story.cover || generateCoverDataUri(story.title)}
                     alt={story.title}
                     className="w-7 h-10 object-cover rounded shadow-md border border-purple-500/20 shrink-0"
                     referrerPolicy="no-referrer"
+                    onError={(e) => { const img = e.currentTarget; img.onerror = null; img.src = generateCoverDataUri(story.title); }}
                   />
                   <div className="text-left min-w-0">
                     <p className="text-[9px] text-gray-400 dark:text-zinc-500 leading-tight uppercase font-mono font-bold">Ouvrage en débat</p>

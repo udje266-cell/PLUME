@@ -1553,6 +1553,17 @@ export default function App() {
     })();
   }, [isAuthenticated, currentUser]);
 
+  // Rafraichit la liste d'amis (sert au « Nouveau message » qui ne propose que
+  // les amis) a chaque ouverture de l'onglet Messages — sinon un ami ajoute en
+  // cours de session n'apparaissait qu'apres un rechargement complet.
+  useEffect(() => {
+    if (activeTab !== 'messages' || !isAuthenticated) return;
+    fetch('/api/friends', { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((list) => { if (Array.isArray(list)) setServerFriendIds(list.map((u: any) => u.id)); })
+      .catch(() => {});
+  }, [activeTab, isAuthenticated]);
+
   // Filet anti-blocage : session « connectée » mais profil absent (cache vidé,
   // /api/users en échec au démarrage…). On (re)charge le profil directement via
   // /auth/me, indépendamment du reste du bootstrap, et on tranche toujours :
@@ -1812,8 +1823,6 @@ export default function App() {
   // On sauvegarde donc aussi le suivi en local, par ID utilisateur, pour que
   // Lecteur / Auteur / Administrateur gardent chacun leurs suivis après refresh.
   const handleFollowAuthor = (authorId: string) => {
-    console.log("currentUser.id =", currentUser?.id);
-    console.log("targetUser.id =", authorId);
     if (currentUser?.id?.startsWith("user_") || authorId?.startsWith("user_")) {
       console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
     }
@@ -2772,8 +2781,6 @@ export default function App() {
 
   const handleStartConversation = async (participantIds: string[]): Promise<Conversation> => {
     const targetUserId = participantIds.find(id => id !== currentUser?.id);
-    console.log("currentUser.id =", currentUser?.id);
-    console.log("targetUser.id =", targetUserId);
     if (currentUser?.id?.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
       console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
     }
