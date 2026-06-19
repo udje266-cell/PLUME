@@ -321,7 +321,7 @@ export default function App() {
     }
   };
 
-  const handleSendGroupMessage = async (groupId: string, content: string, replyToId?: string | null) => {
+  const handleSendGroupMessage = async (groupId: string, content: string, replyToId?: string | null, isAnnouncement?: boolean) => {
     if (!currentUser) return;
     // Affichage OPTIMISTE : on montre le message tout de suite, puis on remplace
     // par la version serveur (ou on annule en cas d'echec).
@@ -330,6 +330,7 @@ export default function App() {
       id: tempId, groupId, senderId: currentUser.id,
       senderName: currentUser.username, senderAvatar: currentUser.avatar || '',
       content, date: new Date().toISOString(), replyToId: replyToId || null,
+      isAnnouncement: !!isAnnouncement,
     } as GroupMessage;
     setGroupMessages((prev) => [...prev, optimistic]);
     setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, lastMessage: content, lastMessageDate: optimistic.date } : g)));
@@ -337,9 +338,14 @@ export default function App() {
       const res = await fetch(`/api/groups/${groupId}/messages`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ content, replyToId: replyToId || undefined }),
+        body: JSON.stringify({ content, replyToId: replyToId || undefined, isAnnouncement: !!isAnnouncement }),
       });
-      if (!res.ok) { setGroupMessages((prev) => prev.filter((m) => m.id !== tempId)); return; }
+      if (!res.ok) {
+        setGroupMessages((prev) => prev.filter((m) => m.id !== tempId));
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Votre message n'a pas pu être envoyé.");
+        return;
+      }
       const msg: GroupMessage = await res.json();
       setGroupMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== tempId);
@@ -984,6 +990,12 @@ export default function App() {
     });
 
     socket.on('new_group_message', (msg: GroupMessage) => {
+      // Notre propre message est deja affiche de facon optimiste (et remplace par
+      // la reponse du POST) : on l'ignore ici pour eviter tout doublon transitoire.
+      if (msg.senderId === (currentUser?.id || '')) {
+        setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
+        return;
+      }
       setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
     });

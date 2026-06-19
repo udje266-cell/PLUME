@@ -34,6 +34,8 @@ import {
   BookOpen,
   Sticker,
   Camera,
+  Lock,
+  Megaphone,
   Image as ImageIcon
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -135,7 +137,7 @@ interface MessagesViewProps {
   groupMessages: GroupMessage[];
   setGroupMessages: React.Dispatch<React.SetStateAction<GroupMessage[]>>;
   onCreateGroup: (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }) => Promise<ReadingGroup | null>;
-  onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null) => void;
+  onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null, isAnnouncement?: boolean) => void;
   onEditGroupMessage?: (messageId: string, content: string) => void;
   onDeleteGroupMessageForEveryone?: (messageId: string) => void;
   groupReads?: Record<string, Record<string, string>>;
@@ -356,24 +358,8 @@ export default function MessagesView({
   const [videoTrimEnd, setVideoTrimEnd] = useState(0);
   const [processingVideoSticker, setProcessingVideoSticker] = useState(false);
   const trimPreviewRef = useRef<HTMLVideoElement>(null);
-  // Réglages de groupe (façon WhatsApp).
+  // Réglages de groupe (façon WhatsApp) — gérés par GroupSettingsView.
   const [showGroupSettings, setShowGroupSettings] = useState(false);
-  const [groupAddOpen, setGroupAddOpen] = useState(false);
-  const [uploadingGroupPhoto, setUploadingGroupPhoto] = useState(false);
-  const groupPhotoRef = useRef<HTMLInputElement>(null);
-  const handleGroupPhoto = async (file: File | null, groupId: string) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    setUploadingGroupPhoto(true);
-    try {
-      const url = await uploadImageToCloudinary(file);
-      onUpdateGroup?.(groupId, { avatar: url });
-    } catch (e: any) {
-      alert(e?.message || 'Échec du changement de photo.');
-    } finally {
-      setUploadingGroupPhoto(false);
-      if (groupPhotoRef.current) groupPhotoRef.current.value = '';
-    }
-  };
 
   // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
   const sendSticker = (value: string) => {
@@ -616,10 +602,6 @@ export default function MessagesView({
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
 
-  // High fidelity simulated audio call state
-  const [callState, setCallState] = useState<'idle' | 'ringing' | 'connected'>('idle');
-  const [callDuration, setCallDuration] = useState(0);
-  const callTimerRef = useRef<any>(null);
 
   // Timers de la démo "auto-débat" : suivis pour pouvoir les annuler au
   // démontage (sinon setState sur composant démonté).
@@ -657,6 +639,19 @@ export default function MessagesView({
   const reactGroupMsg = (id: string, emoji: string) => { groupModApi(`/api/groups/messages/${id}/react`, 'POST', { emoji }); setActionMsg(null); };
   const pinGroupMsg = (m: any) => { groupModApi(`/api/groups/messages/${m.id}/${m.pinned ? 'unpin' : 'pin'}`, 'POST'); setActionMsg(null); };
   const adminDeleteGroupMsg = (id: string) => { groupModApi(`/api/groups/messages/${id}/admin`, 'DELETE'); setActionMsg(null); };
+  const isGroupAdminPlus = myGroupRank >= GROUP_RANK.admin;
+
+  // Etat d'envoi : mode annonce (seuls les admins ecrivent) + blocage prive.
+  const [announceNext, setAnnounceNext] = useState(false);
+  const announceMode = !!activeGroupId && activeGroup?.messagePermission === 'admins';
+  const canPostInGroup = !activeGroupId || !announceMode || isGroupAdminPlus;
+  // Je sais seulement si MOI j'ai bloque l'interlocuteur ; un blocage inverse se
+  // revele a l'envoi (alerte serveur).
+  const iBlockedInterlocutor = !activeGroupId && !!interlocutor && (currentUser.blockedUsers || []).includes(interlocutor.id);
+  const composerLocked = (!!activeGroupId && !canPostInGroup) || iBlockedInterlocutor;
+  const composerLockReason = iBlockedInterlocutor
+    ? "Vous avez bloqué cette personne. Débloquez-la depuis son profil pour lui écrire."
+    : "Mode annonce : seuls les administrateurs peuvent écrire dans ce groupe.";
 
   // Indique « enregistre un audio… » à l'interlocuteur / au groupe.
   const emitRecording = (isRec: boolean) => {
@@ -730,42 +725,11 @@ export default function MessagesView({
     };
   }, [isRecording]);
 
-  // Simulated audio call timer
-  useEffect(() => {
-    if (callState === 'ringing') {
-      // Connect call automatically after 2.5 seconds
-      const connectTimeout = setTimeout(() => {
-        setCallState('connected');
-      }, 2500);
-      return () => clearTimeout(connectTimeout);
-    } else if (callState === 'connected') {
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-    }
-    return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-    };
-  }, [callState]);
-
   const handleStartCall = () => {
     // Appel audio réel (WebRTC) géré globalement par App via onStartCall.
     if (!interlocutor) return;
     if (interlocutor.id === currentUser.id) { alert('Vous ne pouvez pas vous appeler vous-même.'); return; }
     onStartCall({ id: interlocutor.id, username: interlocutor.username, avatar: interlocutor.avatar });
-  };
-
-  const handleEndCall = () => {
-    setCallState('idle');
-    setCallDuration(0);
-  };
-
-  const formatCallTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   // Group messages for active thread (direct chat)
@@ -889,7 +853,8 @@ export default function MessagesView({
 
     if (activeGroupId) {
       // Message de groupe persisté côté serveur (avec éventuelle réponse).
-      onSendGroupMessage(activeGroupId, messageText.trim(), replyTo?.id || null);
+      onSendGroupMessage(activeGroupId, messageText.trim(), replyTo?.id || null, announceNext && isGroupAdminPlus);
+      setAnnounceNext(false);
     } else if (activeConversationId) {
       // Envoi privé (avec éventuelle réponse à un message).
       onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
@@ -1288,45 +1253,6 @@ export default function MessagesView({
             </div>
           )}
 
-          {/* Caller Screen overlay simulation (HIGH CRAFT INTERACTION) */}
-          {callState !== 'idle' && (
-            <div className="absolute inset-0 z-50 bg-zinc-950/95 flex flex-col justify-between items-center py-20 px-8 text-center animate-fade-in backdrop-blur-md">
-              <div className="space-y-4">
-                <div className="relative inline-block">
-                  <div className="absolute -inset-4 rounded-full bg-purple-500/10 animate-ping duration-1000"></div>
-                  <img
-                    src={activeGroupId ? "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=150" : interlocutor.avatar}
-                    alt="Appelant"
-                    className="w-24 h-24 rounded-full object-cover ring-4 ring-purple-600"
-                  />
-                </div>
-                <div>
-                  <h3 className="text-lg font-serif font-black text-white">
-                    {activeGroupId ? activeGroup?.name : interlocutor.username}
-                  </h3>
-                  <p className="text-xs text-purple-400 font-bold tracking-widest uppercase mt-2">
-                    {callState === 'ringing' ? 'Appel audio entrant...' : 'Appel connecté'}
-                  </p>
-                </div>
-              </div>
-
-              {callState === 'connected' && (
-                <div className="font-mono text-xl font-bold text-gray-200">
-                  {formatCallTime(callDuration)}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleEndCall}
-                className="w-16 h-16 rounded-full bg-red-650 hover:bg-red-700 text-white flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-red-500/20 cursor-pointer"
-                title="Raccrocher"
-              >
-                <X className="w-6 h-6 shrink-0" />
-              </button>
-            </div>
-          )}
-
           {/* Thread Header (passe SOUS la barre d'etat en plein ecran mobile). */}
           <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
             <div className="flex items-center space-x-3 min-w-0">
@@ -1579,7 +1505,7 @@ export default function MessagesView({
                         </div>
 
                         {/* Reactions */}
-                        {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                        {!msg.deletedForEveryone && Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1.5 justify-start">
                             {msg.reactions.map((r) => {
                               const mine = r.mine || (Array.isArray(r.userIds) && r.userIds.includes(currentUser.id));
@@ -1853,7 +1779,25 @@ export default function MessagesView({
               )}
 
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
+              {/* Bandeau « mode annonce » : bascule pour les admins. */}
+              {activeGroupId && isGroupAdminPlus && (
+                <button
+                  type="button"
+                  onClick={() => setAnnounceNext((v) => !v)}
+                  className={`mb-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${announceNext ? 'bg-purple-600 text-white' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400'}`}
+                  title="Publier le prochain message en tant qu'annonce"
+                >
+                  <Megaphone className="w-3.5 h-3.5 shrink-0" />
+                  {announceNext ? 'Le prochain message sera une annonce' : 'Envoyer en annonce'}
+                </button>
+              )}
+
               {/* Standard message input bar */}
+              {composerLocked ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400 text-[11px] font-bold text-center leading-snug">
+                  <Lock className="w-4 h-4 shrink-0" /> <span>{composerLockReason}</span>
+                </div>
+              ) : (
               <form onSubmit={handleSend} className="flex items-end space-x-1.5">
                 {isRecording || uploadingVoice ? (
                   /* Barre d'enregistrement vocal (privé ET groupe). */
@@ -1935,6 +1879,7 @@ export default function MessagesView({
                   </>
                 )}
               </form>
+              )}
 
           </div>
 

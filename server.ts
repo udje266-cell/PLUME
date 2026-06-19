@@ -2775,7 +2775,7 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Le contenu du message ne doit pas dépasser 2000 caractères' });
       }
 
-      // Anti-spam : 1 message / 300ms par utilisateur. Cohérent multi-instances
+      // Anti-spam : 1 message / 150ms par utilisateur. Cohérent multi-instances
       // via Redis (SET NX PX) ; repli en mémoire si Redis absent.
       let spamBlocked = false;
       if (redis) {
