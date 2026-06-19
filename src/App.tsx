@@ -3379,6 +3379,7 @@ export default function App() {
                     <MessagesView
                       currentUser={currentUser!}
                       allUsers={allUsers}
+                      friendIds={serverFriendIds}
                       conversations={conversations}
                       setConversations={setConversations}
                       onStartCall={handleStartCall}

@@ -113,6 +113,7 @@ const EMOJIS = [
 interface MessagesViewProps {
   currentUser: User;
   allUsers: User[];
+  friendIds?: string[];
   conversations: Conversation[];
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   onSendMessage: (conversationId: string, content: string, replyToId?: string | null) => void;
@@ -252,6 +253,7 @@ function VoicePlayerMockup({ durationStr, isSentByMe, audioUrl }: { durationStr:
 export default function MessagesView({
   currentUser,
   allUsers,
+  friendIds,
   conversations,
   setConversations,
   onSendMessage,
@@ -1928,10 +1930,23 @@ export default function MessagesView({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              <p className="text-[10px] font-mono font-bold text-gray-450 uppercase mb-2">Auteurs disponibles ({allUsers.filter(u => u.id !== currentUser.id).length})</p>
-              {allUsers
+              {(() => {
+              // On ne propose que les AMIS pour démarrer une discussion — sauf un
+              // administrateur, qui peut écrire à n'importe qui.
+              const isAdmin = currentUser.role === 'Administrateur';
+              const friendSet = new Set(friendIds || []);
+              const eligible = allUsers
                 .filter(u => u.id !== currentUser.id)
-                .filter(u => u.username.toLowerCase().includes(authorSearch.toLowerCase()))
+                .filter(u => isAdmin || friendSet.has(u.id));
+              const shown = eligible.filter(u => u.username.toLowerCase().includes(authorSearch.toLowerCase()));
+              return (
+              <>
+              <p className="text-[10px] font-mono font-bold text-gray-450 uppercase mb-2">{isAdmin ? 'Utilisateurs' : 'Mes amis'} ({eligible.length})</p>
+              {eligible.length === 0 ? (
+                <p className="text-[11px] text-gray-400 text-center py-8 px-4 leading-relaxed">Vous n'avez pas encore d'amis. Ajoutez des amis depuis les profils pour pouvoir leur écrire en privé.</p>
+              ) : shown.length === 0 ? (
+                <p className="text-[11px] text-gray-400 text-center py-8">Aucun résultat.</p>
+              ) : shown
                 .map((userObj) => (
                   <button
                     key={userObj.id}
@@ -1952,6 +1967,9 @@ export default function MessagesView({
                   </button>
                 ))
               }
+              </>
+              );
+              })()}
             </div>
           </div>
         </div>
