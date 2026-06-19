@@ -902,6 +902,13 @@ export default function App() {
         if (storiesRes.ok) {
           const fetchedStories = await storiesRes.json();
           setStories(fetchedStories.map((story: Story) => normalizeStoryViewsFromStorage(normalizeStoryFavoritesFromStorage(normalizeStoryLikesFromStorage(story)))));
+          // Réamorce l'état likes/favoris du demandeur depuis la source de vérité
+          // serveur (likedByMe / favoritedByMe), ce qui résout la divergence avec
+          // l'état localStorage optimiste.
+          if (localStorage.getItem('plume_is_logged_in') === 'true') {
+            setLikedStories(fetchedStories.filter((s: any) => s.likedByMe).map((s: Story) => s.id));
+            setFavorites(fetchedStories.filter((s: any) => s.favoritedByMe).map((s: Story) => s.id));
+          }
         }
 
         // 3. Fetch Comments

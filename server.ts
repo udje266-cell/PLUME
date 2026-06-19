@@ -157,9 +157,11 @@ function serializeChapter(chapter: any) {
   };
 }
 
-function serializeStory(story: any) {
+function serializeStory(story: any, requesterId?: string) {
   if (!story) return story;
   const author = story.author ? serializeUser(story.author) : null;
+  const likesArray = Array.isArray(story.likes) ? story.likes : [];
+  const favoritesArray = Array.isArray(story.favorites) ? story.favorites : [];
   return {
     ...story,
     tags: parseJsonArray(story.tags),
@@ -173,6 +175,10 @@ function serializeStory(story: any) {
     authorVerified: Boolean(author?.isVerified),
     likes: Array.isArray(story.likes) ? story.likes.length : (story.likes ?? 0),
     favoritesCount: Array.isArray(story.favorites) ? story.favorites.length : (story.favoritesCount ?? 0),
+    // État du demandeur, calculé depuis la base (source de vérité) : évite que le
+    // client se repose sur un état localStorage divergent.
+    likedByMe: requesterId ? likesArray.some((l: any) => l.userId === requesterId) : false,
+    favoritedByMe: requesterId ? favoritesArray.some((f: any) => f.userId === requesterId) : false,
   };
 }
 
@@ -1257,7 +1263,7 @@ export async function createServerInstance() {
           ? { OR: [{ status: 'PUBLIE' }, { authorId: requester.id }] }
           : { status: 'PUBLIE' };
       const stories = await prisma.story.findMany({ where, include: { author: true, chapters: true, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
-      res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin))));
+      res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin), requester?.id)));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des histoires' });
@@ -1278,7 +1284,7 @@ export async function createServerInstance() {
       if (story.status !== 'PUBLIE' && !isOwner && !isAdmin) {
         return res.status(404).json({ error: 'Récit non trouvé' });
       }
-      res.json(serializeStory(filterDraftChapters(story, requester?.id, isAdmin)));
+      res.json(serializeStory(filterDraftChapters(story, requester?.id, isAdmin), requester?.id));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement du récit' });
@@ -1312,7 +1318,7 @@ export async function createServerInstance() {
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
       await recomputeCertification(req.user.id);
-      res.status(201).json(serializeStory(newStory));
+      res.status(201).json(serializeStory(newStory, req.user.id));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Erreur lors de la création de l'histoire" });
@@ -1354,7 +1360,7 @@ export async function createServerInstance() {
         include: { author: true, chapters: true, likes: true, favorites: true },
       });
       await recomputeCertification(existing.authorId);
-      res.json(serializeStory(updatedStory));
+      res.json(serializeStory(updatedStory, req.user.id));
     } catch (error) {
       console.error(error);
       res.status(404).json({ error: 'Récit non trouvé ou erreur de modification' });
@@ -2451,7 +2457,7 @@ export async function createServerInstance() {
 
   app.get('/api/me/favorites', requireAuth, async (req: any, res) => {
     const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
-    res.json(favorites.map((f: any) => serializeStory(f.story)));
+    res.json(favorites.map((f: any) => serializeStory(f.story, req.user.id)));
   });
 
   // Reading
@@ -2480,7 +2486,7 @@ export async function createServerInstance() {
 
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
     const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: true, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
-    res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
+    res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story, req.user.id), chapter: serializeChapter(h.chapter) })));
   });
 
   app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {

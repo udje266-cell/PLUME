@@ -124,6 +124,26 @@ describe('API Integration Tests (Express routes)', () => {
       expect(story.tags).toEqual(['aventure', 'fantasy']); // Parsed tags JSON
       expect(story.authorName).toBe('AuteurPlume');
     });
+
+    it('exposes likedByMe / favoritedByMe for the authenticated requester', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'me', role: 'Lecteur', followers: [], following: [], blockedUsers: [] } as any);
+      vi.mocked(prisma.story.findMany).mockResolvedValue([
+        {
+          id: 's1', title: 'T', tags: '[]', status: 'PUBLIE', ageRating: 'ALL', authorId: 'a',
+          author: { id: 'a', username: 'A', role: 'AUTEUR', createdAt: new Date('2026-01-01') },
+          chapters: [], likes: [{ userId: 'me' }], favorites: [],
+        },
+      ] as any);
+
+      const token = jwt.sign({ userId: 'me' }, JWT_SECRET, { expiresIn: '1h' });
+      const res = await request(app)
+        .get('/api/stories')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body[0].likedByMe).toBe(true);
+      expect(res.body[0].favoritedByMe).toBe(false);
+    });
   });
 
   describe('Story mass-assignment protection (H2)', () => {
