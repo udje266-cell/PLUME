@@ -114,6 +114,18 @@ function validatePassword(password: string): boolean {
   return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
 }
 
+// SECURITE : projection sûre d'un utilisateur embarqué (expéditeur de message,
+// participant de conversation…). N'expose JAMAIS passwordHash / email / birthDate
+// / flagReason / xpMeta. À utiliser dans les `include` Prisma renvoyés/émis au
+// client à la place des inclusions brutes d'utilisateurs (qui fuitent tout).
+const SAFE_USER_SELECT = {
+  id: true,
+  username: true,
+  avatar: true,
+  isVerified: true,
+  bio: true,
+} as const;
+
 // includePrivate : n'inclure email/birthDate (données personnelles) que pour
 // l'utilisateur lui-même ou un administrateur. Par défaut elles sont masquées
 // afin de ne pas fuiter sur les routes publiques (listes, profils d'autrui…).
@@ -1261,7 +1273,11 @@ export async function createServerInstance() {
       console.log(`[OTP] Vérification réussie pour ${normalizedEmail}`);
 
       const passwordHash = await bcrypt.hash(password, 12);
-      const finalRole = roleToPrisma(role);
+      // SECURITE : l'inscription publique ne peut JAMAIS créer un administrateur.
+      // Seuls 'Lecteur' et 'Auteur' sont acceptés ; tout le reste retombe sur
+      // 'Lecteur'. (Le rôle admin se confère uniquement côté base / endpoint admin.)
+      const safeRole = role === 'Auteur' ? 'Auteur' : 'Lecteur';
+      const finalRole = roleToPrisma(safeRole);
       const finalGender = genderToPrisma(gender);
 
       console.log('[REGISTRATION] Tentative de création utilisateur avec les données normalisées :', {
@@ -2256,7 +2272,9 @@ export async function createServerInstance() {
         data: {
           title: chapter.title,
           content: chapter.content,
-          order: chapter.order,
+          // 'order' n'est PAS modifiable ici : ecrire l'order fourni par le client
+          // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
+          // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
@@ -2301,7 +2319,9 @@ export async function createServerInstance() {
         data: {
           title: chapter.title,
           content: chapter.content,
-          order: chapter.order,
+          // 'order' n'est PAS modifiable ici : ecrire l'order fourni par le client
+          // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
+          // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
           publishedAt: chapter.isPublished ? new Date() : undefined,
@@ -2605,7 +2625,7 @@ export async function createServerInstance() {
             }
           },
           include: {
-            participants: true
+            participants: { select: SAFE_USER_SELECT }
           }
         });
 
@@ -2628,7 +2648,7 @@ export async function createServerInstance() {
           }
         },
         include: {
-          participants: true
+          participants: { select: SAFE_USER_SELECT }
         }
       });
 
@@ -2654,12 +2674,12 @@ export async function createServerInstance() {
           }
         },
         include: {
-          participants: true,
+          participants: { select: SAFE_USER_SELECT },
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
             include: {
-              sender: true
+              sender: { select: SAFE_USER_SELECT }
             }
           }
         },
@@ -2725,7 +2745,7 @@ export async function createServerInstance() {
       console.log(`[CONVERSATION] accès aux messages - conversationId: ${req.params.id}, userId: ${req.user.id}`);
       const conversation = await prisma.conversation.findUnique({
         where: { id: req.params.id },
-        include: { participants: true }
+        include: { participants: { select: SAFE_USER_SELECT } }
       });
 
       if (!conversation) {
@@ -2742,7 +2762,7 @@ export async function createServerInstance() {
       const messages = await prisma.message.findMany({
         where: { conversationId: req.params.id },
         include: {
-          sender: true
+          sender: { select: SAFE_USER_SELECT }
         },
         orderBy: { createdAt: 'asc' }
       });
@@ -2799,7 +2819,7 @@ export async function createServerInstance() {
 
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
-        include: { participants: true }
+        include: { participants: { select: SAFE_USER_SELECT } }
       });
 
       if (!conversation) {
@@ -2840,7 +2860,7 @@ export async function createServerInstance() {
             isRead: false
           },
           include: {
-            sender: true
+            sender: { select: SAFE_USER_SELECT }
           }
         });
         console.log(`[MESSAGE] sauvegarde - messageId: ${message.id}`);
@@ -2911,7 +2931,7 @@ export async function createServerInstance() {
 
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
-        include: { participants: true }
+        include: { participants: { select: SAFE_USER_SELECT } }
       });
 
       if (!conversation) {
@@ -2960,7 +2980,7 @@ export async function createServerInstance() {
       const content = String(req.body?.content || '').trim();
       if (!content) return res.status(400).json({ error: 'Contenu vide.' });
       if (content.length > 2000) return res.status(400).json({ error: 'Message trop long.' });
-      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: true } });
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: { select: SAFE_USER_SELECT } } });
       msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
       res.json(updated);
     } catch (error) {
@@ -2979,7 +2999,7 @@ export async function createServerInstance() {
       if (Date.now() - new Date(msg.createdAt).getTime() > 6 * 60 * 1000) {
         return res.status(403).json({ error: 'Delai depasse (6 min) pour supprimer pour tout le monde' });
       }
-      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: true } });
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: { select: SAFE_USER_SELECT } } });
       msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
       res.json(updated);
     } catch (error) {
@@ -2992,7 +3012,7 @@ export async function createServerInstance() {
   const GROUP_INCLUDE = {
     members: true,
     memberships: { include: { user: { select: { id: true, username: true, avatar: true, isVerified: true } } } },
-    messages: { include: { sender: true }, orderBy: { createdAt: 'desc' as const }, take: 1 },
+    messages: { include: { sender: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'desc' as const }, take: 1 },
   };
 
   // ---- Helpers de roles/permissions de groupe -----------------------------
@@ -3076,7 +3096,7 @@ export async function createServerInstance() {
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
       const messages = await prisma.groupMessage.findMany({
         where: { groupId: req.params.id },
-        include: { sender: true, reactions: true },
+        include: { sender: { select: SAFE_USER_SELECT }, reactions: true },
         orderBy: { createdAt: 'asc' },
       });
       res.json(messages.map((m: any) => serializeGroupMessage(m, req.user.id)));
@@ -3111,7 +3131,7 @@ export async function createServerInstance() {
       const isAnnouncement = wantAnnouncement && isAdminPlus;
       const message = await prisma.groupMessage.create({
         data: { groupId: req.params.id, senderId: req.user.id, content, replyToId, isAnnouncement },
-        include: { sender: true, reactions: true },
+        include: { sender: { select: SAFE_USER_SELECT }, reactions: true },
       });
       await prisma.readingGroup.update({ where: { id: req.params.id }, data: { updatedAt: new Date() } });
       const serialized = serializeGroupMessage(message);
@@ -3165,7 +3185,7 @@ export async function createServerInstance() {
       if (Date.now() - new Date(msg.createdAt).getTime() > 5 * 60 * 1000) {
         return res.status(403).json({ error: 'Delai depasse (5 min) pour modifier' });
       }
-      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: true } });
+      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: { select: SAFE_USER_SELECT } } });
       const serialized = serializeGroupMessage(updated);
       const members = await getGroupMemberIds(msg.groupId);
       members.forEach((id) => io.to(`user:${id}`).emit('group_message_updated', serialized));
@@ -3185,7 +3205,7 @@ export async function createServerInstance() {
       if (Date.now() - new Date(msg.createdAt).getTime() > 6 * 60 * 1000) {
         return res.status(403).json({ error: 'Delai depasse (6 min) pour supprimer pour tout le monde' });
       }
-      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: true } });
+      const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: { select: SAFE_USER_SELECT } } });
       const serialized = serializeGroupMessage(updated);
       const members = await getGroupMemberIds(msg.groupId);
       members.forEach((id) => io.to(`user:${id}`).emit('group_message_updated', serialized));
@@ -3570,7 +3590,7 @@ export async function createServerInstance() {
 
   // ---- Contenu : epingles, suppression admin, reactions -------------------
   const relayMessageUpdate = async (messageId: string) => {
-    const fresh = await prisma.groupMessage.findUnique({ where: { id: messageId }, include: { sender: true, reactions: true } });
+    const fresh = await prisma.groupMessage.findUnique({ where: { id: messageId }, include: { sender: { select: SAFE_USER_SELECT }, reactions: true } });
     if (!fresh) return null;
     const serialized = serializeGroupMessage(fresh);
     const members = await getGroupMemberIds(fresh.groupId);
@@ -3599,7 +3619,7 @@ export async function createServerInstance() {
     try {
       const members = await getGroupMemberIds(req.params.id);
       if (!members.includes(req.user.id)) return res.status(403).json({ error: 'Action interdite' });
-      const pins = await prisma.groupMessage.findMany({ where: { groupId: req.params.id, pinned: true, deletedForEveryone: false }, include: { sender: true, reactions: true }, orderBy: { pinnedAt: 'desc' } });
+      const pins = await prisma.groupMessage.findMany({ where: { groupId: req.params.id, pinned: true, deletedForEveryone: false }, include: { sender: { select: SAFE_USER_SELECT }, reactions: true }, orderBy: { pinnedAt: 'desc' } });
       res.json(pins.map((m: any) => serializeGroupMessage(m, req.user.id)));
     } catch (error) {
       console.error(error);
