@@ -48,10 +48,10 @@ function AchievementCard({ a, onClick }: { a: Achievement; onClick: () => void }
           : <Trophy className="w-3.5 h-3.5 text-amber-500" />}
       </div>
       <h4 className="text-xs font-black text-gray-900 dark:text-white leading-tight">
-        {locked ? a.mysteryTitle : a.title}
+        {a.title || a.mysteryTitle}
       </h4>
       <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3">
-        {locked ? a.mysteryDesc : a.realDesc}
+        {a.realDesc || a.mysteryDesc}
       </p>
       {!locked && a.unlockedDate && (
         <span className="text-[8px] font-mono text-gray-400 mt-auto pt-1">Débloqué le {a.unlockedDate}</span>
@@ -139,14 +139,14 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
               {selected.isUnlocked ? <Trophy className="w-6 h-6 text-amber-500" /> : <Lock className="w-6 h-6 text-zinc-400" />}
             </div>
             <h3 className="text-lg font-serif font-black text-gray-900 dark:text-white mb-2">
-              {selected.isUnlocked ? selected.title : selected.mysteryTitle}
+              {selected.title || selected.mysteryTitle}
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-              {selected.isUnlocked ? selected.realDesc : selected.mysteryDesc}
+              {selected.realDesc || selected.mysteryDesc}
             </p>
             {!selected.isUnlocked && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-3 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" /> Indice — débloque-le en continuant ton aventure.
+                <Lock className="w-3.5 h-3.5" /> Pas encore débloqué — continue pour l'obtenir.
               </p>
             )}
             {selected.isUnlocked && selected.unlockedDate && (

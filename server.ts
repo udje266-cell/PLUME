@@ -1161,6 +1161,22 @@ export async function createServerInstance() {
     res.json({ status: 'ok', message: 'Le serveur backend de PLUME fonctionne.', time: new Date().toISOString() });
   });
 
+  // Android App Links : verification de propriete du domaine. On n'expose une
+  // empreinte que si ANDROID_CERT_SHA256 est defini (sinon tableau vide -> pas de
+  // fausse verification). Format attendu : empreinte(s) SHA-256 separees par des
+  // virgules (AB:CD:...). Permet aux liens /r/<id> et /g/<code> d'ouvrir l'app.
+  app.get('/.well-known/assetlinks.json', (_req, res) => {
+    const raw = (process.env.ANDROID_CERT_SHA256 || '').trim();
+    const fingerprints = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    if (!fingerprints.length) return res.json([]);
+    res.json([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: { namespace: 'android_app', package_name: 'com.plume.app', sha256_cert_fingerprints: fingerprints },
+      },
+    ]);
+  });
+
   app.get('/api/info', (_req, res) => {
     res.json({ appName: 'PLUME Platform', version: '1.0.0' });
   });

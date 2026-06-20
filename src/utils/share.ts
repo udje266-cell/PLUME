@@ -37,14 +37,16 @@ export function appBaseUrl(): string {
   return PLUME_PUBLIC_URL;
 }
 
-/** Lien profond réel vers un récit (consommé au démarrage via `?recit=`). */
+/** Lien profond réel vers un récit. Format par CHEMIN (`/r/<id>`) pour permettre
+ *  les App Links Android (ouverture directe dans l'app). Compat : l'ancienne
+ *  forme `?recit=<id>` reste consommée par l'app. */
 export function storyShareUrl(storyId: string): string {
-  return `${appBaseUrl()}/?recit=${encodeURIComponent(storyId)}`;
+  return `${appBaseUrl()}/r/${encodeURIComponent(storyId)}`;
 }
 
-/** Lien d'invitation réel vers un groupe (consommé au démarrage via `?joingroup=`). */
+/** Lien d'invitation réel vers un groupe (`/g/<code>`), App-Links-compatible. */
 export function groupInviteUrl(code: string): string {
-  return `${appBaseUrl()}/?joingroup=${encodeURIComponent(code)}`;
+  return `${appBaseUrl()}/g/${encodeURIComponent(code)}`;
 }
 
 /**

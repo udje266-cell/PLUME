@@ -107,8 +107,28 @@ function mapServerNotification(n: any): AppNotification {
   };
 }
 
+// Extraction d'un id de RECIT depuis une URL : chemin App-Link `/r/<id>` OU
+// ancienne forme `?recit=<id>` (compat). Idem pour un code de GROUPE (`/g/<code>`
+// ou `?joingroup=<code>`). Tolerant aux URL relatives.
+function parseRecitId(href: string): string | null {
+  try {
+    const u = new URL(href, 'https://x');
+    const q = u.searchParams.get('recit'); if (q) return q;
+    const m = u.pathname.match(/^\/r\/([^/?#]+)/); if (m) return decodeURIComponent(m[1]);
+  } catch { /* ignore */ }
+  return null;
+}
+function parseGroupCode(href: string): string | null {
+  try {
+    const u = new URL(href, 'https://x');
+    const q = u.searchParams.get('joingroup'); if (q) return q;
+    const m = u.pathname.match(/^\/g\/([^/?#]+)/); if (m) return decodeURIComponent(m[1]);
+  } catch { /* ignore */ }
+  return null;
+}
+
 export default function App() {
-  
+
   // Custom State for Floating Premium Achievements Toasts
   const [unlockedToasts, setUnlockedToasts] = useState<any[]>([]);
 
@@ -1530,19 +1550,16 @@ export default function App() {
     }
   }, [isAuthenticated, currentUser, openChatFromPush]);
 
-  // Lien profond de partage : `?recit=<id>` ouvre directement le récit en lecture.
-  // On attend que les récits soient chargés, puis on consomme le paramètre une
-  // seule fois (nettoyage de l'URL pour ne pas le rejouer).
+  // Lien profond de partage : `/r/<id>` (ou `?recit=`) ouvre directement le récit.
+  // On attend que les récits soient chargés, puis on consomme une seule fois.
+  // `deepLinkNonce` permet de re-declencher quand un lien arrive a chaud (App Link
+  // ouvert alors que l'app tourne deja -> evenement Capacitor `appUrlOpen`).
+  const [deepLinkNonce, setDeepLinkNonce] = useState(0);
   const deepLinkConsumedRef = React.useRef(false);
   useEffect(() => {
     if (deepLinkConsumedRef.current) return;
     if (!isAuthenticated || !currentUser || stories.length === 0) return;
-    let recitId: string | null = null;
-    try {
-      recitId = new URLSearchParams(window.location.search).get('recit');
-    } catch {
-      recitId = null;
-    }
+    const recitId = parseRecitId(window.location.href);
     if (!recitId) return;
     deepLinkConsumedRef.current = true;
     const target = stories.find((s) => s.id === recitId);
@@ -1554,11 +1571,12 @@ export default function App() {
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete('recit');
+      if (/^\/r\//.test(url.pathname)) url.pathname = '/';
       window.history.replaceState({}, '', url.toString());
     } catch {
       /* history indisponible */
     }
-  }, [isAuthenticated, currentUser, stories]);
+  }, [isAuthenticated, currentUser, stories, deepLinkNonce]);
 
   // Lien profond d'invitation a un GROUPE : `?joingroup=<code>` -> rejoint (ou
   // depose une demande si l'approbation manuelle est active).
@@ -1566,13 +1584,13 @@ export default function App() {
   useEffect(() => {
     if (joinGroupConsumedRef.current) return;
     if (!isAuthenticated || !currentUser) return;
-    let code: string | null = null;
-    try { code = new URLSearchParams(window.location.search).get('joingroup'); } catch { code = null; }
+    const code = parseGroupCode(window.location.href);
     if (!code) return;
     joinGroupConsumedRef.current = true;
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete('joingroup');
+      if (/^\/g\//.test(url.pathname)) url.pathname = '/';
       window.history.replaceState({}, '', url.toString());
     } catch { /* ignore */ }
     (async () => {
@@ -1594,7 +1612,31 @@ export default function App() {
         alert("Impossible de rejoindre le groupe (erreur réseau).");
       }
     })();
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, deepLinkNonce]);
+
+  // App Links Android / liens ouverts a CHAUD : Capacitor emet `appUrlOpen` quand
+  // l'app est ouverte via un lien `https://.../r/<id>` ou `.../g/<code>`. On
+  // reecrit l'URL interne puis on re-declenche les effets de deep-link ci-dessus.
+  useEffect(() => {
+    let remove: (() => void) | undefined;
+    (async () => {
+      try {
+        const { App: CapApp } = await import('@capacitor/app');
+        const sub = await CapApp.addListener('appUrlOpen', (data: { url: string }) => {
+          if (!parseRecitId(data.url) && !parseGroupCode(data.url)) return;
+          try {
+            const u = new URL(data.url);
+            window.history.replaceState({}, '', (u.pathname || '/') + (u.search || ''));
+          } catch { /* ignore */ }
+          deepLinkConsumedRef.current = false;
+          joinGroupConsumedRef.current = false;
+          setDeepLinkNonce((n) => n + 1);
+        });
+        remove = () => { try { sub.remove(); } catch { /* ignore */ } };
+      } catch { /* plugin indisponible (web) */ }
+    })();
+    return () => { try { remove?.(); } catch { /* ignore */ } };
+  }, []);
 
   // Rafraichit la liste d'amis (sert au « Nouveau message » qui ne propose que
   // les amis) a chaque ouverture de l'onglet Messages — sinon un ami ajoute en

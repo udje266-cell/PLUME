@@ -22,6 +22,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- App Links : les liens partages (recit /r/<id>, invitation /g/<code>)
+                 ouvrent DIRECTEMENT l'app. La verification automatique exige que
+                 https://plume-app-fudd.onrender.com/.well-known/assetlinks.json
+                 contienne l'empreinte SHA-256 du certificat de signature (variable
+                 ANDROID_CERT_SHA256 cote serveur). Sans elle, Android propose
+                 simplement « Ouvrir avec PLUME ». -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="plume-app-fudd.onrender.com" android:pathPrefix="/r" />
+                <data android:scheme="https" android:host="plume-app-fudd.onrender.com" android:pathPrefix="/g" />
+            </intent-filter>
         </activity>
 
         <provider
