@@ -470,7 +470,22 @@ const user = freshViewedUser || freshCurrentUser;
   const enablePush = async () => {
     const p = await requestNotificationPermission();
     setPushPerm(p);
-    if (p === 'granted') ensureWebPush().catch(() => {});
+    if (p !== 'granted') return;
+    ensureWebPush().catch(() => {});
+    // Honnêteté : sur le web/PWA, l'envoi a distance (app fermee) exige une cle
+    // VAPID cote serveur. Si elle est absente, on previent l'utilisateur au lieu
+    // de laisser croire que les push fonctionnent.
+    const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+    if (!isNative) {
+      try {
+        const r = await fetch('/api/push/vapid');
+        const d = await r.json().catch(() => ({}));
+        if (!d?.key) {
+          setShowStatusToast("Alertes activées sur cet appareil, mais l'envoi à distance (app fermée) n'est pas configuré côté serveur.");
+          setTimeout(() => setShowStatusToast(null), 5000);
+        }
+      } catch { /* hors-ligne : on ne dit rien */ }
+    }
   };
 
   // Help topic sending state
@@ -1664,7 +1679,7 @@ const user = freshViewedUser || freshCurrentUser;
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
               {canSeeMentions ? totalLikes : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">Mentions</span>
+            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">J'aime</span>
           </button>
         </div>
 

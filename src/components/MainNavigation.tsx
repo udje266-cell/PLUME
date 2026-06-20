@@ -319,7 +319,13 @@ export default function MainNavigation({
               passer Auteur (redirection gérée en amont si besoin). */}
           <button
             id="nav-tab-write"
-            onClick={() => onChangeTab(canWrite || isAdmin ? 'write' : 'profile')}
+            onClick={() => {
+              if (canWrite || isAdmin) { onChangeTab('write'); return; }
+              // Un Lecteur ne peut pas ecrire : on l'explique au lieu de le rediriger
+              // silencieusement vers son profil.
+              alert("Pour publier vos propres récits, passez en compte « Auteur » : Profil → Réglages → Compte → Type de compte.");
+              onChangeTab('profile');
+            }}
             className="relative -mt-7 flex flex-col items-center focus:outline-none cursor-pointer"
             aria-label="Écrire"
           >

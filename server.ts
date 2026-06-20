@@ -3546,7 +3546,7 @@ export async function createServerInstance() {
     try {
       const group = await prisma.readingGroup.findUnique({ where: { inviteCode: req.params.code }, include: { members: { select: { id: true } } } });
       if (!group || group.inviteEnabled === false) return res.status(404).json({ error: 'Lien d’invitation invalide ou désactivé.' });
-      res.json({ id: group.id, name: group.name, avatar: group.avatar || undefined, description: group.description || '', memberCount: group.members.length, requireApproval: !!group.requireApproval });
+      res.json({ id: group.id, name: group.name, avatar: group.avatar || undefined, description: group.description || '', memberCount: group.members.length, requireApproval: !!group.requireApproval, visibility: group.visibility || 'private' });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur.' });
@@ -3564,6 +3564,12 @@ export async function createServerInstance() {
       if (existing?.status === 'banned') return res.status(403).json({ error: 'Vous avez été banni de ce groupe.' });
       if (group.members.some((m: any) => m.id === req.user.id)) {
         return res.json({ status: 'member', group: serializeGroup(await prisma.readingGroup.findUnique({ where: { id: group.id }, include: GROUP_INCLUDE })) });
+      }
+      // Visibilite REELLEMENT appliquee : un groupe « Privé » ne se rejoint PAS via
+      // un lien (seul un administrateur peut ajouter des membres). Avant, n'importe
+      // qui avec le lien pouvait entrer dans un groupe pourtant marque prive.
+      if (group.visibility === 'private') {
+        return res.status(403).json({ error: 'Ce groupe est privé : seul un administrateur peut vous y ajouter.' });
       }
       if (group.requireApproval) {
         await ensureMembership(group.id, req.user.id, 'member', 'pending');

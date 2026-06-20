@@ -175,31 +175,14 @@ function VoicePlayerMockup({ durationStr, isSentByMe, audioUrl }: { durationStr:
   }, [audioUrl]);
 
   const togglePlay = () => {
-    if (audioUrl) {
-      const a = audioRef.current;
-      if (!a) return;
-      if (isPlaying) { a.pause(); setIsPlaying(false); }
-      else { a.play().then(() => setIsPlaying(true)).catch(() => {}); }
-    } else {
-      setIsPlaying((v) => !v); // ancien rendu simulé (messages hérités sans URL)
-    }
+    // Pas d'URL audio (anciennes notes heritees) : on NE SIMULE PLUS une fausse
+    // lecture. Le bouton est inactif et la note est clairement « indisponible ».
+    if (!audioUrl) return;
+    const a = audioRef.current;
+    if (!a) return;
+    if (isPlaying) { a.pause(); setIsPlaying(false); }
+    else { a.play().then(() => setIsPlaying(true)).catch(() => {}); }
   };
-
-  // Repli simulé pour les anciennes notes sans URL.
-  useEffect(() => {
-    if (audioUrl) return;
-    if (isPlaying) {
-      progressRef.current = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 100) { setIsPlaying(false); return 0; }
-          return prev + 8;
-        });
-      }, 350);
-    } else if (progressRef.current) {
-      clearInterval(progressRef.current);
-    }
-    return () => { if (progressRef.current) clearInterval(progressRef.current); };
-  }, [isPlaying, audioUrl]);
 
   return (
     <div className="flex items-center space-x-3 py-1 px-1">
@@ -207,12 +190,13 @@ function VoicePlayerMockup({ durationStr, isSentByMe, audioUrl }: { durationStr:
       <button
         type="button"
         onClick={togglePlay}
-        className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-95 shrink-0 ${
-          isSentByMe 
-            ? 'bg-purple-900/60 text-white hover:bg-purple-900/80 border border-purple-500/10' 
+        disabled={!audioUrl}
+        className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-95 shrink-0 ${!audioUrl ? 'opacity-40 cursor-not-allowed' : ''} ${
+          isSentByMe
+            ? 'bg-purple-900/60 text-white hover:bg-purple-900/80 border border-purple-500/10'
             : 'bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300 hover:bg-purple-200/50'
         }`}
-        title={isPlaying ? "Mettre en pause" : "Écouter la note"}
+        title={!audioUrl ? "Note vocale indisponible" : (isPlaying ? "Mettre en pause" : "Écouter la note")}
       >
         {isPlaying ? (
           <span className="flex space-x-0.75 items-center justify-center">
@@ -244,7 +228,7 @@ function VoicePlayerMockup({ durationStr, isSentByMe, audioUrl }: { durationStr:
           })}
         </div>
         <div className={`text-[9px] font-mono select-none ${isSentByMe ? 'text-purple-200' : 'text-gray-400'}`}>
-          {isPlaying ? `Lecture en cours...` : `Note vocale • ${durationStr}`}
+          {!audioUrl ? `Note vocale • indisponible` : (isPlaying ? `Lecture en cours...` : `Note vocale • ${durationStr}`)}
         </div>
       </div>
     </div>
