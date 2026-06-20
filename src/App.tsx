@@ -152,6 +152,16 @@ export default function App() {
   // Notifications : chargées depuis l'API, mises en cache localStorage, enrichies via Socket.io.
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     try {
+      // Versioning du cache : les notifications mises en cache AVANT l'ajout des
+      // champs groupId/conversationId ne savent pas router le clic (un message de
+      // groupe ouvrait alors un DM avec l'expediteur). On purge l'ancien cache une
+      // fois pour forcer un re-chargement frais depuis le serveur.
+      const NOTIF_CACHE_V = '2';
+      if (localStorage.getItem('plume_notifications_v') !== NOTIF_CACHE_V) {
+        localStorage.removeItem('plume_notifications');
+        localStorage.setItem('plume_notifications_v', NOTIF_CACHE_V);
+        return [];
+      }
       return JSON.parse(localStorage.getItem('plume_notifications') || '[]');
     } catch {
       return [];

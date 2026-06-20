@@ -632,13 +632,13 @@ export default function MessagesView({
   }, []);
 
   const activeConv = conversations.find(c => c.id === activeConversationId);
-  // Robuste : on ne tombe jamais sur `undefined` même si `participants` est vide.
+  // L'interlocuteur provient UNIQUEMENT des participants de la conversation
+  // active. On ne retombe PLUS sur un utilisateur au hasard (`allUsers[...]`) :
+  // cela affichait « une conversation avec X au hasard » quand la conversation
+  // ciblee n'etait pas (encore) chargee. Repli de type-safety : soi-meme.
   const interlocutor =
     activeConv?.participants?.find(p => p.id !== currentUser.id)
     ?? activeConv?.participants?.[0]
-    ?? allUsers.find(u => u.id !== currentUser.id)
-    ?? allUsers[1]
-    ?? allUsers[0]
     ?? currentUser;
   const activeGroup = groups.find(g => g.id === activeGroupId);
 
