@@ -538,6 +538,21 @@ export default function MessagesView({
   useEffect(() => { autoSizeMessageInput(); }, [messageText]);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
+  // Ouverture d'un GROUPE depuis l'exterieur (clic sur une notification de
+  // message de groupe) : App emet `plume:open-group` et on ouvre le bon groupe.
+  useEffect(() => {
+    const onOpenGroup = (e: Event) => {
+      const gid = (e as CustomEvent).detail?.groupId;
+      if (!gid) return;
+      setActiveTab('groups');
+      setActiveGroupId(gid);
+      setMobileShowThread(true);
+    };
+    window.addEventListener('plume:open-group', onOpenGroup);
+    return () => window.removeEventListener('plume:open-group', onOpenGroup);
+  }, []);
+
   // Recherche dans la liste des discussions / groupes.
   const [convSearch, setConvSearch] = useState('');
   // Mobile ? (uniquement sur changement de point de rupture → stable, ne se

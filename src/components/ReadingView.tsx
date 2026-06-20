@@ -1334,7 +1334,7 @@ export default function ReadingView({
       
       {/* 1. TOP HEADER NAVIGATION - HIDDEN IN IMMERSIVE MODE */}
       {!isImmersive && (
-        <div className="sticky top-0 z-30 border-b bg-white/90 dark:bg-black/90 backdrop-blur-md border-slate-200 dark:border-purple-900/10 py-3.5 shadow-xs transition-all animate-fade-in">
+        <div className="sticky top-0 z-30 border-b bg-white/90 dark:bg-black/90 backdrop-blur-md border-slate-200 dark:border-purple-900/10 py-3.5 shadow-xs transition-all animate-fade-in" style={{ paddingTop: 'max(0.875rem, env(safe-area-inset-top))' }}>
           <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
             
             {/* Back button */}

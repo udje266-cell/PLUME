@@ -101,6 +101,8 @@ function mapServerNotification(n: any): AppNotification {
     chapterId: data.chapterId,
     commentId: data.commentId,
     excerpt: data.excerpt,
+    conversationId: data.conversationId,
+    groupId: data.groupId,
   };
 }
 
@@ -1252,7 +1254,19 @@ export default function App() {
   const handleOpenNotification = (n: AppNotification) => {
     if (!n) return;
     if (n.type === 'message') {
-      // Ouvre la conversation avec l'expéditeur (messagerie).
+      // Message de GROUPE : on ouvre le bon groupe (avant, on ouvrait par erreur
+      // un DM avec l'expediteur -> « conversation au hasard »).
+      if (n.groupId) {
+        setSelectedStoryForReading(null);
+        setActiveConversationId('');
+        setActiveTab('messages');
+        // Laisse MessagesView se monter avant d'emettre l'ouverture du groupe.
+        setTimeout(() => window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: n.groupId } })), 60);
+        return;
+      }
+      // Message PRIVE : on ouvre la conversation EXACTE (par son id) si on l'a,
+      // sinon on retombe sur une discussion avec l'expediteur.
+      if (n.conversationId) { openChatFromPush(n.conversationId); return; }
       if (n.actorId) handleOpenDiscussion(n.actorId);
       return;
     }
@@ -1477,6 +1491,14 @@ export default function App() {
   useEffect(() => {
     const onPushOpen = (e: Event) => {
       const d = (e as CustomEvent).detail || {};
+      // Notification de GROUPE -> on ouvre le groupe concerne ; sinon la conversation.
+      if (d.groupId) {
+        setSelectedStoryForReading(null);
+        setActiveConversationId('');
+        setActiveTab('messages');
+        setTimeout(() => window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: d.groupId } })), 60);
+        return;
+      }
       openChatFromPush(d.conversationId);
     };
     window.addEventListener('plume:push-open', onPushOpen);
@@ -3287,9 +3309,10 @@ export default function App() {
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-screen">
-            {/* Top Header navbar navigation — masque quand une discussion est
-                ouverte en plein ecran (comme WhatsApp). */}
-            {!chatFullscreen && !(selectedStoryForReading && currentUser?.readingFullscreen) && (
+            {/* Top Header + barre d'onglets — masques quand une discussion est
+                ouverte en plein ecran OU pendant la LECTURE d'un livre (mode
+                immersif facon WhatsApp : la liseuse a sa propre barre « Quitter »). */}
+            {!chatFullscreen && !selectedStoryForReading && (
             <MainNavigation
               activeTab={activeTab}
               onChangeTab={(tab) => {

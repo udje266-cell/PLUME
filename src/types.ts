@@ -177,6 +177,8 @@ export interface AppNotification {
   chapterId?: string;
   commentId?: string;
   excerpt?: string;
+  conversationId?: string;
+  groupId?: string;
 }
 
 export type GroupRole = 'owner' | 'admin' | 'moderator' | 'member';
