@@ -9,15 +9,22 @@
  * inexistant `plume.app`).
  */
 
+// URL PUBLIQUE CANONIQUE de PLUME : le backend deploye sert AUSSI la SPA et gere
+// les liens profonds (`?recit=`, `?joingroup=`). C'est le repli ultime garanti
+// pour que les liens partages aient TOUJOURS un domaine reel et fonctionnel
+// (notamment dans l'app native, ou window.location.origin = localhost/capacitor
+// et ou VITE_API_URL peut ne pas etre injecte au build). A mettre a jour ici en
+// cas de domaine personnalise.
+const PLUME_PUBLIC_URL = 'https://plume-app-fudd.onrender.com';
+
 /**
- * URL de base réelle et atteignable de l'application.
- * - En web, c'est l'origine courante (le backend sert la SPA).
- * - En natif (Capacitor : origine `capacitor://`, `http://localhost`, …),
- *   l'origine n'est pas partageable : on retombe sur `VITE_API_URL`, qui
- *   pointe vers le backend déployé qui sert aussi la SPA.
+ * URL de base réelle et atteignable de l'application. Renvoie TOUJOURS un domaine
+ * absolu (jamais une chaine vide ni un lien sans hote) :
+ *  1. en web, l'origine courante si elle est partageable (le backend sert la SPA) ;
+ *  2. sinon `VITE_API_URL` si fourni au build ;
+ *  3. sinon l'URL publique canonique ci-dessus.
  */
 export function appBaseUrl(): string {
-  const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) || '';
   try {
     const origin = window.location.origin || '';
     const isShareable = /^https?:\/\//i.test(origin) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(origin);
@@ -25,13 +32,19 @@ export function appBaseUrl(): string {
   } catch {
     /* window indisponible */
   }
-  return apiUrl.replace(/\/+$/, '');
+  const apiUrl = ((import.meta.env.VITE_API_URL as string | undefined) || '').trim();
+  if (/^https?:\/\//i.test(apiUrl)) return apiUrl.replace(/\/+$/, '');
+  return PLUME_PUBLIC_URL;
 }
 
 /** Lien profond réel vers un récit (consommé au démarrage via `?recit=`). */
 export function storyShareUrl(storyId: string): string {
-  const base = appBaseUrl();
-  return base ? `${base}/?recit=${encodeURIComponent(storyId)}` : `?recit=${encodeURIComponent(storyId)}`;
+  return `${appBaseUrl()}/?recit=${encodeURIComponent(storyId)}`;
+}
+
+/** Lien d'invitation réel vers un groupe (consommé au démarrage via `?joingroup=`). */
+export function groupInviteUrl(code: string): string {
+  return `${appBaseUrl()}/?joingroup=${encodeURIComponent(code)}`;
 }
 
 /**

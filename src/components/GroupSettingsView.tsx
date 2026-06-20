@@ -18,7 +18,7 @@ import {
 import { User, ReadingGroup, GroupMembership, GroupRole } from '../types';
 import { authHeaders } from '../utils/auth';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
-import { appBaseUrl } from '../utils/share';
+import { groupInviteUrl } from '../utils/share';
 import { VerifiedBadge } from './VerifiedBadge';
 import { optimizedImage } from '../utils/imageUrl';
 
@@ -124,7 +124,7 @@ export default function GroupSettingsView({ group, currentUser, allUsers, onClos
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.id]);
-  const inviteLink = invite ? `${appBaseUrl()}/?joingroup=${invite.code}` : '';
+  const inviteLink = invite ? groupInviteUrl(invite.code) : '';
   const copyInvite = () => { if (inviteLink) { navigator.clipboard?.writeText(inviteLink).catch(() => {}); showToast('Lien copié.'); } };
   const resetInvite = async () => { const r = await api(`/api/groups/${group.id}/invite/reset`, 'POST'); if (r?.code) { setInvite({ code: r.code, enabled: invite?.enabled ?? true }); showToast('Nouveau lien généré.'); } };
   const toggleInvite = async () => { const next = !(invite?.enabled ?? true); const r = await api(`/api/groups/${group.id}/invite/toggle`, 'POST', { enabled: next }); if (r) setInvite((p) => p ? { ...p, enabled: next } : p); };
