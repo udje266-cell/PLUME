@@ -203,8 +203,8 @@ export default function LateralMenu({
             <button
               id="sidebar-help-btn"
               onClick={() => {
-                onFilterSelect('ranking', 'reads');
-                alert('Aide: Bienvenue sur PLUME! Pour toute question ou assistance, veuillez contacter support@plume.fr ou consulter notre documentation.');
+                // Avant : appliquait par erreur un filtre « ranking » parasite.
+                alert('Aide : bienvenue sur PLUME ! Pour toute question ou assistance, contactez support@plume.fr ou consultez les réglages › À propos.');
                 onClose();
               }}
               className="flex items-center space-x-3 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

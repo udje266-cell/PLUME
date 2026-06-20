@@ -94,21 +94,6 @@ export default function MainNavigation({
     });
   };
 
-  // State to hold live digital clock simulation
-  const [time, setTime] = useState('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      setTime(`${hh}:${mm}`);
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Barre du bas : Accueil · Succès · [Écrire centré] · Message · Profil.
   // L'« Explorer » est devenu la « Bibliothèque », ouverte depuis la barre de
   // recherche de l'accueil (plus dans la barre du bas). Le bouton central

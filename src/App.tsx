@@ -1051,6 +1051,13 @@ export default function App() {
       callManagerRef.current = null;
       socket.disconnect();
       socketRef.current = null;
+      // Annule les timers « en train d'ecrire » / d'enregistrement encore en
+      // attente pour qu'ils ne declenchent pas un indicateur fantome apres
+      // reconnexion.
+      [typingTimeoutsRef, recordingTimeoutsRef, groupTypingTimeoutsRef, groupRecordingTimeoutsRef].forEach((ref) => {
+        Object.values(ref.current || {}).forEach((t) => clearTimeout(t as any));
+        ref.current = {};
+      });
     };
   }, [isAuthenticated, currentUser?.id, tokenRestored]);
 
@@ -1384,7 +1391,7 @@ export default function App() {
         }
 
         // 3. Fetch Comments
-        const commentsRes = await fetch('/api/comments');
+        const commentsRes = await fetch('/api/comments', { headers: authHeaders() });
         if (commentsRes.ok) {
           const fetchedComments = await commentsRes.json();
           setComments(fetchedComments.map((comment: Comment) => normalizeCommentLikesFromStorage(comment)));
@@ -1625,11 +1632,18 @@ export default function App() {
   }, [favorites, currentUser?.id]);
 
   useEffect(() => {
-    localStorage.setItem('plume_reading_groups', JSON.stringify(groups));
+    try { localStorage.setItem('plume_reading_groups', JSON.stringify(groups)); } catch { /* quota / mode prive : on ignore */ }
   }, [groups]);
 
   useEffect(() => {
-    localStorage.setItem('plume_group_messages', JSON.stringify(groupMessages));
+    // Les messages de groupe (stickers/notes vocales inclus) peuvent depasser le
+    // quota localStorage (~5 Mo) : on borne au plus recent et on ignore l'echec
+    // plutot que de planter sur un QuotaExceededError non capture.
+    try {
+      localStorage.setItem('plume_group_messages', JSON.stringify(groupMessages));
+    } catch {
+      try { localStorage.setItem('plume_group_messages', JSON.stringify(groupMessages.slice(-300))); } catch { /* on abandonne le cache */ }
+    }
   }, [groupMessages]);
 
   useEffect(() => {
@@ -2429,7 +2443,7 @@ export default function App() {
           }
         })(),
         (async () => {
-          const r = await fetch('/api/comments');
+          const r = await fetch('/api/comments', { headers: authHeaders() });
           if (r.ok) {
             const c = await r.json();
             setComments(c.map((comment: Comment) => normalizeCommentLikesFromStorage(comment)));
@@ -3005,6 +3019,26 @@ export default function App() {
       'plume_reading_groups',
       'plume_group_messages',
     ].forEach((key) => localStorage.removeItem(key));
+
+    // Purge de l'ETAT EN MEMOIRE : sinon l'utilisateur suivant connecte sur le
+    // meme appareil voit brievement les conversations / groupes / indicateurs
+    // « en train d'ecrire » du compte precedent avant le rechargement.
+    setConversations([]);
+    setGroupMessages([]);
+    setGroups([]);
+    setGroupReads({});
+    setNotifications([]);
+    setRealtimeToasts([]);
+    setOnlineUserIds(new Set());
+    setTypingUserIds(new Set());
+    setRecordingUserIds(new Set());
+    setGroupTyping({});
+    setGroupRecording({});
+    // Timers de frappe/enregistrement encore en attente : on les annule.
+    [typingTimeoutsRef, recordingTimeoutsRef, groupTypingTimeoutsRef, groupRecordingTimeoutsRef].forEach((ref) => {
+      Object.values(ref.current || {}).forEach((t) => clearTimeout(t as any));
+      ref.current = {};
+    });
   };
 
   // Wrap fetch globally to catch 401 errors

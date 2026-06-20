@@ -78,6 +78,7 @@ model User {
   createdGroups     ReadingGroup[] @relation("GroupCreator")
   groupMemberships  GroupMember[]
   groupReactions    GroupMessageReaction[]
+  groupReads        GroupRead[]
   groupMessages     GroupMessage[]
   following         Follow[]  @relation("UserFollowing")
   followers         Follow[]  @relation("UserFollowers")
@@ -381,6 +382,7 @@ model ReadingGroup {
   members     User[]         @relation("GroupMembers")
   memberships GroupMember[]
   messages    GroupMessage[]
+  reads       GroupRead[]
 
   // Parametres (style WhatsApp). visibility: public | private | invite.
   visibility        String  @default("private")
@@ -442,9 +444,12 @@ model GroupRead {
   groupId  String
   userId   String
   lastRead DateTime @default(now())
+  group    ReadingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
   @@index([groupId])
+  @@index([userId])
 }
 
 model GroupMessage {

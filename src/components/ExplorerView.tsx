@@ -36,7 +36,7 @@ interface ExplorerViewProps {
   onViewProfile?: (userId: string) => void;
 }
 
-type SortOption = 'trending' | 'reads' | 'rating' | 'newest' | 'comments';
+type SortOption = 'trending' | 'reads' | 'rating' | 'newest' | 'chapters' | 'favorites';
 
 // Normalise une chaîne pour une recherche tolérante : minuscules + suppression
 // des accents/diacritiques (« Éveil » devient « eveil »), afin que « eveil »
@@ -83,10 +83,10 @@ export default function ExplorerView({
   const [sortBy, setSortBy] = useState<SortOption>('trending');
   
   // Saved filters state
-  const defaultSavedFilters: SavedFilter[] = [
-    { id: '1', name: 'SF Neuve', query: '', genre: 'Science-Fiction', sortBy: 'newest' },
-    { id: '2', name: 'Populaires', query: '', genre: 'Tous', sortBy: 'reads' }
-  ];
+  // Aucun filtre pre-injecte : la liste demarre vide et ne contient que les
+  // filtres REELLEMENT enregistres par l'utilisateur (avant, deux faux filtres
+  // « SF Neuve » / « Populaires » apparaissaient comme s'il les avait crees).
+  const defaultSavedFilters: SavedFilter[] = [];
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
     try {
       const saved = localStorage.getItem('plume_saved_explorer_filters');
@@ -115,6 +115,13 @@ export default function ExplorerView({
       } else if (activeFilter.type === 'search') {
         // Requête transmise depuis la barre de recherche de l'accueil.
         setSearchQuery(activeFilter.value);
+      } else if (activeFilter.type === 'ranking') {
+        // Classements du menu latéral (Top Lectures / Favoris / Tendance) :
+        // ils n'avaient AUCUN effet auparavant. On les applique comme un tri global.
+        setSelectedGenre('Tous');
+        setSearchQuery('');
+        const map: Record<string, SortOption> = { reads: 'reads', favorites: 'favorites', trending: 'trending' };
+        setSortBy(map[activeFilter.value] || 'trending');
       }
     }
   }, [activeFilter]);
@@ -198,11 +205,11 @@ export default function ExplorerView({
     if (sortBy === 'newest') {
       return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
     }
-    if (sortBy === 'comments') {
-      // Sort by simulated or real chapters / comments count
-      const countA = a.chapters.length * 4 + a.likes + a.id.charCodeAt(0);
-      const countB = b.chapters.length * 4 + b.likes + b.id.charCodeAt(0);
-      return countB - countA;
+    if (sortBy === 'chapters') {
+      return b.chapters.length - a.chapters.length;
+    }
+    if (sortBy === 'favorites') {
+      return (b.favoritesCount || 0) - (a.favoritesCount || 0);
     }
     // Default 'trending'
     return (b.rating * b.reads) - (a.rating * a.reads);
@@ -313,7 +320,7 @@ export default function ExplorerView({
               <option value="reads">Plus populaires</option>
               <option value="rating">Mieux notées</option>
               <option value="newest">Plus récentes</option>
-              <option value="comments">Plus commentées</option>
+              <option value="chapters">Plus de chapitres</option>
             </select>
           </div>
         </div>
@@ -469,8 +476,8 @@ export default function ExplorerView({
                     <span>{story.likes}</span>
                   </span>
                   <span className="flex items-center space-x-0.5">
-                    <MessageCircle className="w-3 h-3 text-purple-400 fill-transparent" />
-                    <span>{story.chapters.length * 3 + (story.likes % 4)}</span>
+                    <BookOpen className="w-3 h-3 text-purple-400" />
+                    <span>{story.chapters.length}</span>
                   </span>
                 </div>
               </div>
@@ -547,9 +554,16 @@ export default function ExplorerView({
               <span className="text-[10px] py-0.5 px-2 rounded bg-purple-500/10 text-purple-600 font-bold inline-block uppercase mt-1">Auteur Plume</span>
             </div>
 
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-normal italic">
-              « Créateur et écrivain fantastique des mots d'autrefois et d'aujourd'hui. Écrit principalement du {viewedAuthor.genre}. »
-            </p>
+            {(() => {
+              // Vraie bio de l'auteur (depuis la liste des utilisateurs) au lieu
+              // d'une citation inventee. Repli neutre si la bio est vide.
+              const realBio = (users || []).find((u) => u.id === viewedAuthor.authorId)?.bio?.trim();
+              return (
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-normal">
+                  {realBio ? realBio : `Auteur sur PLUME — écrit notamment du ${viewedAuthor.genre}.`}
+                </p>
+              );
+            })()}
 
             <div className="pt-2 border-t border-gray-100 dark:border-zinc-900 flex justify-center space-x-2">
               {onViewProfile && (

@@ -1802,6 +1802,28 @@ export async function createServerInstance() {
       const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
       if (!existing) return res.status(404).json({ error: 'Utilisateur introuvable' });
 
+      // Sauvegarde des groupes : si l'utilisateur supprime est PROPRIETAIRE d'un
+      // groupe qui compte d'autres membres actifs, on transfere la propriete au
+      // membre le plus ancien (sinon le `onDelete: Cascade` sur creatorId
+      // detruirait le groupe et les messages des autres membres).
+      const ownedGroups = await prisma.readingGroup.findMany({
+        where: { creatorId: req.params.id },
+        include: { members: { where: { id: { not: req.params.id } }, select: { id: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
+      });
+      for (const g of ownedGroups) {
+        const heir = g.members[0]?.id;
+        if (heir) {
+          await prisma.readingGroup.update({ where: { id: g.id }, data: { creatorId: heir } });
+          await prisma.groupMember.upsert({
+            where: { groupId_userId: { groupId: g.id, userId: heir } },
+            update: { role: 'owner', status: 'active' },
+            create: { groupId: g.id, userId: heir, role: 'owner', status: 'active' },
+          });
+          io.to(`user:${heir}`).emit('group_updated', { id: g.id }); // refresh leger
+        }
+        // Pas d'heritier (groupe vide) : on laisse le cascade le supprimer.
+      }
+
       await prisma.user.delete({ where: { id: req.params.id } });
 
       // L'utilisateur qui supprime SON compte voit aussi sa session révoquée.
@@ -2022,7 +2044,10 @@ export async function createServerInstance() {
         where: { status: 'PUBLIE' },
         include: {
           author: true,
-          chapters: { orderBy: { order: 'asc' } },
+          // Le fil « Pour toi » sert l'affichage de CARTES : pas besoin du contenu
+          // des chapitres (le plus lourd). On ne charge que les metadonnees ->
+          // payload + memoire fortement reduits (anti-DoS quand le catalogue grossit).
+          chapters: { orderBy: { order: 'asc' }, select: { id: true, title: true, order: true, isPublished: true, publishedAt: true, views: true, reads: true } },
           likes: { select: { userId: true } },
           favorites: { select: { userId: true } },
         },
@@ -2082,7 +2107,7 @@ export async function createServerInstance() {
     try {
       const story = await prisma.story.findUnique({
         where: { id: req.params.id },
-        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true, comments: { include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true, comments: { include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
       });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const requester = await getUserFromAuthorizationHeader(req);
@@ -2350,13 +2375,15 @@ export async function createServerInstance() {
   });
 
   // Comments
-  app.get('/api/comments', async (_req, res) => {
-    const comments = await prisma.comment.findMany({ include: { user: true, replies: { include: { user: true } } }, orderBy: { createdAt: 'desc' } });
+  app.get('/api/comments', requireAuth, async (_req, res) => {
+    // Auth requise + plafond : evite le dump anonyme de TOUS les commentaires et
+    // le DoS quand leur nombre explose.
+    const comments = await prisma.comment.findMany({ include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } } } }, orderBy: { createdAt: 'desc' }, take: 2000 });
     res.json(comments.map(serializeComment));
   });
 
   app.get('/api/stories/:storyId/comments', async (req, res) => {
-    const comments = await prisma.comment.findMany({ where: { storyId: req.params.storyId }, include: { user: true, replies: { include: { user: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
+    const comments = await prisma.comment.findMany({ where: { storyId: req.params.storyId }, include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
     res.json(comments.map(serializeComment));
   });
 
@@ -2369,7 +2396,7 @@ export async function createServerInstance() {
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
       if (!permission.ok) return res.status(403).json({ error: permission.error });
-      const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: true, replies: true } });
+      const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: { select: SAFE_USER_SELECT }, replies: true } });
       // XP : commentaire (plafonné côté donneur), bonus à l'auteur du récit.
       if (story.authorId !== req.user.id) {
         awardCappedXp(req.user.id, 'reader', XP.commentGiven, 'commentGiven', 10).catch(() => {});
@@ -2414,7 +2441,7 @@ export async function createServerInstance() {
       if (!permission.ok) return res.status(403).json({ error: permission.error });
       const comment = await prisma.comment.create({
         data: { storyId: req.params.storyId, chapterId, userId: req.user.id, content },
-        include: { user: true, replies: true },
+        include: { user: { select: SAFE_USER_SELECT }, replies: true },
       });
       if (story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
@@ -2455,7 +2482,7 @@ export async function createServerInstance() {
       // L'auteur du récit peut modérer en SUPPRIMANT (cf. DELETE), mais pas
       // réécrire les propos d'un lecteur.
       if (existing.userId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
-      const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content }, include: { user: true, replies: { include: { user: true } } } });
+      const comment = await prisma.comment.update({ where: { id: req.params.id }, data: { content }, include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } } } } });
       res.json(serializeComment(comment));
     } catch (error) {
       console.error(error);
@@ -2489,7 +2516,7 @@ export async function createServerInstance() {
       const comment = await prisma.comment.update({
         where: { id: commentId },
         data: { likes },
-        include: { user: true, replies: { include: { user: true } } },
+        include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } } } },
       });
       res.json(serializeComment(comment));
     } catch (error) {
@@ -2520,7 +2547,7 @@ export async function createServerInstance() {
       // sinon Prisma lève une erreur de clé étrangère renvoyée en 500 opaque.
       const parent = await prisma.comment.findUnique({ where: { id: req.params.id }, select: { userId: true, storyId: true, chapterId: true } });
       if (!parent) return res.status(404).json({ error: 'Commentaire non trouvé' });
-      const reply = await prisma.commentReply.create({ data: { commentId: req.params.id, userId: req.user.id, content }, include: { user: true } });
+      const reply = await prisma.commentReply.create({ data: { commentId: req.params.id, userId: req.user.id, content }, include: { user: { select: SAFE_USER_SELECT } } });
       if (parent.userId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
@@ -3949,7 +3976,7 @@ export async function createServerInstance() {
   });
 
   app.get('/api/stories/:id/likes', async (req, res) => {
-    const likes = await prisma.storyLike.findMany({ where: { storyId: req.params.id }, include: { user: true } });
+    const likes = await prisma.storyLike.findMany({ where: { storyId: req.params.id }, include: { user: { select: SAFE_USER_SELECT } } });
     res.json(likes.map((l: any) => serializeUser(l.user)));
   });
 
