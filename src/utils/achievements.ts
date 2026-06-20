@@ -79,6 +79,34 @@ export function getUserStats(userId: string, _role?: string, _username?: string)
   return { ...INITIAL_STATS };
 }
 
+// Cles numeriques d'UserStats, pour fusionner deux jeux de stats.
+const STAT_KEYS: (keyof UserStats)[] = [
+  'chaptersRead', 'commentsPosted', 'likesGiven', 'favoritesAdded', 'activeDays', 'completedReadCycles',
+  'wordsWritten', 'storiesCreated', 'chaptersPublished', 'viewsReceived', 'likesReceived', 'decorChanges',
+  'genresReadCount', 'authorsFollowedCount',
+];
+
+/** Fusionne deux jeux de stats en gardant le MAX de chaque compteur (la
+ *  progression ne peut donc jamais regresser, ni perdre l'activite locale ou
+ *  serveur la plus avancee). */
+export function mergeStats(a?: Partial<UserStats> | null, b?: Partial<UserStats> | null): UserStats {
+  const out: UserStats = { ...INITIAL_STATS, ...(a as UserStats) };
+  for (const k of STAT_KEYS) {
+    out[k] = Math.max(Number(a?.[k]) || 0, Number(b?.[k]) || 0);
+  }
+  return out;
+}
+
+/** Hydrate le localStorage d'un utilisateur depuis les stats SERVEUR (fusionnees
+ *  avec le local pour ne rien perdre). Sert au demarrage (compte courant) et a la
+ *  visite d'un profil (afficher les VRAIS succes des autres). Renvoie le merge. */
+export function hydrateUserStats(userId: string, serverStats?: Record<string, number> | null): UserStats {
+  const local = getUserStats(userId);
+  const merged = serverStats ? mergeStats(local, serverStats) : local;
+  saveUserStats(userId, merged);
+  return merged;
+}
+
 export function saveUserStats(userId: string, stats: UserStats): void {
   localStorage.setItem(`plume_stats_v1_${userId}`, JSON.stringify(stats));
 }

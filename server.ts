@@ -1725,6 +1725,9 @@ export async function createServerInstance() {
         autoSaveEnabled: user.autoSaveEnabled,
         confirmDeleteStory: user.confirmDeleteStory,
         showcase: user.showcase === undefined ? undefined : (Array.isArray(user.showcase) ? user.showcase.slice(0, 3) : null),
+        // Statistiques de succes : objet de compteurs (UserStats). On n'ecrase
+        // que si un objet est fourni (jamais avec autre chose).
+        stats: user.stats && typeof user.stats === 'object' && !Array.isArray(user.stats) ? user.stats : undefined,
         hasChangedRole: user.hasChangedRole,
       };
 

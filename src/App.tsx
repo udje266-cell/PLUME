@@ -53,9 +53,10 @@ import { applyStatusBarTheme } from './utils/native';
 import { ensureWebPush } from './utils/pwa';
 import { playNotificationSound, showAppNotification, setUnreadBadge, isNotifCategoryEnabled, type NotifType, type NotifCategory } from './utils/notify';
 import { generateCoverDataUri } from './utils/coverImage';
-import { 
+import {
   getUserStats,
   saveUserStats,
+  hydrateUserStats,
   UserStats,
   generateReaderAchievements,
   generateAuthorAchievements
@@ -1254,6 +1255,9 @@ export default function App() {
   const handleViewUserProfile = (userId: string) => {
     const target = allUsers.find(u => u.id === userId) || (userId === currentUser?.id ? currentUser : null);
     if (target) {
+      // Hydrate les stats serveur de cet utilisateur pour afficher ses VRAIS
+      // succes (sinon getUserStats ne lit que le local et renvoie tout a zero).
+      if ((target as any).stats) hydrateUserStats(target.id, (target as any).stats);
       setViewedUser(target);
       setSelectedStoryForReading(null); // Leave reading mode when switching to a profile
       setActiveTab('profile');
@@ -1816,6 +1820,31 @@ export default function App() {
   };
 
   // Method to increment stats and evaluate automatic certification dynamically
+  // Persistance SERVEUR des statistiques de succes (debounce) : la progression
+  // survit desormais au changement d'appareil / vidage de cache.
+  const statsPushTimerRef = useRef<any>(null);
+  const pushStatsToServer = React.useCallback((userId: string, stats: UserStats) => {
+    if (statsPushTimerRef.current) clearTimeout(statsPushTimerRef.current);
+    statsPushTimerRef.current = setTimeout(() => {
+      fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ stats }),
+      }).catch(() => {});
+    }, 1500);
+  }, []);
+
+  // A la connexion : on FUSIONNE les stats serveur avec le local (max par
+  // compteur, aucune perte) et on repousse le merge vers le serveur.
+  const statsHydratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (statsHydratedRef.current === currentUser.id) return;
+    statsHydratedRef.current = currentUser.id;
+    const merged = hydrateUserStats(currentUser.id, (currentUser.stats as any) || null);
+    pushStatsToServer(currentUser.id, merged);
+  }, [currentUser?.id, currentUser?.stats, pushStatsToServer]);
+
   const handleUpdateAndVerifyUserStats = (updateFn: (stats: UserStats) => void) => {
     if (!currentUser || !currentUser.id) return;
 
@@ -1829,6 +1858,7 @@ export default function App() {
     const nextStats = getUserStats(currentUser.id, currentUser.role, currentUser.username);
     updateFn(nextStats);
     saveUserStats(currentUser.id, nextStats);
+    pushStatsToServer(currentUser.id, nextStats);
 
     // Get list of unlocked achievements AFTER update
     const nextAuthorAchievements = generateAuthorAchievements(nextStats, currentUser.id);

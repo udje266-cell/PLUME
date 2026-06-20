@@ -68,6 +68,10 @@ model User {
   confirmDeleteStory Boolean @default(true)
   // Vitrine de trophees mis en avant (snapshots {id,title}) visible par tous.
   showcase          Json?
+  // Statistiques de progression des SUCCES (UserStats) : persistees serveur pour
+  // survivre au changement d'appareil / vidage de cache, et etre visibles par
+  // les autres (au lieu d'etre coincees en localStorage).
+  stats             Json?
 
   stories           Story[]
   comments          Comment[]

@@ -53,6 +53,8 @@ export interface User {
   emailVerified?: boolean;
   // Vitrine de trophees mis en avant (snapshots), visible par tous les visiteurs.
   showcase?: { id: string; title: string }[];
+  // Statistiques de progression des succes (UserStats), persistees serveur.
+  stats?: Record<string, number>;
 }
 
 export interface Chapter {
