@@ -1950,8 +1950,14 @@ export default function MessagesView({
               {(() => {
               // On ne propose que les AMIS pour démarrer une discussion — sauf un
               // administrateur, qui peut écrire à n'importe qui.
+              // « Ami » = MÊME définition que le profil : abonnement MUTUEL ∪
+              // relations d'amitié acceptées (sinon « Mes amis » affichait 0 alors
+              // que l'utilisateur a des amis par abonnement mutuel).
               const isAdmin = currentUser.role === 'Administrateur';
-              const friendSet = new Set(friendIds || []);
+              const followers = currentUser.followers || [];
+              const following = currentUser.following || [];
+              const mutualFollow = following.filter((id) => followers.includes(id));
+              const friendSet = new Set<string>([...mutualFollow, ...(friendIds || [])]);
               const eligible = allUsers
                 .filter(u => u.id !== currentUser.id)
                 .filter(u => isAdmin || friendSet.has(u.id));
@@ -1960,7 +1966,7 @@ export default function MessagesView({
               <>
               <p className="text-[10px] font-mono font-bold text-gray-450 uppercase mb-2">{isAdmin ? 'Utilisateurs' : 'Mes amis'} ({eligible.length})</p>
               {eligible.length === 0 ? (
-                <p className="text-[11px] text-gray-400 text-center py-8 px-4 leading-relaxed">Vous n'avez pas encore d'amis. Ajoutez des amis depuis les profils pour pouvoir leur écrire en privé.</p>
+                <p className="text-[11px] text-gray-400 text-center py-8 px-4 leading-relaxed">Vous n'avez pas encore d'amis. Abonnez-vous mutuellement (ou ajoutez-vous en amis) depuis les profils pour pouvoir vous écrire en privé.</p>
               ) : shown.length === 0 ? (
                 <p className="text-[11px] text-gray-400 text-center py-8">Aucun résultat.</p>
               ) : shown
