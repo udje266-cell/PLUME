@@ -630,14 +630,10 @@ export default function ReadingView({
   useEffect(() => {
     if (activeChapter && !isOwnStory) {
       onMarkChapterRead(story.id, activeChapter.id);
-
-      const isLastChapter = activeChapterIndex === story.chapters.length - 1;
-      if (isLastChapter && !completedStories.includes(story.id)) {
-        onToggleCompletedStories(story.id);
-        if (currentlyReading.includes(story.id)) {
-          onToggleCurrentlyReading(story.id);
-        }
-      }
+      // NB : on NE marque PLUS le récit « terminé » juste parce qu'on AFFICHE le
+      // dernier chapitre (sinon un livre d'un seul chapitre passait a 100 % /
+      // termine des l'ouverture). La completion se fait dans le suivi de scroll
+      // ci-dessous, uniquement quand on a REELLEMENT lu jusqu'a la fin.
     }
 
     setActiveParagraphIndex(0);
@@ -680,6 +676,9 @@ export default function ReadingView({
 
     let restoring = false;
     let timer: any = null;
+    // Le recit n'est marque « termine » qu'une fois, quand on a VRAIMENT atteint
+    // la fin du dernier chapitre (et pas a l'ouverture).
+    let completionMarked = completedStories.includes(story.id);
     const onScroll = (e: Event) => {
       if (restoring) return;
       if (!isReaderScrollEvent(e.target)) return;
@@ -692,6 +691,14 @@ export default function ReadingView({
         setReadPercent(percent);
         // On sauvegarde toujours la position de reprise (y compris pour l'auteur).
         saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
+
+        // Completion REELLE : dernier chapitre lu jusqu'a la fin (>= 95 %).
+        const isLastChapter = chapterIdxRef.current === story.chapters.length - 1;
+        if (!isOwnStory && isLastChapter && ratio >= 0.95 && !completionMarked) {
+          completionMarked = true;
+          onToggleCompletedStories(story.id);
+          if (currentlyReading.includes(story.id)) onToggleCurrentlyReading(story.id);
+        }
       }, 250);
     };
     // Capture-phase sur document : capte le scroll quel que soit le conteneur,
