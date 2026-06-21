@@ -157,7 +157,14 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
       });
 
       setMode('otp');
-      setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
+      // Mode TEST (e-mail non configuré côté serveur) : le code est renvoyé
+      // directement -> on pré-remplit les 6 cases pour ne pas bloquer l'inscription.
+      if (typeof data.devCode === 'string' && /^\d{6}$/.test(data.devCode)) {
+        setOtpCode(data.devCode.split(''));
+        setSuccessMsg('E-mail non configuré : code de validation pré-rempli. Touchez « Vérifier le Code ».');
+      } else {
+        setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
+      }
     } catch (error: any) {
       console.error(error);
       setErrorMsg(error?.message || "Impossible d'envoyer le code OTP.");

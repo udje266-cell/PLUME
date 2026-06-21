@@ -1236,6 +1236,16 @@ export async function createServerInstance() {
         return res.status(500).json({ error: "Échec de l'envoi de l'e-mail de validation." });
       }
 
+      // Mode « e-mail NON configure » (pas de BREVO_API_KEY) : aucun e-mail ne part
+      // reellement -> l'inscription serait bloquee. Pour ne pas bloquer le demarrage,
+      // on renvoie le code directement a l'app, UNIQUEMENT pour l'INSCRIPTION (jamais
+      // pour la reinitialisation, afin d'eviter toute prise de controle de compte).
+      // Des que BREVO_API_KEY est defini, ce code n'est plus jamais expose.
+      const emailConfigured = !!process.env.BREVO_API_KEY;
+      if (!emailConfigured && reason === 'register') {
+        return res.json({ message: 'Code OTP (mode test : e-mail non configuré).', email, devCode: code });
+      }
+
       res.json({ message: 'Code OTP envoyé avec succès.', email });
     } catch (error) {
       console.error('[PLUME OTP] Request error:', error);
