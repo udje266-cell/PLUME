@@ -2368,11 +2368,11 @@ export default function App() {
         body: JSON.stringify({ chapterId }),
       }).catch(() => {});
 
-      fetch(`/api/chapters/${chapterId}/progress`, {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ progressPercent: 100 }),
-      }).catch(() => {});
+      // NB : on NE poste PLUS `progressPercent: 100` ici. Ouvrir un chapitre ne
+      // veut pas dire l'avoir lu a 100 % — c'etait la cause du « 100 % a
+      // l'ouverture ». La progression reelle est suivie par le defilement
+      // (saveBookProgress) et la completion ne se declenche qu'a >= 95 % du
+      // dernier chapitre.
     }
   };
 
@@ -3061,13 +3061,26 @@ export default function App() {
   };
 
   const handleDeleteStory = (storyId: string) => {
+    // Sauvegarde pour pouvoir ANNULER si le serveur refuse (sinon on affichait
+    // « supprimé » alors que rien n'avait ete supprime cote serveur).
+    const prevStories = stories;
+    const prevComments = comments;
     setStories(stories.filter(s => s.id !== storyId));
     setComments(comments.filter(c => c.storyId !== storyId));
 
-    // DELETE request to remove story
     fetch(`/api/stories/${storyId}`, { method: 'DELETE', headers: authHeaders() })
-      .then(() => { alert("L'histoire signalée a été retirée définitivement de la plateforme."); refreshCurrentUser(); })
-      .catch(e => console.error('[PLUME] Erreur de suppression permanente du récit :', e));
+      .then(async (res) => {
+        if (res.ok || res.status === 204) { refreshCurrentUser(); return; }
+        const d = await res.json().catch(() => ({}));
+        setStories(prevStories);
+        setComments(prevComments);
+        alert(d.error || "La suppression a échoué. Réessayez.");
+      })
+      .catch(() => {
+        setStories(prevStories);
+        setComments(prevComments);
+        alert("Suppression impossible (problème réseau).");
+      });
   };
 
   const handleDismissFlag = (storyId: string) => {

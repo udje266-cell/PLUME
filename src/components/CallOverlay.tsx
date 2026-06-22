@@ -57,7 +57,7 @@ export default function CallOverlay({
     status === 'connected' ? fmt(seconds) : '';
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-16 animate-fade-in select-none">
+    <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-16 animate-fade-in select-none" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top))', paddingBottom: 'max(4rem, env(safe-area-inset-bottom))' }}>
       <audio ref={audioRef} autoPlay className="hidden" />
 
       {/* Identité du correspondant */}

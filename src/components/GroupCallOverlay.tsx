@@ -33,7 +33,7 @@ export default function GroupCallOverlay({
     const group = groups.find((g) => g.id === invite.groupId);
     const caller = allUsers.find((u) => u.id === invite.from);
     return (
-      <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-16 animate-fade-in select-none">
+      <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-16 animate-fade-in select-none" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top))', paddingBottom: 'max(4rem, env(safe-area-inset-bottom))' }}>
         <div className="flex flex-col items-center space-y-4 mt-10">
           <div className="w-24 h-24 rounded-2xl bg-purple-700 flex items-center justify-center text-white animate-pulse overflow-hidden">
             {group?.avatar ? <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <Users className="w-10 h-10" />}
@@ -61,7 +61,7 @@ export default function GroupCallOverlay({
   const people = ids.map((id) => allUsers.find((u) => u.id === id)).filter(Boolean) as User[];
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-14 animate-fade-in select-none">
+    <div className="fixed inset-0 z-[100] bg-[#0E0E14]/95 backdrop-blur-sm flex flex-col items-center justify-between py-14 animate-fade-in select-none" style={{ paddingTop: 'max(3.5rem, env(safe-area-inset-top))', paddingBottom: 'max(3.5rem, env(safe-area-inset-bottom))' }}>
       <div className="flex flex-col items-center space-y-3 mt-6">
         <div className="w-16 h-16 rounded-2xl bg-purple-700 flex items-center justify-center text-white overflow-hidden">
           {group?.avatar ? <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <Users className="w-7 h-7" />}

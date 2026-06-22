@@ -5,7 +5,7 @@
  * - Cache LÉGER de la coquille pour un démarrage rapide hors-ligne / réseau lent.
  */
 
-const CACHE = 'plume-shell-v1';
+const CACHE = 'plume-shell-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/app-icon.png', '/plume-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -41,6 +41,25 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))),
     );
+    return;
+  }
+
+  // Modules JS / styles HASHÉS (immuables) : cache-first + mise en cache au vol.
+  // Indispensable pour que l'app DÉMARRE hors-ligne (lecture des livres
+  // téléchargés) : sinon index.html se chargeait mais ses /assets/* faisaient
+  // 404 → page blanche.
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith((async () => {
+      const cached = await caches.match(req);
+      if (cached) return cached;
+      try {
+        const res = await fetch(req);
+        if (res && res.ok) { const clone = res.clone(); caches.open(CACHE).then((c) => c.put(req, clone)).catch(() => {}); }
+        return res;
+      } catch {
+        return (await caches.match(req)) || Response.error();
+      }
+    })());
     return;
   }
 

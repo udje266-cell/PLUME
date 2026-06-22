@@ -551,6 +551,7 @@ export async function createServerInstance() {
     const data: Record<string, string> = { type: String(notification?.type || '') };
     const nd = notification?.data || {};
     if (nd.conversationId) data.conversationId = String(nd.conversationId);
+    if (nd.groupId) data.groupId = String(nd.groupId);
     if (nd.storyId) data.storyId = String(nd.storyId);
     if (nd.actorId) data.actorId = String(nd.actorId);
     // Pour les messages : marqueur + expéditeur → la notification native peut
@@ -1244,6 +1245,12 @@ export async function createServerInstance() {
       const emailConfigured = !!process.env.BREVO_API_KEY;
       if (!emailConfigured && reason === 'register') {
         return res.json({ message: 'Code OTP (mode test : e-mail non configuré).', email, devCode: code });
+      }
+      // Reinitialisation : on NE renvoie JAMAIS le code (sinon prise de controle).
+      // Si l'e-mail n'est pas configure, on echoue clairement au lieu de faire
+      // croire qu'un e-mail est parti (l'utilisateur restait bloque sur l'OTP).
+      if (!emailConfigured && reason === 'reset') {
+        return res.status(503).json({ error: "Réinitialisation par e-mail indisponible : le service e-mail n'est pas configuré." });
       }
 
       res.json({ message: 'Code OTP envoyé avec succès.', email });
