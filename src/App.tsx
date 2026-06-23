@@ -660,66 +660,56 @@ export default function App() {
     );
   };
 
+  // Ne garde QUE les vrais identifiants d'utilisateurs : on jette les faux ids
+  // « legacy_* » fabriques autrefois pour combler l'absence de liste cote serveur
+  // (ils gonflaient le total et empechaient la fusion avec la liste reelle).
+  const realIds = (ids?: string[]): string[] =>
+    Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && !id.startsWith('legacy_')) : [];
+
   const normalizeStoryLikesFromStorage = (story: Story): Story => {
     const likeMap = readLikeMap(STORY_LIKERS_STORAGE_KEY);
-    const storedLikedBy = likeMap[story.id];
-    const storyLikedBy = Array.isArray(story.likedBy) ? story.likedBy : [];
-
-    const likedBy = storedLikedBy
-      ? mergeLikeIds(storedLikedBy, storyLikedBy)
-      : storyLikedBy.length > 0
-        ? storyLikedBy
-        : createLegacyLikeIds('legacy_story_like', story.id, story.likes || 0);
-
+    // Le serveur fournit desormais la liste REELLE des likers : c'est elle qui
+    // fait foi (identique sur tous les appareils). On y ajoute uniquement l'id de
+    // l'utilisateur courant present localement (action optimiste pas encore sync).
+    const likedBy = mergeLikeIds(realIds(likeMap[story.id]), realIds(story.likedBy));
     likeMap[story.id] = likedBy;
     saveLikeMap(STORY_LIKERS_STORAGE_KEY, likeMap);
 
     return {
       ...story,
       likedBy,
-      likes: likedBy.length,
+      // Plancher = compteur serveur (agrege tous les utilisateurs) ; on ne descend
+      // jamais en dessous, ce qui garantit l'accumulation et la conformite app/PWA.
+      likes: Math.max(likedBy.length, typeof story.likes === 'number' ? story.likes : 0),
     };
   };
 
   const normalizeStoryFavoritesFromStorage = (story: Story): Story => {
     const favoriteMap = readLikeMap(STORY_FAVORITERS_STORAGE_KEY);
-    const storedFavoritedBy = favoriteMap[story.id];
-    const storyFavoritedBy = Array.isArray(story.favoritedBy) ? story.favoritedBy : [];
-
-    const favoritedBy = storedFavoritedBy
-      ? mergeLikeIds(storedFavoritedBy, storyFavoritedBy)
-      : storyFavoritedBy.length > 0
-        ? storyFavoritedBy
-        : createLegacyLikeIds('legacy_story_favorite', story.id, story.favoritesCount || 0);
-
+    const favoritedBy = mergeLikeIds(realIds(favoriteMap[story.id]), realIds(story.favoritedBy));
     favoriteMap[story.id] = favoritedBy;
     saveLikeMap(STORY_FAVORITERS_STORAGE_KEY, favoriteMap);
 
     return {
       ...story,
       favoritedBy,
-      favoritesCount: favoritedBy.length,
+      favoritesCount: Math.max(favoritedBy.length, typeof story.favoritesCount === 'number' ? story.favoritesCount : 0),
     };
   };
 
   const normalizeStoryViewsFromStorage = (story: Story): Story => {
     const viewMap = readLikeMap(STORY_VIEWERS_STORAGE_KEY);
-    const storedViewedBy = viewMap[story.id];
-    const storyViewedBy = Array.isArray(story.viewedBy) ? story.viewedBy : [];
-
-    const viewedBy = storedViewedBy
-      ? mergeLikeIds(storedViewedBy, storyViewedBy)
-      : storyViewedBy.length > 0
-        ? storyViewedBy
-        : createLegacyLikeIds('legacy_story_view', story.id, story.views || 0);
-
+    // Les vues n'ont pas de liste cote serveur (juste un entier agrege). On garde
+    // l'appartenance locale reelle pour savoir si l'utilisateur a deja vu, mais le
+    // total affiche suit l'entier du serveur (source de verite partagee).
+    const viewedBy = mergeLikeIds(realIds(viewMap[story.id]), realIds(story.viewedBy));
     viewMap[story.id] = viewedBy;
     saveLikeMap(STORY_VIEWERS_STORAGE_KEY, viewMap);
 
     return {
       ...story,
       viewedBy,
-      views: viewedBy.length,
+      views: Math.max(viewedBy.length, typeof story.views === 'number' ? story.views : 0),
     };
   };
 
@@ -2118,11 +2108,7 @@ export default function App() {
     if (!targetStory || targetStory.id !== storyId) return;
 
     const favoriteMap = readLikeMap(STORY_FAVORITERS_STORAGE_KEY);
-    const initialFavoritedBy = mergeLikeIds(
-      favoriteMap[storyId],
-      targetStory.favoritedBy,
-      favoriteMap[storyId] || (targetStory.favoritedBy?.length ? [] : createLegacyLikeIds('legacy_story_favorite', storyId, targetStory.favoritesCount || 0))
-    );
+    const initialFavoritedBy = mergeLikeIds(realIds(favoriteMap[storyId]), realIds(targetStory.favoritedBy));
 
     const hasFavorited = initialFavoritedBy.includes(currentUser.id);
     const nextFavoritedBy = hasFavorited
@@ -2215,11 +2201,7 @@ export default function App() {
     // L'auteur peut aimer sa propre histoire (comme sur les réseaux sociaux).
 
     const likeMap = readLikeMap(STORY_LIKERS_STORAGE_KEY);
-    const initialLikedBy = mergeLikeIds(
-      likeMap[storyId],
-      targetStory.likedBy,
-      likeMap[storyId] || (targetStory.likedBy?.length ? [] : createLegacyLikeIds('legacy_story_like', storyId, targetStory.likes || 0))
-    );
+    const initialLikedBy = mergeLikeIds(realIds(likeMap[storyId]), realIds(targetStory.likedBy));
 
     const hasLiked = initialLikedBy.includes(currentUser.id);
     const nextLikedBy = hasLiked
@@ -2318,63 +2300,32 @@ export default function App() {
     );
   };
 
-  // Track real reading progress. A chapter is counted once per user.
+  // À l'OUVERTURE d'un chapitre : on enregistre la session de lecture cote
+  // SERVEUR (source de verite, identique sur l'app et la PWA). On n'incremente
+  // PLUS les compteurs en local (c'etait la cause de l'ecart app/PWA : l'app
+  // gonflait a chaque ouverture alors que le serveur ne compte qu'1 fois / 6 h).
+  // On NE marque PAS non plus le chapitre comme « lu » ici (sinon un livre d'un
+  // chapitre passait a 100 % des l'ouverture) — cf. handleChapterFullyRead.
   const handleMarkChapterRead = (storyId: string, chapterId: string) => {
-    const readKey = `${currentUser.id}:${storyId}:${chapterId}`;
-
-    if (!readChapters.includes(readKey) && !readChapters.includes(chapterId)) {
-      const nextReadChapters = [...readChapters, readKey];
-      setReadChapters(nextReadChapters);
-
-      handleUpdateAndVerifyUserStats(st => {
-        st.chaptersRead = st.chaptersRead + 1;
-      });
-
-      setStories(prevStories => prevStories.map(s => {
-        if (s.id !== storyId) return s;
-
-        const updatedChapters = s.chapters.map(ch =>
-          ch.id === chapterId
-            ? {
-                ...ch,
-                views: (ch.views || 0) + 1,
-                reads: (ch.reads || 0) + 1,
-              }
-            : ch
-        );
-
-        const nextStoryObj = {
-          ...s,
-          views: s.views || 0,
-          reads: (s.reads || 0) + 1,
-          chapters: updatedChapters,
-        };
-
-        if (selectedStoryForReading?.id === storyId) {
-          setSelectedStoryForReading(nextStoryObj);
-        }
-
-        syncStoryMetricsToServer(storyId, nextStoryObj);
-        return nextStoryObj;
-      }));
-    }
-
     setLastReadProgress({ storyId, chapterId });
-
     if (isAuthenticated) {
       fetch(`/api/stories/${storyId}/read`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ chapterId }),
       }).catch(() => {});
-
-      // NB : on NE poste PLUS `progressPercent: 100` ici. Ouvrir un chapitre ne
-      // veut pas dire l'avoir lu a 100 % — c'etait la cause du « 100 % a
-      // l'ouverture ». La progression reelle est suivie par le defilement
-      // (saveBookProgress) et la completion ne se declenche qu'a >= 95 % du
-      // dernier chapitre.
     }
   };
+
+  // Chapitre REELLEMENT lu (defilement jusqu'a la fin) : il compte alors dans la
+  // progression (% = chapitres lus / total) et la statistique de succes. Idempotent.
+  const handleChapterFullyRead = (storyId: string, chapterId: string) => {
+    const readKey = `${currentUser.id}:${storyId}:${chapterId}`;
+    if (readChapters.includes(readKey) || readChapters.includes(chapterId)) return;
+    setReadChapters(prev => [...prev, readKey]);
+    handleUpdateAndVerifyUserStats(st => { st.chaptersRead = st.chaptersRead + 1; });
+  };
+
 
   // Comments management
   const handleAddComment = (chapterId: string, content: string) => {
@@ -3216,17 +3167,14 @@ export default function App() {
     if (targetStory.authorId === currentUser?.id) return targetStory;
 
     const viewMap = readLikeMap(STORY_VIEWERS_STORAGE_KEY);
-    const initialViewedBy = mergeLikeIds(
-      viewMap[storyId],
-      targetStory.viewedBy,
-      viewMap[storyId] || (targetStory.viewedBy?.length ? [] : createLegacyLikeIds('legacy_story_view', storyId, targetStory.views || 0))
-    );
+    const initialViewedBy = mergeLikeIds(realIds(viewMap[storyId]), realIds(targetStory.viewedBy));
 
+    // Deja vu sur cet appareil : on n'incremente rien, on conserve le total serveur.
     if (initialViewedBy.includes(currentUser.id)) {
       return {
         ...targetStory,
         viewedBy: initialViewedBy,
-        views: initialViewedBy.length,
+        views: Math.max(initialViewedBy.length, targetStory.views || 0),
       };
     }
 
@@ -3234,6 +3182,10 @@ export default function App() {
     viewMap[storyId] = nextViewedBy;
     saveLikeMap(STORY_VIEWERS_STORAGE_KEY, viewMap);
 
+    // Vue optimiste : on ajoute +1 au total SERVEUR (et non a la liste locale, qui
+    // ne contient que cet appareil). Le vrai comptage anti-gonflage (1 / 6 h) est
+    // fait par le serveur via /api/stories/:id/read, repris au prochain chargement.
+    const nextViews = (targetStory.views || 0) + 1;
     let updatedStoryForSync: Story | null = null;
 
     setStories((prevStories) => {
@@ -3243,7 +3195,7 @@ export default function App() {
         updatedStoryForSync = {
           ...item,
           viewedBy: nextViewedBy,
-          views: nextViewedBy.length,
+          views: nextViews,
         };
 
         return updatedStoryForSync;
@@ -3253,14 +3205,11 @@ export default function App() {
       return nextStories;
     });
 
-    const storyToSync = updatedStoryForSync || {
+    return updatedStoryForSync || {
       ...targetStory,
       viewedBy: nextViewedBy,
-      views: nextViewedBy.length,
+      views: nextViews,
     };
-
-    syncStoryMetricsToServer(storyId, storyToSync);
-    return storyToSync;
   };
 
   // Note personnelle de l'utilisateur par histoire (la moyenne publique vit dans story.rating).
@@ -3470,6 +3419,7 @@ export default function App() {
                   onRateStory={handleRateStory}
                   userRating={myRatings[selectedStoryForReading.id] || 0}
                   onMarkChapterRead={handleMarkChapterRead}
+                  onChapterFullyRead={handleChapterFullyRead}
                   readChapters={readChapters.map(key => key.includes(':') ? key.split(':').pop() || key : key)}
                   onOpenDiscussion={handleOpenDiscussion}
                   currentlyReading={currentlyReading}

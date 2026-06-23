@@ -187,6 +187,11 @@ function serializeStory(story: any) {
     authorVerified: Boolean(author?.isVerified),
     likes: Array.isArray(story.likes) ? story.likes.length : (story.likes ?? 0),
     favoritesCount: Array.isArray(story.favorites) ? story.favorites.length : (story.favoritesCount ?? 0),
+    // Identite REELLE des likers/favoriteurs : permet a chaque client (app comme
+    // PWA) d'afficher EXACTEMENT le meme total, en fusionnant ces ids partages
+    // avec son action optimiste locale — au lieu d'un compteur propre a l'appareil.
+    likedBy: Array.isArray(story.likes) ? story.likes.map((l: any) => l.userId).filter(Boolean) : (Array.isArray(story.likedBy) ? story.likedBy : []),
+    favoritedBy: Array.isArray(story.favorites) ? story.favorites.map((f: any) => f.userId).filter(Boolean) : (Array.isArray(story.favoritedBy) ? story.favoritedBy : []),
   };
 }
 

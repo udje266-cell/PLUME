@@ -96,6 +96,7 @@ interface ReadingViewProps {
   onRateStory: (storyId: string, value: number) => void;
   userRating: number;
   onMarkChapterRead: (storyId: string, chapterId: string) => void;
+  onChapterFullyRead: (storyId: string, chapterId: string) => void;
   readChapters: string[];
   onOpenDiscussion: (partnerId: string) => void;
   currentlyReading: string[];
@@ -389,6 +390,7 @@ export default function ReadingView({
   onRateStory,
   userRating,
   onMarkChapterRead,
+  onChapterFullyRead,
   readChapters,
   onOpenDiscussion,
   currentlyReading,
@@ -649,6 +651,14 @@ export default function ReadingView({
   // Suivi + reprise de la position de défilement réelle pour CE récit.
   const chapterIdxRef = useRef(activeChapterIndex);
   useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
+  // Chapitres REELLEMENT lus (defilement >= 95 % OU temps de lecture suffisant)
+  // pendant cette session : evite de re-signaler le meme chapitre en boucle.
+  const fullyReadRef = useRef<Set<string>>(new Set());
+  const markChapterFullyRead = (chId: string) => {
+    if (isOwnStory || fullyReadRef.current.has(chId)) return;
+    fullyReadRef.current.add(chId);
+    onChapterFullyRead(story.id, chId);
+  };
   useEffect(() => {
     // Le conteneur réellement défilé pour la lecture (sinon la fenêtre/page).
     const getScroller = (): HTMLElement | null => getScrollParent(readerRootRef.current);
@@ -692,6 +702,14 @@ export default function ReadingView({
         // On sauvegarde toujours la position de reprise (y compris pour l'auteur).
         saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
 
+        // Chapitre courant REELLEMENT lu : defile jusqu'au bout (>= 95 %).
+        // C'est ICI (et non a l'ouverture) qu'un chapitre compte comme lu, ce
+        // qui fait progresser le pourcentage de lecture de maniere fidele.
+        if (ratio >= 0.95) {
+          const ch = story.chapters[chapterIdxRef.current];
+          if (ch) markChapterFullyRead(ch.id);
+        }
+
         // Completion REELLE : dernier chapitre lu jusqu'a la fin (>= 95 %).
         const isLastChapter = chapterIdxRef.current === story.chapters.length - 1;
         if (!isOwnStory && isLastChapter && ratio >= 0.95 && !completionMarked) {
@@ -731,6 +749,24 @@ export default function ReadingView({
     return () => { document.removeEventListener('scroll', onScroll, true); if (timer) clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story.id]);
+
+  // Repli pour les chapitres COURTS qui tiennent entierement a l'ecran : aucun
+  // defilement n'est possible, donc le seuil des 95 % ci-dessus ne se declenche
+  // jamais. On les compte comme lus apres un temps de lecture raisonnable.
+  useEffect(() => {
+    if (isOwnStory || !activeChapter) return;
+    const chId = activeChapter.id;
+    if (fullyReadRef.current.has(chId)) return;
+    const t = setTimeout(() => {
+      const el = getScrollParent(readerRootRef.current);
+      const scrollable = el
+        ? el.scrollHeight - el.clientHeight > 24
+        : document.documentElement.scrollHeight - window.innerHeight > 24;
+      if (!scrollable) markChapterFullyRead(chId);
+    }, 8000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChapterIndex, story.id]);
 
   // Save quotes synchronize
   useEffect(() => {
