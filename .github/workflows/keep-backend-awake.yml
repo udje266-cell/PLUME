@@ -26,15 +26,20 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping du backend
+      - name: Ping du backend (alerte si le service est VRAIMENT tombé)
         run: |
           URL="${{ vars.BACKEND_URL || 'https://plume-app-fudd.onrender.com' }}/healthz"
           echo "Ping $URL"
-          # -m 90 : laisse le temps à un éventuel réveil à froid de répondre.
-          code=$(curl -s -m 90 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
-          echo "HTTP $code"
-          # On ne fait pas échouer le job pour un réveil lent : tant que le ping
-          # part, l'objectif (réveiller le service) est atteint.
-          if [ "$code" = "000" ]; then
-            echo "::warning::Pas de réponse (timeout) — le service se réveillait peut-être."
-          fi
+          # 3 tentatives espacées : un réveil à froid lent ne déclenche pas de
+          # fausse alerte. Si les 3 échouent, le job ÉCHOUE → GitHub envoie un
+          # e-mail automatique au propriétaire du dépôt (alerte de panne gratuite).
+          for attempt in 1 2 3; do
+            code=$(curl -s -m 90 -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            echo "Tentative $attempt : HTTP $code"
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Le backend ne répond plus après 3 tentatives (dernier code : $code)."
+          exit 1

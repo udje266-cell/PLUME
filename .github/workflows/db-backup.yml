@@ -1,0 +1,71 @@
+# Sauvegarde AUTOMATIQUE et CHIFFRÉE de la base PostgreSQL (Neon).
+#
+# Pourquoi : le plan gratuit ne garde qu'un historique très court côté Neon, et
+# la perte de la base Render (90 jours) a montré qu'il faut des sauvegardes À
+# SOI. Ce workflow fait un pg_dump chaque nuit de dimanche, le chiffre, et le
+# stocke en artefact GitHub (conservé 90 jours). 100 % gratuit, sans carte.
+#
+# ── À configurer une seule fois ──────────────────────────────────────────────
+# GitHub → Settings → Secrets and variables → Actions → New repository secret :
+#   NEON_DIRECT_URL    = l'URL DIRECTE de la base Neon (celle SANS « -pooler »)
+#   BACKUP_PASSPHRASE  = une phrase secrète de ton choix (garde-la précieusement,
+#                        sans elle les sauvegardes sont indéchiffrables)
+#
+# ── Restaurer une sauvegarde ─────────────────────────────────────────────────
+# 1) Actions → « db-backup » → run voulu → télécharge l'artefact plume-db-backup.
+# 2) Déchiffre :
+#      openssl enc -d -aes-256-cbc -pbkdf2 -in plume-YYYY-MM-DD.sql.gz.enc \
+#        -out plume.sql.gz -pass pass:TA_PHRASE_SECRETE
+# 3) Restaure (base VIDE de préférence) :
+#      gunzip -c plume.sql.gz | psql "URL_DIRECTE_DE_LA_BASE"
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: db-backup
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # chaque lundi à 03h00 UTC
+  workflow_dispatch: {}  # déclenchement manuel possible (pour tester)
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la configuration
+        run: |
+          if [ -z "${{ secrets.NEON_DIRECT_URL }}" ] || [ -z "${{ secrets.BACKUP_PASSPHRASE }}" ]; then
+            echo "::error::Secrets NEON_DIRECT_URL et/ou BACKUP_PASSPHRASE manquants (Settings -> Secrets -> Actions)."
+            exit 1
+          fi
+
+      - name: Export de la base (pg_dump via Docker, version alignée sur le serveur)
+        run: |
+          STAMP=$(date -u +%Y-%m-%d)
+          echo "Sauvegarde du $STAMP"
+          # L'image postgres:18 fournit un pg_dump récent (compatible avec les
+          # serveurs PG plus anciens, jamais l'inverse).
+          docker run --rm postgres:18 pg_dump --no-owner --no-privileges \
+            "${{ secrets.NEON_DIRECT_URL }}" | gzip > "plume-$STAMP.sql.gz"
+          ls -la "plume-$STAMP.sql.gz"
+          # Garde-fou : un dump anormalement petit signifie une base vide/erreur.
+          size=$(stat -c%s "plume-$STAMP.sql.gz")
+          if [ "$size" -lt 1024 ]; then
+            echo "::error::Dump suspect ($size octets) — sauvegarde interrompue."
+            exit 1
+          fi
+
+      - name: Chiffrement (AES-256, artefact illisible sans la phrase secrète)
+        run: |
+          STAMP=$(date -u +%Y-%m-%d)
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in "plume-$STAMP.sql.gz" -out "plume-$STAMP.sql.gz.enc" \
+            -pass pass:"${{ secrets.BACKUP_PASSPHRASE }}"
+          rm "plume-$STAMP.sql.gz"
+
+      - name: Publier la sauvegarde chiffrée (conservée 90 jours)
+        uses: actions/upload-artifact@v4
+        with:
+          name: plume-db-backup
+          path: plume-*.sql.gz.enc
+          retention-days: 90
+          if-no-files-found: error

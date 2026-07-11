@@ -1115,6 +1115,39 @@ export default function App() {
   // /api/auth/me) : bannière + reconnexion, au lieu d'échouer en silence.
   const [sessionExpired, setSessionExpired] = useState(false);
   const sessionProbeAtRef = useRef(0);
+
+  // Réveil du serveur (plan gratuit Render : ~30-60 s de démarrage à froid).
+  // Sans cet écran, la première visite semblait MORTE : rien ne se chargeait,
+  // sans aucun message. On sonde /healthz ; s'il ne répond pas vite alors que
+  // le réseau est là, on affiche un écran d'attente animé jusqu'au réveil.
+  const [serverWaking, setServerWaking] = useState(false);
+  const waitForServerAwake = async (): Promise<void> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return; // hors-ligne : autre bandeau
+    // URL ABSOLUE en natif : /healthz n'est pas réécrit par l'intercepteur
+    // (qui ne préfixe que /api) — sinon l'APK sonderait sa propre WebView.
+    const healthUrl = `${API_BASE || ''}/healthz`;
+    const probe = async (timeoutMs: number): Promise<boolean> => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        const res = await fetch(healthUrl, { signal: ctrl.signal, cache: 'no-store' });
+        clearTimeout(t);
+        return res.ok;
+      } catch {
+        return false;
+      }
+    };
+    // Réponse rapide → serveur déjà éveillé, aucun écran.
+    if (await probe(2500)) return;
+    setServerWaking(true);
+    // On re-sonde ~80 s max (réveil Render typique : 30-60 s). Au-delà, on rend
+    // la main : l'app fonctionne avec ses données locales (livres téléchargés).
+    for (let i = 0; i < 15; i++) {
+      if (await probe(4000)) break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    setServerWaking(false);
+  };
   const [pendingActions, setPendingActions] = useState<number>(() => queueLength());
   useEffect(() => {
     const goOnline = () => { setIsOffline(false); flushQueue(); };
@@ -1461,6 +1494,10 @@ export default function App() {
         // Le token mémoire est prêt → débloque la (re)connexion du socket temps
         // réel, qui sinon démarrerait sans token et resterait non authentifié.
         setTokenRestored(true);
+
+        // 0bis. Serveur endormi (plan gratuit) ? On attend son réveil avec un
+        // écran dédié plutôt que de laisser toutes les requêtes échouer en série.
+        await waitForServerAwake();
 
         // 1. Fetch Users & Me
         const me = await refreshUsersData();
@@ -3360,6 +3397,31 @@ export default function App() {
           Synchronisation… {pendingActions} action{pendingActions > 1 ? 's' : ''} en attente
         </div>
       )}
+      {/* Réveil du serveur (démarrage à froid du plan gratuit) : écran de marque
+          plutôt qu'une page qui semble morte pendant 30-60 s. */}
+      {serverWaking && (
+        <div className="fixed inset-0 z-[2147482500] bg-[#0E0E14] flex flex-col items-center justify-center gap-6 px-8 text-center animate-fade-in select-none">
+          <img
+            src="/plume-icon.png"
+            alt="PLUME"
+            className="w-20 h-20 animate-bounce drop-shadow-[0_0_24px_rgba(124,58,237,0.45)]"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-white tracking-wide">PLUME s'étire…</h2>
+            <p className="text-sm text-purple-300/90 leading-relaxed max-w-xs mx-auto">
+              Le serveur se réveille, encore quelques secondes.
+              <br />Merci de ta patience 🪶
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" style={{ animationDelay: '200ms' }} />
+            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" style={{ animationDelay: '400ms' }} />
+          </div>
+        </div>
+      )}
+
       {/* Session expirée (401 confirmé par sonde) : sans cette bannière, toutes
           les actions échouaient en silence avec une interface « verte ». */}
       {sessionExpired && isAuthenticated && (
