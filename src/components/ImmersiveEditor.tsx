@@ -524,6 +524,34 @@ export default function ImmersiveEditor({
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = chapter?.content || '';
     contentRef.current = chapter?.content || '';
+    // FILET ANTI-PERTE : un brouillon local (ecrit a chaque frappe) qui differe
+    // du contenu enregistre signifie qu'une fermeture/crash a eu lieu pendant la
+    // fenetre de debounce. On propose de le restaurer — avant, ce brouillon
+    // etait ecrit mais JAMAIS relu (filet mort).
+    try {
+      const draftKey = DRAFT_KEY(story.id, chapter?.id || 'new');
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        const draftText = plainTextOf(draft?.content || '');
+        const savedText = plainTextOf(chapter?.content || '');
+        const differs = draftText !== savedText || (typeof draft?.title === 'string' && draft.title.trim() && draft.title !== (chapter?.title || ''));
+        if (differs && (draftText || (draft?.title || '').trim())) {
+          if (window.confirm('Un brouillon non enregistré a été retrouvé pour ce chapitre. Le restaurer ?')) {
+            if (typeof draft.title === 'string' && draft.title.trim()) { setTitle(draft.title); titleRef.current = draft.title; }
+            if (typeof draft.content === 'string') {
+              contentRef.current = draft.content;
+              if (editorRef.current) editorRef.current.innerHTML = draft.content;
+              setWordCount(plainTextOf(draft.content).split(/\s+/).filter(Boolean).length);
+            }
+            setSaveState('dirty');
+            window.setTimeout(() => persistRef.current({ force: true }), 300);
+          } else {
+            localStorage.removeItem(draftKey);
+          }
+        }
+      }
+    } catch { /* brouillon illisible : ignoré */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -532,11 +560,15 @@ export default function ImmersiveEditor({
     const nextContent = contentRef.current;
     const sig = `${nextTitle} ${nextContent}`;
     if (!(opts && opts.force) && sig === lastSavedRef.current) return;
-    if (!createdIdRef.current && !plainTextOf(nextContent)) return; // pas de chapitre fantome
 
     // Titre nettoyé : on retire un éventuel deux-points/espace orphelin en fin
     // (le gabarit « Chapitre N : » laissé tel quel ne doit pas être enregistré).
     const cleanTitle = nextTitle.replace(/[\s:]+$/, '').trim();
+    // Pas de chapitre FANTOME (corps vide + titre resté au gabarit)… mais un
+    // titre réellement saisi SUFFIT à persister : avant, taper un titre puis
+    // fermer sans corps le perdait silencieusement.
+    const titleIsMeaningful = !!cleanTitle && !/^Chapitre\s+\d+$/i.test(cleanTitle);
+    if (!createdIdRef.current && !plainTextOf(nextContent) && !titleIsMeaningful) return;
 
     setSaveState('saving');
     try {
@@ -553,7 +585,12 @@ export default function ImmersiveEditor({
         if (created && (created as Chapter).id) createdIdRef.current = (created as Chapter).id;
       }
       lastSavedRef.current = sig;
-      try { localStorage.removeItem(DRAFT_KEY(story.id, createdIdRef.current || 'new')); } catch { /* ignore */ }
+      try {
+        localStorage.removeItem(DRAFT_KEY(story.id, createdIdRef.current || 'new'));
+        // Purge aussi le brouillon pré-création (clé 'new') : après la première
+        // sauvegarde, createdIdRef change et cette clé devenait orpheline.
+        localStorage.removeItem(DRAFT_KEY(story.id, 'new'));
+      } catch { /* ignore */ }
       setSaveState('saved');
       window.setTimeout(() => setSaveState((st) => (st === 'saved' ? 'idle' : st)), 1400);
     } catch {
@@ -757,8 +794,13 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Navigation entre chapitres (swipe horizontal).
-  const idx = isNew ? story.chapters.length : story.chapters.findIndex((c) => c.id === createdIdRef.current);
+  // Navigation entre chapitres (swipe horizontal). L'index se base sur l'id
+  // RÉEL du chapitre (createdIdRef) : un « nouveau » chapitre déjà auto-créé
+  // n'est plus traité comme inexistant (le swipe rouvrait le chapitre courant
+  // ou en créait un de trop).
+  const idx = createdIdRef.current
+    ? story.chapters.findIndex((c) => c.id === createdIdRef.current)
+    : story.chapters.length;
   const goRelative = (dir: -1 | 1) => {
     persistNow();
     const target = story.chapters[idx + dir];
