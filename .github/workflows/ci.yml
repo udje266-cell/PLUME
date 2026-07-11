@@ -1,0 +1,33 @@
+# Intégration continue : types + tests à CHAQUE push / pull request.
+# Sans ce garde-fou, une régression pouvait atteindre `main` (et donc le
+# déploiement Render automatique) sans jamais être exécutée par personne.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci --ignore-scripts
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      - name: Vérification des types
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx vitest run
