@@ -36,6 +36,9 @@ model User {
   // Dates des dernières modifications soumises à délai (pseudo: 30j, e-mail: 90j).
   usernameChangedAt DateTime?
   emailChangedAt    DateTime?
+  // Version de session : incrémentée au reset/changement de mot de passe et au
+  // bannissement pour INVALIDER immédiatement tous les JWT déjà émis.
+  tokenVersion      Int      @default(0)
   isFlagged         Boolean  @default(false)
   flagReason        String?
   // Compte suspendu par un administrateur : bloque la connexion (réversible).

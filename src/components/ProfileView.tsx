@@ -50,7 +50,7 @@ import { User, UserRole, Story, Chapter } from '../types';
 import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
-import { authHeaders } from '../utils/auth';
+import { authHeaders, setAuthToken } from '../utils/auth';
 import { getNotifSettings, saveNotifSettings, notificationPermission, requestNotificationPermission, playNotificationSound, getNotifCategories, saveNotifCategories, type NotifSettings, type NotifType, type NotifCategories, type NotifCategory } from '../utils/notify';
 import { ensureWebPush } from '../utils/pwa';
 import {
@@ -349,6 +349,10 @@ const user = freshViewedUser || freshCurrentUser;
   const [localUsername, setLocalUsername] = useState(currentUser.username);
   const [localBio, setLocalBio] = useState(currentUser.bio || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  // Changement d'e-mail : le serveur exige un code OTP envoyé à la NOUVELLE
+  // adresse (preuve de propriété). Étape 1 : envoi du code ; étape 2 : saisie.
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState('');
 
   // Détection de modifications sur les champs d'identité (pseudo, bio, e-mail).
   const usernameChanged = localUsername.trim() !== currentUser.username && localUsername.trim().length > 0;
@@ -385,18 +389,57 @@ const user = freshViewedUser || freshCurrentUser;
     if (usernameChanged) fields.username = localUsername.trim();
     if (bioChanged) fields.bio = localBio;
     if (emailChanged) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localEmail.trim())) {
+      const cleanEmail = localEmail.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         setShowStatusToast('Adresse e-mail invalide.');
         setTimeout(() => setShowStatusToast(null), 3000);
         return;
       }
-      fields.email = localEmail.trim();
+      // Étape 1 : envoyer le code de confirmation à la NOUVELLE adresse.
+      // (Les administrateurs en sont exemptés côté serveur.)
+      if (!isAdmin && !emailOtpSent) {
+        setIsSavingProfile(true);
+        try {
+          const res = await fetch('/api/auth/otp/request', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ email: cleanEmail.toLowerCase(), reason: 'email_change' }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setShowStatusToast(payload.error || "Impossible d'envoyer le code de confirmation.");
+            setTimeout(() => setShowStatusToast(null), 5000);
+            return;
+          }
+          setEmailOtpSent(true);
+          setShowStatusToast(`Code envoyé à ${cleanEmail} — saisis-le pour confirmer.`);
+          setTimeout(() => setShowStatusToast(null), 5000);
+        } catch {
+          setShowStatusToast('Erreur réseau : code de confirmation non envoyé.');
+          setTimeout(() => setShowStatusToast(null), 4000);
+        } finally {
+          setIsSavingProfile(false);
+        }
+        return;
+      }
+      // Étape 2 : joindre le code saisi à la sauvegarde.
+      if (!isAdmin) {
+        if (emailOtpCode.trim().length < 4) {
+          setShowStatusToast('Entre le code reçu par e-mail pour confirmer la nouvelle adresse.');
+          setTimeout(() => setShowStatusToast(null), 4000);
+          return;
+        }
+        (fields as any).emailOtp = emailOtpCode.trim();
+      }
+      fields.email = cleanEmail;
     }
     setIsSavingProfile(true);
     try {
       const ok = await onUpdateProfile(fields);
       // onUpdateProfile (App) gère déjà l'alerte d'erreur réseau ; succès → toast.
       if (ok !== false) {
+        setEmailOtpSent(false);
+        setEmailOtpCode('');
         setShowStatusToast('Modifications enregistrées !');
         setTimeout(() => setShowStatusToast(null), 3000);
       }
@@ -438,6 +481,9 @@ const user = freshViewedUser || freshCurrentUser;
         alert(payload.error || 'Échec de la mise à jour du mot de passe.');
         return;
       }
+      // Le serveur révoque les anciens tokens (déconnexion des autres appareils)
+      // et en renvoie un frais pour CETTE session : on le stocke immédiatement.
+      if (payload.token) setAuthToken(payload.token);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
@@ -3673,15 +3719,32 @@ const user = freshViewedUser || freshCurrentUser;
                       <input
                         type="email"
                         value={localEmail}
-                        onChange={(e) => setLocalEmail(e.target.value)}
+                        onChange={(e) => { setLocalEmail(e.target.value); setEmailOtpSent(false); setEmailOtpCode(''); }}
                         className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs focus:border-purple-600 focus:outline-none font-medium"
                       />
+                      {emailChanged && emailOtpSent && !isAdmin && (
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase font-black tracking-wider text-purple-500">Code de confirmation reçu par e-mail</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            placeholder="123456"
+                            value={emailOtpCode}
+                            onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, ''))}
+                            className="w-full bg-white dark:bg-zinc-950 border border-purple-400 text-gray-900 dark:text-white px-3 py-2 rounded-xl text-xs tracking-[0.3em] font-bold focus:border-purple-600 focus:outline-none"
+                          />
+                          <p className="text-[8.5px] text-zinc-400 leading-snug">
+                            Un code à 6 chiffres a été envoyé à la nouvelle adresse pour prouver qu'elle t'appartient.
+                          </p>
+                        </div>
+                      )}
                       <p className="text-[8.5px] text-zinc-400 leading-snug">
                         {isAdmin
                           ? 'Administrateur : modification sans restriction.'
                           : emailLockedUntil
                             ? `🔒 Modifiable à partir du ${fmtDate(emailLockedUntil)} (1 fois / 90 jours).`
-                            : 'Modifiable une seule fois tous les 90 jours.'}
+                            : 'Modifiable une seule fois tous les 90 jours. Un code de confirmation sera envoyé à la nouvelle adresse.'}
                       </p>
                     </div>
 

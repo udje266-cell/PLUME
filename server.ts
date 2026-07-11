@@ -135,8 +135,9 @@ function serializeUser(user: any, includePrivate = false) {
   const following = Array.isArray(user.following) ? user.following.map((f: any) => f.followingId || f.id || f) : [];
   const blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers.map((b: any) => b.blockedId || b.id || b) : [];
   // flagReason est un motif de modération : on ne l'expose qu'en mode privé
-  // (soi-même / administrateur), jamais sur les profils publics.
-  const { passwordHash, email, birthDate, flagReason, xpMeta, ...safeUser } = user;
+  // (soi-même / administrateur), jamais sur les profils publics. tokenVersion
+  // (révocation de sessions) ne sort JAMAIS du serveur.
+  const { passwordHash, email, birthDate, flagReason, xpMeta, tokenVersion, ...safeUser } = user;
   const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
@@ -154,7 +155,18 @@ function serializeUser(user: any, includePrivate = false) {
     result.email = email;
     result.birthDate = birthDate ? new Date(birthDate).toISOString().split('T')[0] : undefined;
     result.flagReason = flagReason ?? null;
-  } else if (result.role === 'Administrateur') {
+  } else {
+    // Profil vu par un TIERS : on ne révèle ni qui il a bloqué, ni son état de
+    // modération/vérification d'e-mail, ni l'historique de ses changements
+    // d'identité — données personnelles sans usage légitime côté client.
+    result.blockedUsers = [];
+    delete result.emailVerified;
+    delete result.isFlagged;
+    delete result.usernameChangedAt;
+    delete result.emailChangedAt;
+    delete result.hasChangedRole;
+  }
+  if (!includePrivate && result.role === 'Administrateur') {
     // Statut administrateur masqué aux tiers : exposé comme « Auteur ». Le rôle
     // réel n'est renvoyé qu'en mode privé (l'admin lui-même / endpoints admin),
     // ce qui préserve l'accès au panneau d'administration.
@@ -340,6 +352,20 @@ async function checkOtp(
 // Seuil de signalements distincts à partir duquel un compte est automatiquement
 // marqué pour modération (évite qu'un seul utilisateur puisse flaguer autrui).
 const REPORT_FLAG_THRESHOLD = 3;
+
+// Nom d'utilisateur : 3 à 30 caractères, sans retour à la ligne ni caractère de
+// contrôle (affiché partout dans l'app et dans les notifications push).
+function validateUsername(username: unknown): boolean {
+  if (typeof username !== 'string') return false;
+  const u = username.trim();
+  if (u.length < 3 || u.length > 30) return false;
+  if (/[\u0000-\u001F\u007F]/.test(u)) return false;
+  return true;
+}
+
+// Plafond des champs image transmis en texte (URL ou data URI base64) : évite
+// de stocker des dizaines de Mo en base et de les resservir à tous les clients.
+const IMAGE_FIELD_MAX = 2_000_000; // ~2 Mo
 
 // Vrai s'il existe un blocage dans un sens ou l'autre entre deux utilisateurs.
 async function blockExistsBetween(aId: string | undefined, bId: string | undefined): Promise<boolean> {
@@ -604,14 +630,18 @@ export async function createServerInstance() {
   // Email configuration (used for sender extraction)
   const smtpFrom = process.env.SMTP_FROM || '"PLUME" <udje266@gmail.com>';
 
-  async function sendOtpEmail(email: string, code: string, reason: 'register' | 'reset') {
-    const subject = reason === 'register' 
-      ? 'PLUME - Création de votre compte' 
-      : 'PLUME - Réinitialisation de votre mot de passe';
-    
+  async function sendOtpEmail(email: string, code: string, reason: 'register' | 'reset' | 'email_change') {
+    const subject = reason === 'register'
+      ? 'PLUME - Création de votre compte'
+      : reason === 'email_change'
+        ? 'PLUME - Confirmation de votre nouvelle adresse e-mail'
+        : 'PLUME - Réinitialisation de votre mot de passe';
+
     const reasonText = reason === 'register'
       ? "Pour finaliser votre inscription sur la plateforme littéraire PLUME, veuillez utiliser le code de validation à 6 chiffres ci-dessous :"
-      : "Nous avons reçu une demande de réinitialisation de votre mot de passe PLUME. Veuillez utiliser le code de validation à 6 chiffres ci-dessous pour continuer :";
+      : reason === 'email_change'
+        ? "Vous avez demandé à associer cette adresse e-mail à votre compte PLUME. Veuillez utiliser le code de validation à 6 chiffres ci-dessous pour confirmer que vous en êtes bien le propriétaire :"
+        : "Nous avons reçu une demande de réinitialisation de votre mot de passe PLUME. Veuillez utiliser le code de validation à 6 chiffres ci-dessous pour continuer :";
 
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
@@ -805,8 +835,20 @@ export async function createServerInstance() {
     message: 'Trop de recherches. Patiente quelques secondes.',
   });
 
-  function createToken(userId: string) {
-    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
+  // Le JWT embarque la version de session (tv) : si l'utilisateur réinitialise
+  // son mot de passe ou est banni, tokenVersion est incrémenté en base et tous
+  // les tokens émis avant deviennent immédiatement invalides.
+  function createToken(userId: string, tokenVersion = 0) {
+    return jwt.sign({ userId, tv: tokenVersion }, JWT_SECRET, { expiresIn: '30d' });
+  }
+
+  // Valide un utilisateur chargé en base contre le payload du token : compte
+  // existant, non suspendu, et version de session à jour. Utilisé par l'API et
+  // le handshake socket pour appliquer ban + révocation PARTOUT.
+  function tokenStillValid(user: any, decoded: { tv?: number }): boolean {
+    if (!user) return false;
+    if (user.isBanned) return false;
+    return (decoded.tv ?? 0) === (user.tokenVersion ?? 0);
   }
 
   const AUTH_COOKIE = 'plume_token';
@@ -853,9 +895,14 @@ export async function createServerInstance() {
       if (!token) {
         return res.status(401).json({ error: 'Non connecté' });
       }
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; tv?: number };
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
       if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
+      // Compte suspendu : l'accès à TOUTE l'API est coupé (pas seulement le
+      // login), même avec un JWT encore chronologiquement valide.
+      if (user.isBanned) return res.status(403).json({ error: 'Votre compte a été suspendu par un administrateur.' });
+      // Token émis avant une révocation (reset de mot de passe…) : refusé.
+      if (!tokenStillValid(user, decoded)) return res.status(401).json({ error: 'Session expirée, veuillez vous reconnecter.' });
       req.user = user;
       next();
     } catch (err: any) {
@@ -869,8 +916,10 @@ export async function createServerInstance() {
     const token = getTokenFromRequest(req);
     if (!token) return null;
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-      return await prisma.user.findUnique({ where: { id: decoded.userId } });
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; tv?: number };
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      // Mêmes règles que requireAuth : un banni / un token révoqué = anonyme.
+      return tokenStillValid(user, decoded) ? user : null;
     } catch {
       return null;
     }
@@ -878,16 +927,23 @@ export async function createServerInstance() {
 
   // Authentification de la connexion WebSocket via le JWT (handshake).
   // Empêche un client anonyme d'écouter les notifications/messages d'autrui.
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     // Token via handshake.auth (clients mobiles) ou via le cookie httpOnly
-    // envoyé automatiquement par le navigateur en same-origin.
+    // envoyé automatiquement par le navigateur en same-origin. PAS via la
+    // query string (elle finirait en clair dans les logs des proxys).
     const token =
       (socket.handshake.auth && (socket.handshake.auth as any).token) ||
-      (socket.handshake.query && (socket.handshake.query as any).token) ||
       getTokenFromRequest(socket.request as any);
     if (!token) return next(new Error('Authentification requise'));
     try {
-      const decoded = jwt.verify(String(token), JWT_SECRET) as { userId: string };
+      const decoded = jwt.verify(String(token), JWT_SECRET) as { userId: string; tv?: number };
+      // Vérification en base (comme requireAuth) : un compte suspendu ou un
+      // token révoqué ne doit pas pouvoir garder un canal temps réel ouvert.
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, isBanned: true, tokenVersion: true },
+      });
+      if (!tokenStillValid(user, decoded)) return next(new Error('Session invalide'));
       (socket.data as any).userId = decoded.userId;
       return next();
     } catch {
@@ -905,6 +961,21 @@ export async function createServerInstance() {
   // memberIds fournis par le client (sinon un utilisateur pourrait envoyer de
   // fausses notifications « écrit… » ou de faux appels à n'importe qui). On
   // dérive toujours les membres de la base.
+  // Blocage entre deux utilisateurs (cache court) : consulté par les relais
+  // socket à haute fréquence (saisie, appels). Un utilisateur bloqué ne doit
+  // plus pouvoir faire sonner ni « écrire à » sa victime — y compris en push.
+  const blockPairCache = new Map<string, { blocked: boolean; exp: number }>();
+  const isBlockedPair = async (aId: string | undefined, bId: string | undefined): Promise<boolean> => {
+    if (!aId || !bId || aId === bId) return false;
+    const key = aId < bId ? `${aId}:${bId}` : `${bId}:${aId}`;
+    const now = Date.now();
+    const cached = blockPairCache.get(key);
+    if (cached && cached.exp > now) return cached.blocked;
+    const blocked = await blockExistsBetween(aId, bId).catch(() => false);
+    blockPairCache.set(key, { blocked, exp: now + 30_000 });
+    return blocked;
+  };
+
   const groupMembersCache = new Map<string, { ids: string[]; exp: number }>();
   const getGroupMemberIds = async (groupId: string): Promise<string[]> => {
     const now = Date.now();
@@ -993,15 +1064,18 @@ export async function createServerInstance() {
       } catch { /* ignore */ }
     });
 
-    // L'expediteur d'un « ecrit… » est TOUJOURS l'utilisateur du token (anti-usurpation).
-    socket.on('typing', (payload: { receiverId: string; kind?: string }) => {
+    // L'expediteur d'un « ecrit… » est TOUJOURS l'utilisateur du token
+    // (anti-usurpation), et un blocage actif coupe le relais dans les deux sens.
+    socket.on('typing', async (payload: { receiverId: string; kind?: string }) => {
       if (authUserId && payload?.receiverId) {
+        if (await isBlockedPair(authUserId, payload.receiverId)) return;
         socket.to(`user:${payload.receiverId}`).emit('typing', { senderId: authUserId, receiverId: payload.receiverId, kind: payload.kind });
       }
     });
 
-    socket.on('stop_typing', (payload: { receiverId: string; kind?: string }) => {
+    socket.on('stop_typing', async (payload: { receiverId: string; kind?: string }) => {
       if (authUserId && payload?.receiverId) {
+        if (await isBlockedPair(authUserId, payload.receiverId)) return;
         socket.to(`user:${payload.receiverId}`).emit('stop_typing', { senderId: authUserId, receiverId: payload.receiverId, kind: payload.kind });
       }
     });
@@ -1056,8 +1130,10 @@ export async function createServerInstance() {
       } catch { /* best-effort */ }
     };
 
-    socket.on('call:offer', (p: { to: string; sdp: any; caller?: any }) => {
+    socket.on('call:offer', async (p: { to: string; sdp: any; caller?: any }) => {
       if (!authUserId || !p?.to) return;
+      // Un blocage actif interdit d'appeler : ni sonnerie temps réel, ni push.
+      if (await isBlockedPair(authUserId, p.to)) return;
       socket.to(`user:${p.to}`).emit('call:incoming', { from: authUserId, caller: p.caller, sdp: p.sdp });
       pushIncomingCall(p.to).catch(() => {});
     });
@@ -1197,7 +1273,9 @@ export async function createServerInstance() {
 
       const normalizedEmail = email.trim().toLowerCase();
 
-      if (reason === 'register') {
+      if (reason === 'register' || reason === 'email_change') {
+        // Dans les deux cas, l'adresse visée ne doit appartenir à personne :
+        // le code envoyé PROUVE que le demandeur contrôle cette boîte mail.
         const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
         if (existingUser) {
           return res.status(400).json({ error: 'Cet e-mail est déjà associé à un compte Plume.' });
@@ -1251,11 +1329,12 @@ export async function createServerInstance() {
       if (!emailConfigured && reason === 'register') {
         return res.json({ message: 'Code OTP (mode test : e-mail non configuré).', email, devCode: code });
       }
-      // Reinitialisation : on NE renvoie JAMAIS le code (sinon prise de controle).
-      // Si l'e-mail n'est pas configure, on echoue clairement au lieu de faire
+      // Reinitialisation / changement d'e-mail : on NE renvoie JAMAIS le code
+      // (sinon prise de controle / appropriation d'une adresse d'autrui). Si
+      // l'e-mail n'est pas configure, on echoue clairement au lieu de faire
       // croire qu'un e-mail est parti (l'utilisateur restait bloque sur l'OTP).
-      if (!emailConfigured && reason === 'reset') {
-        return res.status(503).json({ error: "Réinitialisation par e-mail indisponible : le service e-mail n'est pas configuré." });
+      if (!emailConfigured && (reason === 'reset' || reason === 'email_change')) {
+        return res.status(503).json({ error: "Opération indisponible : le service e-mail n'est pas configuré." });
       }
 
       res.json({ message: 'Code OTP envoyé avec succès.', email });
@@ -1272,6 +1351,15 @@ export async function createServerInstance() {
 
       if (!validatePassword(password)) {
         return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
+      }
+      if (!validateUsername(username)) {
+        return res.status(400).json({ error: "Le nom d'utilisateur doit contenir entre 3 et 30 caractères." });
+      }
+      if (typeof avatar === 'string' && avatar.length > IMAGE_FIELD_MAX) {
+        return res.status(400).json({ error: 'Image de profil trop lourde (2 Mo maximum).' });
+      }
+      if (typeof bio === 'string' && bio.length > 500) {
+        return res.status(400).json({ error: 'Bio trop longue (500 caractères maximum).' });
       }
 
       // Âge minimum (13 ans) : garde-fou requis vu les classifications de contenu.
@@ -1340,7 +1428,7 @@ export async function createServerInstance() {
         include: { followers: true, following: true, blockedUsers: true },
       });
       console.log(`[AUTH] utilisateur authentifié - userId: ${user.id}, username: ${user.username} (inscription)`);
-      const token = createToken(user.id);
+      const token = createToken(user.id, user.tokenVersion ?? 0);
       setAuthCookie(res, token);
       res.status(201).json({ token, user: serializeUser(user, true) });
     } catch (error) {
@@ -1366,7 +1454,7 @@ export async function createServerInstance() {
       if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
       // Compte suspendu par un administrateur : connexion refusée.
       if (user.isBanned) return res.status(403).json({ error: 'Votre compte a été suspendu par un administrateur.' });
-      const token = createToken(user.id);
+      const token = createToken(user.id, user.tokenVersion ?? 0);
       setAuthCookie(res, token);
       res.json({ token, user: serializeUser(user, true) });
     } catch (error) {
@@ -1411,7 +1499,7 @@ export async function createServerInstance() {
       }
 
       console.log(`[AUTH DEMO] utilisateur connecté - userId: ${user.id}, username: ${user.username}`);
-      const token = createToken(user.id);
+      const token = createToken(user.id, user.tokenVersion ?? 0);
       setAuthCookie(res, token);
       res.json({ token, user: serializeUser(user, true) });
     } catch (error) {
@@ -1459,9 +1547,11 @@ export async function createServerInstance() {
 
       const passwordHash = await bcrypt.hash(password, 12);
 
+      // tokenVersion++ : tous les JWT émis AVANT la réinitialisation deviennent
+      // invalides — un token volé ne survit pas à la reprise de contrôle du compte.
       await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
       res.json({ message: 'Mot de passe réinitialisé avec succès.' });
@@ -1491,8 +1581,16 @@ export async function createServerInstance() {
         return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
       }
       const passwordHash = await bcrypt.hash(newPassword, 12);
-      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-      res.json({ message: 'Mot de passe mis à jour avec succès.' });
+      // tokenVersion++ : déconnecte tous les AUTRES appareils/sessions. On
+      // ré-émet un token frais pour que la session courante, elle, continue.
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
+        select: { tokenVersion: true },
+      });
+      const token = createToken(user.id, updated.tokenVersion);
+      setAuthCookie(res, token);
+      res.json({ message: 'Mot de passe mis à jour avec succès.', token });
     } catch (error) {
       console.error('[PLUME] change password error:', error);
       res.status(500).json({ error: 'Erreur lors du changement de mot de passe.' });
@@ -1560,16 +1658,20 @@ export async function createServerInstance() {
   });
 
   // Users
-  app.get('/api/users', async (req: any, res) => {
+  // Annuaire réservé aux CONNECTÉS : anonymement, cette route dumpait toute la
+  // table (profils énumérables). Et sans `?limit`, on borne quand même la
+  // réponse (les listes non paginées ne survivent pas à la croissance).
+  app.get('/api/users', requireAuth, async (req: any, res) => {
     try {
       // Les emails ne sont exposés qu'aux administrateurs.
-      const requester = await getUserFromAuthorizationHeader(req);
-      const includePrivate = requester?.role === 'Administrateur';
-      const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
-      res.json(users.map((u) => serializeUser(u, includePrivate)));
+      const isAdmin = req.user.role === 'Administrateur';
+      const pagination = parsePagination(req);
+      if (pagination.take === undefined) pagination.take = 500;
+      const users = await prisma.user.findMany({ include: { followers: true, following: true, blockedUsers: true }, orderBy: { createdAt: 'desc' }, ...pagination });
+      res.json(users.map((u) => serializeUser(u, isAdmin || u.id === req.user.id)));
     } catch (error) {
-      console.error('[PLUME] Erreur lors du chargement des utilisateurs, retour d\'un tableau vide par sécurité:', error);
-      res.json([]);
+      console.error('[PLUME] Erreur lors du chargement des utilisateurs :', error);
+      res.status(500).json({ error: 'Erreur lors du chargement des utilisateurs' });
     }
   });
 
@@ -1730,9 +1832,39 @@ export async function createServerInstance() {
         if (taken) return res.status(409).json({ error: 'Cet e-mail est déjà utilisé par un autre compte.' });
       }
 
+      // PREUVE DE PROPRIÉTÉ de la nouvelle adresse : un code OTP envoyé à la
+      // NOUVELLE boîte mail est exigé (sinon on peut s'approprier l'adresse de
+      // quelqu'un d'autre). Les administrateurs en sont exemptés.
+      if (emailChanging && !isAdmin) {
+        const emailOtp = typeof user.emailOtp === 'string' ? user.emailOtp.trim() : '';
+        if (!emailOtp) {
+          return res.status(400).json({
+            error: 'Un code de confirmation envoyé à la nouvelle adresse est requis.',
+            field: 'email',
+            otpRequired: true,
+          });
+        }
+        const otpCheck = await checkOtp(newEmail, emailOtp, true);
+        if (!otpCheck.ok) {
+          return res.status(otpCheck.status).json({ error: otpCheck.error, field: 'email' });
+        }
+      }
+
       // Borne la longueur de la bio (anti-bloat des objets utilisateur).
       if (typeof user.bio === 'string' && user.bio.length > 500) {
         return res.status(400).json({ error: 'Bio trop longue (500 caractères maximum).' });
+      }
+      // Pseudo : format vérifié aussi en mise à jour (pas seulement à l'inscription).
+      if (usernameChanging && !validateUsername(newUsername)) {
+        return res.status(400).json({ error: "Le nom d'utilisateur doit contenir entre 3 et 30 caractères.", field: 'username' });
+      }
+      // Images (URL ou base64) plafonnées : la base ne stocke pas des dizaines
+      // de Mo resservis ensuite à tous les clients.
+      if (typeof user.avatar === 'string' && user.avatar.length > IMAGE_FIELD_MAX) {
+        return res.status(400).json({ error: 'Image de profil trop lourde (2 Mo maximum).' });
+      }
+      if (typeof user.banner === 'string' && user.banner.length > IMAGE_FIELD_MAX) {
+        return res.status(400).json({ error: 'Bannière trop lourde (2 Mo maximum).' });
       }
 
       // Champs librement modifiables par le propriétaire du compte.
@@ -1779,6 +1911,9 @@ export async function createServerInstance() {
       if (emailChanging) {
         data.email = newEmail;
         if (!isAdmin) data.emailChangedAt = now;
+        // La nouvelle adresse vient d'être prouvée par OTP (sauf action admin,
+        // où elle reste à re-vérifier par l'utilisateur).
+        data.emailVerified = !isAdmin;
       }
 
       // isVerified n'est JAMAIS piloté par le client : la certification est
@@ -1894,7 +2029,13 @@ export async function createServerInstance() {
       }
 
       const banned = req.body?.banned !== false; // défaut = suspendre
-      await prisma.user.update({ where: { id: req.params.id }, data: { isBanned: banned } });
+      // À la suspension : tokenVersion++ pour invalider immédiatement les JWT en
+      // circulation (double filet avec le refus isBanned de requireAuth : de
+      // vieux tokens ne redeviennent pas valides après une réactivation).
+      await prisma.user.update({
+        where: { id: req.params.id },
+        data: { isBanned: banned, ...(banned ? { tokenVersion: { increment: 1 } } : {}) },
+      });
 
       // À la suspension, on dépublie ses récits (retirés du public, données
       // conservées) ; à la réactivation, on ne re-publie pas automatiquement.
@@ -2229,7 +2370,9 @@ export async function createServerInstance() {
         tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
         status: story.status ? storyStatusToPrisma(story.status) : undefined,
         ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
-        publishedAt: story.status === 'Publié' ? new Date() : undefined,
+        // Date de publication figée à la transition brouillon → publié : une
+        // simple re-sauvegarde d'un récit publié ne la fait plus dériver.
+        publishedAt: story.status === 'Publié' && existing.status !== 'PUBLIE' ? new Date() : undefined,
       };
       // views/reads/rating ne sont jamais modifiables par le client (sinon
       // gonflage des statistiques). Le statut de modération (isFlagged/
@@ -2333,6 +2476,11 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
+      // Mêmes plafonds qu'à la création : sans quoi la limite était contournable
+      // en mise à jour (jusqu'aux 10 Mo du body).
+      if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
+        return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
+      }
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.id },
         data: {
@@ -2343,7 +2491,9 @@ export async function createServerInstance() {
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
-          publishedAt: chapter.isPublished ? new Date() : undefined,
+          // La date de publication est figée à la PREMIÈRE publication : une
+          // simple re-sauvegarde d'un chapitre publié ne la fait plus dériver.
+          publishedAt: chapter.isPublished && !existingChapter.isPublished ? new Date() : undefined,
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
@@ -2380,6 +2530,10 @@ export async function createServerInstance() {
       if (!existingChapter) return res.status(404).json({ error: 'Chapitre non trouvé' });
       if (existingChapter.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
       const chapter = req.body;
+      // Mêmes plafonds qu'à la création (limite non contournable en mise à jour).
+      if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
+        return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
+      }
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.chapterId },
         data: {
@@ -2390,7 +2544,8 @@ export async function createServerInstance() {
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
           isPublished: chapter.isPublished,
-          publishedAt: chapter.isPublished ? new Date() : undefined,
+          // Date de publication figée à la PREMIÈRE publication (pas de dérive).
+          publishedAt: chapter.isPublished && !existingChapter.isPublished ? new Date() : undefined,
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
@@ -3789,21 +3944,25 @@ export async function createServerInstance() {
         awardXp(followingId, 'author', XP.followerGained).catch(() => {});
       }
 
-      const notification = await prisma.notification.create({
-        data: {
-          userId: followingId,
-          type: 'FOLLOW' as any,
-          title: 'Nouvel abonné',
-          message: `@${req.user.username || 'Un utilisateur'} a commencé à te suivre.`,
+      // Notification au PREMIER abonnement seulement : le follow-unfollow en
+      // boucle ne re-notifie pas (anti-spam / harcèlement).
+      let notification: any = null;
+      if (!alreadyFollowing) {
+        notification = await prisma.notification.create({
           data: {
-            actorId: req.user.id,
-            actorName: req.user.username,
-            actorAvatar: req.user.avatar || '',
-          } as any
-        },
-      });
-
-      notifyUser(followingId, notification);
+            userId: followingId,
+            type: 'FOLLOW' as any,
+            title: 'Nouvel abonné',
+            message: `@${req.user.username || 'Un utilisateur'} a commencé à te suivre.`,
+            data: {
+              actorId: req.user.id,
+              actorName: req.user.username,
+              actorAvatar: req.user.avatar || '',
+            } as any
+          },
+        });
+        notifyUser(followingId, notification);
+      }
       
       // Real-time synchronization socket events for follow
       io.to(`user:${followingId}`).emit('user_followed', { followerId: req.user.id, followingId });
@@ -3986,7 +4145,9 @@ export async function createServerInstance() {
         awardCappedXp(req.user.id, 'reader', XP.likeGiven, 'likeGiven', 20).catch(() => {});
         awardXp(story.authorId, 'author', XP.likeReceived).catch(() => {});
       }
-      if (story && story.authorId !== req.user.id) {
+      // Notification UNIQUEMENT au premier like (le re-like d'un même utilisateur
+      // ne re-notifie pas : anti-spam / harcèlement par vagues de like-unlike).
+      if (!alreadyLiked && story && story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
             userId: story.authorId,
@@ -4073,7 +4234,8 @@ export async function createServerInstance() {
         awardXp(req.user.id, 'reader', XP.favoriteGiven).catch(() => {});
         awardXp(story.authorId, 'author', XP.favoriteReceived).catch(() => {});
       }
-      if (story && story.authorId !== req.user.id) {
+      // Même règle que le like : on ne notifie que le PREMIER ajout en favori.
+      if (!alreadyFav && story && story.authorId !== req.user.id) {
         const notification = await prisma.notification.create({
           data: {
             userId: story.authorId,
@@ -4193,6 +4355,8 @@ export async function createServerInstance() {
         update: {},
         create: { blockerId: req.user.id, blockedId },
       });
+      // Application immédiate aux relais temps réel (saisie/appels).
+      blockPairCache.delete(req.user.id < blockedId ? `${req.user.id}:${blockedId}` : `${blockedId}:${req.user.id}`);
       res.status(201).json(block);
     } catch (error) {
       console.error(error);
@@ -4202,6 +4366,7 @@ export async function createServerInstance() {
 
   app.delete('/api/users/:id/block', requireAuth, async (req: any, res) => {
     await prisma.blockedUser.deleteMany({ where: { blockerId: req.user.id, blockedId: req.params.id } });
+    blockPairCache.delete(req.user.id < req.params.id ? `${req.user.id}:${req.params.id}` : `${req.params.id}:${req.user.id}`);
     res.status(204).end();
   });
 
