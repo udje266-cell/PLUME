@@ -42,6 +42,7 @@ import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
 import { authHeaders } from '../utils/auth';
+import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 
 // ── Rendu du contenu de chapitre avec mise en forme inline (gras/italique/
@@ -1948,6 +1949,66 @@ export default function ReadingView({
             </div>
           )}
 
+          {/* FIN DE CHAPITRE : le moment d'émotion maximale mérite mieux qu'un
+              simple bouton — transition soignée vers la suite, ou célébration
+              quand le livre est terminé. */}
+          <div className="mt-12 rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-50 via-white to-purple-50/40 dark:from-purple-950/25 dark:via-transparent dark:to-purple-950/10 p-5 text-center space-y-3 select-none">
+            {activeChapterIndex < story.chapters.length - 1 ? (
+              <>
+                <p className="text-[10px] font-black uppercase tracking-widest text-purple-500">
+                  ✓ Fin du chapitre {activeChapterIndex + 1} sur {story.chapters.length}
+                </p>
+                <button
+                  id="end-of-chapter-next"
+                  onClick={() => setActiveChapterIndex(activeChapterIndex + 1)}
+                  className="w-full sm:w-auto sm:min-w-[260px] mx-auto px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider shadow-md active:scale-[0.98] transition flex items-center justify-center gap-2"
+                >
+                  <span className="truncate max-w-[220px]">
+                    Chapitre suivant{story.chapters[activeChapterIndex + 1]?.title ? ` : ${story.chapters[activeChapterIndex + 1].title}` : ''}
+                  </span>
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                </button>
+                {!isOwnStory && (
+                  <button
+                    id="end-of-chapter-like"
+                    onClick={() => onToggleStoryLike(story.id)}
+                    className={`text-[11px] font-bold transition ${isLiked ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}`}
+                  >
+                    {isLiked ? '❤️ Tu aimes ce livre' : "🤍 J'aime ce livre"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-3xl leading-none">🎉</p>
+                <h4 className="text-sm font-black text-gray-900 dark:text-white">
+                  Tu as terminé « {story.title} » !
+                </h4>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
+                  Merci d'avoir lu jusqu'au bout. Un mot ou un cœur pour {story.authorName || "l'auteur"} — c'est ce qui fait écrire la suite.
+                </p>
+                {!isOwnStory && (
+                  <div className="flex items-center justify-center gap-3 pt-1">
+                    <button
+                      id="end-of-book-like"
+                      onClick={() => onToggleStoryLike(story.id)}
+                      className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition ${isLiked ? 'bg-pink-500/15 text-pink-500' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                    >
+                      {isLiked ? '❤️ Aimé' : "❤️ J'ai aimé"}
+                    </button>
+                    <button
+                      id="end-of-book-follow"
+                      onClick={() => onFollowAuthor(story.authorId)}
+                      className="px-4 py-2 rounded-xl border border-purple-500/40 text-purple-600 dark:text-purple-400 text-[11px] font-black uppercase tracking-wider hover:bg-purple-50 dark:hover:bg-purple-950/20 transition"
+                    >
+                      Suivre {story.authorName || "l'auteur"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           {/* Navigation between chapters */}
           <div className="mt-12 pt-8 border-t border-gray-205/60 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
             <button
@@ -2380,6 +2441,7 @@ export default function ReadingView({
                         {String(idx + 1).padStart(2, '0')}
                       </span>
                       <span className="truncate">{ch.title}</span>
+                      <span className="text-[8.5px] font-mono text-gray-400 flex-shrink-0">{formatMinutes(chapterMinutes(ch))}</span>
                     </div>
                     {isRead ? (
                       <span className="text-[8px] bg-green-500/10 text-green-505 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center space-x-0.5">

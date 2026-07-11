@@ -37,6 +37,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
 import { storyShareUrl, shareStoryNative, openShareIntent, ShareNetwork } from '../utils/share';
+import { wordsOf, storyMinutes, formatMinutes } from '../utils/readingTime';
 
 /** Formate un compteur de façon compacte : 1234 → « 1,2 k », 1500000 → « 1,5 M ». */
 function formatStat(n: number): string {
@@ -174,10 +175,9 @@ export default function HomeView({
     const idx = rawIdx >= 0 ? rawIdx : 0;
     const { percent } = getStoryProgressInfo(story);
     if (percent >= 100) return null; // livre terminé : rien à reprendre
-    const countWords = (html: string) => html.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-    const wordsLeft = story.chapters.slice(idx).reduce((sum, c) => sum + countWords(c.content || ''), 0);
+    const wordsLeft = story.chapters.slice(idx).reduce((sum, c) => sum + wordsOf(c.content || ''), 0);
     const minutes = Math.max(1, Math.round(wordsLeft / 220));
-    const timeLabel = minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}` : `${minutes} min`;
+    const timeLabel = formatMinutes(minutes).replace('~', '');
     return { story, chapterIndex: idx, chapterTitle: story.chapters[idx]?.title || '', percent, timeLabel };
   })();
 
@@ -630,6 +630,7 @@ export default function HomeView({
                   <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-400">
                     <span className="flex items-center gap-0.5" title="Lectures"><Eye className="w-2.5 h-2.5 shrink-0" />{formatStat(story.reads || 0)}</span>
                     <span className="flex items-center gap-0.5" title="J’aime"><Heart className="w-2.5 h-2.5 shrink-0" />{formatStat(story.likes || 0)}</span>
+                    <span className="flex items-center gap-0.5" title="Temps de lecture estimé"><Clock className="w-2.5 h-2.5 shrink-0" />{formatMinutes(storyMinutes(story))}</span>
                   </div>
                 </div>
               ))}
