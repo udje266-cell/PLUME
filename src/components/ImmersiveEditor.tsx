@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag, Wand2, Quote, Eye, EyeOff } from 'lucide-react';
 import { Story, Chapter } from '../types';
+import { useAndroidBack } from '../utils/backButton';
 
 interface ImmersiveEditorProps {
   story: Story;
@@ -646,6 +647,17 @@ export default function ImmersiveEditor({
     idleRef.current = setTimeout(() => setChromeVisible(false), 2600);
   }, []);
   useEffect(() => { wakeChrome(); return () => { if (idleRef.current) clearTimeout(idleRef.current); }; }, [wakeChrome]);
+
+  // Bouton retour Android : ferme d'abord le panneau ouvert (assistant,
+  // sommaire), sinon SAUVEGARDE puis ferme l'éditeur — au lieu de renvoyer
+  // à l'accueil en perdant le contexte d'écriture.
+  useAndroidBack(() => {
+    if (aiOpen) { setAiOpen(false); return true; }
+    if (showSommaire) { setShowSommaire(false); return true; }
+    persistNow();
+    onClose();
+    return true;
+  });
 
   // Edition : on lit le HTML courant, met a jour refs + compteur, planifie save.
   const onEditorInput = () => {

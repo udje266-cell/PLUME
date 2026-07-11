@@ -36,6 +36,7 @@ import ImmersiveEditor from './ImmersiveEditor';
 import { GENRES, CATEGORIES, AMBIANCES, FORMATS, LANGUAGES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { generateCoverDataUri } from '../utils/coverImage';
+import { useAndroidBack } from '../utils/backButton';
 
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -138,6 +139,24 @@ export default function WriteView({
 
   // Chapter editing screen (l'éditeur immersif gère titre/contenu en interne).
   const [editingChapterInStory, setEditingChapterInStory] = useState<{ story: Story; chapter: Chapter | null } | null>(null);
+
+  // Bouton retour Android : ferme la surcouche la plus haute de CETTE vue au
+  // lieu de renvoyer brutalement à l'accueil (voire de quitter l'app).
+  useAndroidBack(() => {
+    if (editingChapterInStory) return false; // l'éditeur immersif gère son propre retour
+    if (coverImageSrc) { setCoverImageSrc(null); return true; } // modal de rognage
+    if (storyToDelete) { setStoryToDelete(null); return true; } // modal de suppression
+    if (expandedMenuStoryId) { setExpandedMenuStoryId(null); return true; }
+    if (managingStoryChapters) { setManagingStoryChapters(null); return true; }
+    if (isCreatingStory || selectedStoryToEdit) {
+      // On FERME sans vider le formulaire : un retour accidentel ne détruit pas
+      // ce qui a été saisi (rouvrir « Créer » retrouve les champs).
+      setIsCreatingStory(false);
+      setSelectedStoryToEdit(null);
+      return true;
+    }
+    return false;
+  });
 
   const resetStoryForm = () => {
     setTitle('');

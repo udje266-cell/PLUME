@@ -1340,14 +1340,25 @@ export default function App() {
   // renvoie false pour laisser l'app se fermer.
   useEffect(() => {
     (window as any).__plumeHandleBack = (): boolean => {
+      // 1. Donne D'ABORD la main aux surcouches montées (éditeur immersif,
+      //    modals de WriteView…) via un événement annulable : celle qui est
+      //    ouverte se ferme et consomme le retour. Sans ça, un retour physique
+      //    en pleine écriture renvoyait à l'accueil (voire quittait l'app).
+      const ev = new CustomEvent('plume-back', { cancelable: true });
+      window.dispatchEvent(ev);
+      if (ev.defaultPrevented) return true;
+      // 2. Sinon, comportement global.
       if (isSidebarOpen) { setIsSidebarOpen(false); return true; }
       if (selectedStoryForReading) { setSelectedStoryForReading(null); return true; }
       if (viewedUser) { setViewedUser(null); return true; }
+      // Conversation ouverte en plein écran : on revient à la LISTE des
+      // messages (comme WhatsApp), pas à l'accueil.
+      if (chatFullscreen) { setChatFullscreen(false); setActiveConversationId(''); return true; }
       if (activeTab !== 'home') { setActiveTab('home'); return true; }
       return false;
     };
     return () => { delete (window as any).__plumeHandleBack; };
-  }, [isSidebarOpen, selectedStoryForReading, viewedUser, activeTab]);
+  }, [isSidebarOpen, selectedStoryForReading, viewedUser, activeTab, chatFullscreen]);
 
   const refreshUsersData = async () => {
     try {

@@ -2237,6 +2237,10 @@ export async function createServerInstance() {
           likes: { select: { userId: true } },
           favorites: { select: { userId: true } },
         },
+        // Garde-fou de croissance : on classe les 500 récits les plus récents,
+        // pas la table entière (le ranking en mémoire ne scale pas au-delà).
+        orderBy: { createdAt: 'desc' },
+        take: 500,
       });
       const stories = dbStories.map((s: any) => {
         const serialized: any = serializeStory(filterDraftChapters(s, undefined, false));
@@ -2778,7 +2782,8 @@ export async function createServerInstance() {
   // Notifications
   app.get('/api/notifications/:userId', requireAuth, async (req: any, res) => {
     if (req.user.id !== req.params.userId && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
-    const notifications = await prisma.notification.findMany({ where: { userId: req.params.userId }, orderBy: { createdAt: 'desc' } });
+    // Borné : le client n'affiche que les ~120 dernières de toute façon.
+    const notifications = await prisma.notification.findMany({ where: { userId: req.params.userId }, orderBy: { createdAt: 'desc' }, take: 200 });
     res.json(notifications);
   });
 
@@ -2986,15 +2991,18 @@ export async function createServerInstance() {
         return res.status(403).json({ error: 'Action interdite' });
       }
 
+      // Borné aux 500 derniers messages (chargés du plus récent au plus ancien,
+      // puis remis dans l'ordre) : une vieille conversation ne pèse plus des Mo.
       const messages = await prisma.message.findMany({
         where: { conversationId: req.params.id },
         include: {
           sender: { select: SAFE_USER_SELECT }
         },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'desc' },
+        take: 500,
       });
 
-      res.json(messages);
+      res.json(messages.reverse());
     } catch (error) {
       console.error(`[CONVERSATION] erreur accès - conversationId: ${req.params.id}:`, error);
       res.status(500).json({ error: 'Erreur lors de la récupération des messages' });
@@ -3321,12 +3329,14 @@ export async function createServerInstance() {
       const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
       if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      // Borné aux 500 derniers (même logique que les conversations 1-à-1).
       const messages = await prisma.groupMessage.findMany({
         where: { groupId: req.params.id },
         include: { sender: { select: SAFE_USER_SELECT }, reactions: true },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
       });
-      res.json(messages.map((m: any) => serializeGroupMessage(m, req.user.id)));
+      res.json(messages.reverse().map((m: any) => serializeGroupMessage(m, req.user.id)));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des messages du groupe.' });
@@ -4306,7 +4316,9 @@ export async function createServerInstance() {
   });
 
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
-    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' } });
+    // Borné aux 300 dernières entrées : l'historique trace CHAQUE ouverture de
+    // chapitre, il grossit vite (le client n'en affiche qu'une fraction).
+    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' }, take: 300 });
     res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
   });
 

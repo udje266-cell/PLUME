@@ -126,6 +126,17 @@ export default function ExplorerView({
     }
   }, [activeFilter]);
 
+  // Filtres actifs (différents des valeurs par défaut) : pilotent le badge et
+  // le bouton « Tout effacer » — avant, aucun moyen visuel de savoir qu'un
+  // filtre restait appliqué ni de le retirer d'un geste.
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedGenre !== 'Tous' || sortBy !== 'trending';
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedGenre('Tous');
+    setSortBy('trending');
+    if (typeof onClearFilter === 'function') onClearFilter();
+  };
+
   // Handle Save filter
   const handleSaveFilter = (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,8 +338,17 @@ export default function ExplorerView({
 
         {/* Actions row: Save filter button */}
         <div className="pt-2 border-t border-gray-100 dark:border-zinc-850/50 flex justify-between items-center">
-          <span className="text-[10px] font-mono text-gray-400">
+          <span className="text-[10px] font-mono text-gray-400 flex items-center gap-2">
             {filteredStories.length} résultats filtrés
+            {hasActiveFilters && (
+              <button
+                id="explorer-clear-filters"
+                onClick={resetFilters}
+                className="px-2 py-0.5 rounded-full bg-purple-600/10 text-purple-600 dark:text-purple-400 font-black uppercase tracking-wider text-[9px] hover:bg-purple-600/20 transition"
+              >
+                ✕ Tout effacer
+              </button>
+            )}
           </span>
           
           {!showSaveDialog ? (
@@ -426,6 +446,15 @@ export default function ExplorerView({
           <p className="text-[11px] text-gray-400 mt-1 max-w-xs mx-auto text-center">
             Modifiez la recherche, changez de genre ou désactivez les filtres pour découvrir de nouvelles œuvres.
           </p>
+          {hasActiveFilters && (
+            <button
+              id="explorer-clear-filters-empty"
+              onClick={resetFilters}
+              className="mt-3 px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider transition"
+            >
+              Réinitialiser les filtres
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 pb-8">
