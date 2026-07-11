@@ -94,6 +94,9 @@ model User {
   notifications     Notification[]
   readingProgress   ReadingProgress[]
   readingHistory    ReadingHistory[]
+  readingListEntries ReadingListEntry[]
+  chapterReads      ChapterRead[]
+  savedQuotes       SavedQuote[]
   likes             StoryLike[]
   commentLikes      CommentLike[]
   storyRatings      StoryRating[]
@@ -335,6 +338,54 @@ model ReadingProgress {
   lastReadAt      DateTime @default(now())
 
   @@unique([userId, storyId, chapterId])
+  @@index([userId])
+}
+
+// Listes de lecture personnelles (« En cours », « Terminés », « À lire plus
+// tard ») : persistées côté serveur pour être IDENTIQUES sur tous les appareils
+// (app native et PWA). storyId sans FK : une entrée orpheline est simplement
+// ignorée côté client si le récit a disparu.
+model ReadingListEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  storyId   String
+  list      String   // 'currently' | 'completed' | 'later'
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, storyId, list])
+  @@index([userId])
+}
+
+// Chapitre RÉELLEMENT lu (défilé jusqu'au bout) — distinct de ReadingHistory
+// qui trace chaque OUVERTURE. C'est cette table qui alimente le pourcentage de
+// progression, identique sur tous les appareils.
+model ChapterRead {
+  id        String   @id @default(cuid())
+  userId    String
+  storyId   String
+  chapterId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, chapterId])
+  @@index([userId])
+}
+
+// Citations sauvegardées pendant la lecture : persistées côté serveur (elles
+// vivaient uniquement dans le localStorage, partagées entre comptes et perdues
+// au changement d'appareil).
+model SavedQuote {
+  id         String   @id @default(cuid())
+  userId     String
+  storyId    String?
+  chapterId  String?
+  content    String
+  storyTitle String?
+  author     String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
   @@index([userId])
 }
 

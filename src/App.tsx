@@ -646,10 +646,6 @@ export default function App() {
     localStorage.setItem(storageKey, JSON.stringify(likeMap));
   };
 
-  const createLegacyLikeIds = (prefix: string, itemId: string, count: number) => {
-    return Array.from({ length: Math.max(0, count || 0) }, (_, index) => `${prefix}_${itemId}_${index}`);
-  };
-
   const mergeLikeIds = (...lists: (string[] | undefined)[]) => {
     return Array.from(
       new Set(
@@ -666,46 +662,44 @@ export default function App() {
   const realIds = (ids?: string[]): string[] =>
     Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && !id.startsWith('legacy_')) : [];
 
-  const normalizeStoryLikesFromStorage = (story: Story): Story => {
-    const likeMap = readLikeMap(STORY_LIKERS_STORAGE_KEY);
-    // Le serveur fournit desormais la liste REELLE des likers : c'est elle qui
-    // fait foi (identique sur tous les appareils). On y ajoute uniquement l'id de
-    // l'utilisateur courant present localement (action optimiste pas encore sync).
-    const likedBy = mergeLikeIds(realIds(likeMap[story.id]), realIds(story.likedBy));
-    likeMap[story.id] = likedBy;
-    saveLikeMap(STORY_LIKERS_STORAGE_KEY, likeMap);
+  // Politique de fusion locale/serveur : la liste SERVEUR fait foi pour tous
+  // les autres utilisateurs (un like retiré ailleurs redescend donc bien ici) ;
+  // on n'y ajoute que l'action de l'UTILISATEUR COURANT si elle n'est pas
+  // encore visible côté serveur (optimiste / file hors-ligne en attente). Et on
+  // ne PERSISTE en local que sa propre appartenance — plus jamais la liste
+  // entière, qui figeait les compteurs à leur maximum historique.
+  const mergeWithOwnAction = (mapKey: string, itemId: string, serverIds: string[]): string[] => {
+    const map = readLikeMap(mapKey);
+    const mine = currentUser?.id && (map[itemId] || []).includes(currentUser.id) ? [currentUser.id] : [];
+    const merged = mergeLikeIds(serverIds, mine);
+    map[itemId] = currentUser?.id && merged.includes(currentUser.id) ? [currentUser.id] : [];
+    saveLikeMap(mapKey, map);
+    return merged;
+  };
 
+  const normalizeStoryLikesFromStorage = (story: Story): Story => {
+    const likedBy = mergeWithOwnAction(STORY_LIKERS_STORAGE_KEY, story.id, realIds(story.likedBy));
     return {
       ...story,
       likedBy,
-      // Plancher = compteur serveur (agrege tous les utilisateurs) ; on ne descend
-      // jamais en dessous, ce qui garantit l'accumulation et la conformite app/PWA.
-      likes: Math.max(likedBy.length, typeof story.likes === 'number' ? story.likes : 0),
+      likes: Math.max(likedBy.length, Array.isArray(story.likedBy) ? realIds(story.likedBy).length : (typeof story.likes === 'number' ? story.likes : 0)),
     };
   };
 
   const normalizeStoryFavoritesFromStorage = (story: Story): Story => {
-    const favoriteMap = readLikeMap(STORY_FAVORITERS_STORAGE_KEY);
-    const favoritedBy = mergeLikeIds(realIds(favoriteMap[story.id]), realIds(story.favoritedBy));
-    favoriteMap[story.id] = favoritedBy;
-    saveLikeMap(STORY_FAVORITERS_STORAGE_KEY, favoriteMap);
-
+    const favoritedBy = mergeWithOwnAction(STORY_FAVORITERS_STORAGE_KEY, story.id, realIds(story.favoritedBy));
     return {
       ...story,
       favoritedBy,
-      favoritesCount: Math.max(favoritedBy.length, typeof story.favoritesCount === 'number' ? story.favoritesCount : 0),
+      favoritesCount: Math.max(favoritedBy.length, Array.isArray(story.favoritedBy) ? realIds(story.favoritedBy).length : (typeof story.favoritesCount === 'number' ? story.favoritesCount : 0)),
     };
   };
 
   const normalizeStoryViewsFromStorage = (story: Story): Story => {
-    const viewMap = readLikeMap(STORY_VIEWERS_STORAGE_KEY);
-    // Les vues n'ont pas de liste cote serveur (juste un entier agrege). On garde
-    // l'appartenance locale reelle pour savoir si l'utilisateur a deja vu, mais le
-    // total affiche suit l'entier du serveur (source de verite partagee).
-    const viewedBy = mergeLikeIds(realIds(viewMap[story.id]), realIds(story.viewedBy));
-    viewMap[story.id] = viewedBy;
-    saveLikeMap(STORY_VIEWERS_STORAGE_KEY, viewMap);
-
+    // Les vues n'ont pas de liste cote serveur (juste un entier agrege, source
+    // de verite partagee). La marque locale sert uniquement a savoir si CET
+    // utilisateur a deja ouvert la fiche (dedoublonnage de la vue optimiste).
+    const viewedBy = mergeWithOwnAction(STORY_VIEWERS_STORAGE_KEY, story.id, realIds(story.viewedBy));
     return {
       ...story,
       viewedBy,
@@ -714,23 +708,16 @@ export default function App() {
   };
 
   const normalizeCommentLikesFromStorage = (comment: Comment): Comment => {
-    const likeMap = readLikeMap(COMMENT_LIKERS_STORAGE_KEY);
-    const storedLikedBy = likeMap[comment.id];
-    const commentLikedBy = Array.isArray(comment.likedBy) ? comment.likedBy : [];
-
-    const likedBy = storedLikedBy
-      ? mergeLikeIds(storedLikedBy, commentLikedBy)
-      : commentLikedBy.length > 0
-        ? commentLikedBy
-        : createLegacyLikeIds('legacy_comment_like', comment.id, comment.likes || 0);
-
-    likeMap[comment.id] = likedBy;
-    saveLikeMap(COMMENT_LIKERS_STORAGE_KEY, likeMap);
-
+    // Le serveur expose desormais la liste reelle des likers du commentaire
+    // (comme pour les recits) : compte identique partout, et il peut REDESCENDRE
+    // quand quelqu'un retire son like. Les faux ids « legacy_* » ne sont plus
+    // ni fabriques ni conserves.
+    const serverIds = realIds(comment.likedBy);
+    const likedBy = mergeWithOwnAction(COMMENT_LIKERS_STORAGE_KEY, comment.id, serverIds);
     return {
       ...comment,
       likedBy,
-      likes: likedBy.length,
+      likes: Math.max(likedBy.length, Array.isArray(comment.likedBy) ? serverIds.length : (typeof comment.likes === 'number' ? comment.likes : 0)),
       likedByMe: currentUser ? likedBy.includes(currentUser.id) : false,
     };
   };
@@ -1146,9 +1133,9 @@ export default function App() {
   }, [isAuthenticated, currentUser?.id]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
-    if (!currentUser?.id) return ['story_cosmos_1'];
+    if (!currentUser?.id) return [];
     // Clé par utilisateur, avec migration de l'ancienne clé globale `plume_favorites`.
-    return readUserScopedValue(getFavoritesStorageKey(currentUser.id), 'plume_favorites', ['story_cosmos_1']);
+    return readUserScopedValue(getFavoritesStorageKey(currentUser.id), 'plume_favorites', []);
   });
 
   const [likedStories, setLikedStories] = useState<string[]>(() => {
@@ -1177,8 +1164,8 @@ export default function App() {
   }, [currentUser?.id]);
 
   const [currentlyReading, setCurrentlyReading] = useState<string[]>(() => {
-    if (!currentUser?.id) return ['story_cosmos_1']; // Seeded first book
-    return readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', ['story_cosmos_1']);
+    if (!currentUser?.id) return []; // Seeded first book
+    return readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', []);
   });
 
   const [completedStories, setCompletedStories] = useState<string[]>(() => {
@@ -1224,7 +1211,7 @@ export default function App() {
   // de compte (connexion/déconnexion sur le même navigateur).
   useEffect(() => {
     if (!currentUser?.id) return;
-    setCurrentlyReading(readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', ['story_cosmos_1']));
+    setCurrentlyReading(readUserScopedValue(getCurrentlyReadingStorageKey(currentUser.id), 'plume_currently_reading', []));
     setCompletedStories(readUserScopedValue<string[]>(getCompletedStorageKey(currentUser.id), 'plume_completed', []));
     setReadLater(readUserScopedValue<string[]>(getReadLaterStorageKey(currentUser.id), 'plume_read_later', []));
     setReadChapters(readUserScopedValue<string[]>(getReadChaptersStorageKey(currentUser.id), 'plume_read_chapters', []));
@@ -1368,6 +1355,98 @@ export default function App() {
     return null;
   };
 
+  // Hydrate les données PERSONNELLES du compte depuis le serveur (favoris,
+  // notifications, état de lecture partagé, amis). Chaque bloc est isolé : un
+  // échec réseau sur l'un n'empêche pas les autres. Appelée au DÉMARRAGE et à
+  // la CONNEXION en cours de session (sans elle, un login sans redémarrage
+  // gardait des données purement locales, divergentes entre app et PWA).
+  const hydrateAccountData = async (me: User) => {
+    const headers = authHeaders();
+    const safe = async (fn: () => Promise<void>) => { try { await fn(); } catch { /* le local reste en place */ } };
+
+    await Promise.all([
+      safe(async () => {
+        const notifRes = await fetch(`/api/notifications/${me.id}`, { headers });
+        if (!notifRes.ok) return;
+        const serverNotifs = await notifRes.json();
+        const mapped = serverNotifs.map(mapServerNotification).slice(0, 120);
+        setNotifications(mapped);
+        localStorage.setItem('plume_notifications', JSON.stringify(mapped));
+      }),
+      safe(async () => {
+        const favRes = await fetch('/api/me/favorites', { headers });
+        if (!favRes.ok) return;
+        const favStories = await favRes.json();
+        const favIds = favStories.map((s: Story) => s.id);
+        setFavorites(favIds);
+        localStorage.setItem(getFavoritesStorageKey(me.id), JSON.stringify(favIds));
+      }),
+      safe(async () => {
+        // Position de reprise (dernier chapitre OUVERT). NB : on ne marque PLUS
+        // les chapitres « lus » depuis cet historique d'ouverture — c'était la
+        // cause du « 100 % » qui réapparaissait après re-synchronisation.
+        const histRes = await fetch('/api/me/history', { headers });
+        if (!histRes.ok) return;
+        const history = await histRes.json();
+        const latest = history[0];
+        if (latest?.storyId && latest?.chapterId) {
+          setLastReadProgress({ storyId: latest.storyId, chapterId: latest.chapterId });
+        }
+      }),
+      safe(async () => {
+        // État de lecture PARTAGÉ entre appareils : listes + chapitres
+        // réellement lus (défilés jusqu'au bout).
+        const stateRes = await fetch('/api/me/reading-state', { headers });
+        if (!stateRes.ok) return;
+        const st = await stateRes.json();
+
+        const applyList = (
+          serverIds: string[],
+          list: 'currently' | 'completed' | 'later',
+          localIds: string[],
+          setter: React.Dispatch<React.SetStateAction<string[]>>,
+        ) => {
+          // Migration douce : si le serveur ne connaît encore RIEN pour cette
+          // liste alors que l'appareil a un historique local, on pousse le
+          // local vers le serveur. Sinon le serveur fait foi (les retraits
+          // effectués sur un autre appareil se propagent ici).
+          if (serverIds.length === 0 && localIds.length > 0) {
+            localIds.slice(0, 200).forEach((id) =>
+              mutateServer('POST', '/api/me/reading-list', { storyId: id, list, active: true }, `rlist:${list}:${id}`));
+            setter(localIds);
+          } else {
+            setter(serverIds);
+          }
+        };
+        applyList(st.currentlyReading || [], 'currently', readUserScopedValue<string[]>(getCurrentlyReadingStorageKey(me.id), 'plume_currently_reading', []), setCurrentlyReading);
+        applyList(st.completedStories || [], 'completed', readUserScopedValue<string[]>(getCompletedStorageKey(me.id), 'plume_completed', []), setCompletedStories);
+        applyList(st.readLater || [], 'later', readUserScopedValue<string[]>(getReadLaterStorageKey(me.id), 'plume_read_later', []), setReadLater);
+
+        // Chapitres réellement lus : UNION serveur + local (un fait acquis ne se
+        // « dé-lit » pas), et on pousse au serveur ceux qu'il ne connaît pas.
+        const serverKeys: string[] = (st.fullyRead || []).map((r: any) => `${me.id}:${r.storyId}:${r.chapterId}`);
+        const serverSet = new Set(serverKeys);
+        const localKeys = readUserScopedValue<string[]>(getReadChaptersStorageKey(me.id), 'plume_read_chapters', []);
+        localKeys
+          .filter((key) => key.startsWith(`${me.id}:`) && !serverSet.has(key))
+          .slice(0, 200)
+          .forEach((key) => {
+            const parts = key.split(':');
+            const storyId = parts[1];
+            const chapterId = parts[2];
+            if (storyId && chapterId) mutateServer('POST', `/api/stories/${storyId}/chapters/${chapterId}/complete`, undefined, `chread:${chapterId}`);
+          });
+        setReadChapters(Array.from(new Set([...localKeys, ...serverKeys])));
+      }),
+      safe(async () => {
+        const friendsRes = await fetch('/api/friends', { headers });
+        if (!friendsRes.ok) return;
+        const friendsUsers = await friendsRes.json();
+        setServerFriendIds(friendsUsers.map((u: User) => u.id));
+      }),
+    ]);
+  };
+
   // Fetch initial data from Express API on first load
   useEffect(() => {
     const fetchApiData = async () => {
@@ -1382,43 +1461,9 @@ export default function App() {
         // 1. Fetch Users & Me
         const me = await refreshUsersData();
         const loggedIn = localStorage.getItem('plume_is_logged_in') === 'true';
-        const headers = authHeaders();
 
         if (loggedIn && me) {
-          const notifRes = await fetch(`/api/notifications/${me.id}`, { headers });
-          if (notifRes.ok) {
-            const serverNotifs = await notifRes.json();
-            const mapped = serverNotifs.map(mapServerNotification).slice(0, 120);
-            setNotifications(mapped);
-            localStorage.setItem('plume_notifications', JSON.stringify(mapped));
-          }
-
-          const favRes = await fetch('/api/me/favorites', { headers });
-          if (favRes.ok) {
-            const favStories = await favRes.json();
-            const favIds = favStories.map((s: Story) => s.id);
-            setFavorites(favIds);
-            localStorage.setItem(getFavoritesStorageKey(me.id), JSON.stringify(favIds));
-          }
-
-          const histRes = await fetch('/api/me/history', { headers });
-          if (histRes.ok) {
-            const history = await histRes.json();
-            const readKeys = history
-              .filter((h: any) => h.chapterId)
-              .map((h: any) => `${me.id}:${h.storyId}:${h.chapterId}`);
-            if (readKeys.length) setReadChapters(readKeys);
-            const latest = history[0];
-            if (latest?.storyId && latest?.chapterId) {
-              setLastReadProgress({ storyId: latest.storyId, chapterId: latest.chapterId });
-            }
-          }
-
-          const friendsRes = await fetch('/api/friends', { headers });
-          if (friendsRes.ok) {
-            const friendsUsers = await friendsRes.json();
-            setServerFriendIds(friendsUsers.map((u: User) => u.id));
-          }
+          await hydrateAccountData(me);
         }
 
         // 2. Fetch Stories
@@ -2115,7 +2160,8 @@ export default function App() {
       ? initialFavoritedBy.filter((id) => id !== currentUser.id)
       : [...initialFavoritedBy, currentUser.id];
 
-    favoriteMap[storyId] = nextFavoritedBy;
+    // On ne persiste en local que SA propre appartenance (cf. mergeWithOwnAction).
+    favoriteMap[storyId] = hasFavorited ? [] : [currentUser.id];
     saveLikeMap(STORY_FAVORITERS_STORAGE_KEY, favoriteMap);
 
     const nextFavorites = hasFavorited
@@ -2208,7 +2254,8 @@ export default function App() {
       ? initialLikedBy.filter((id) => id !== currentUser.id)
       : [...initialLikedBy, currentUser.id];
 
-    likeMap[storyId] = nextLikedBy;
+    // On ne persiste en local que SA propre appartenance (cf. mergeWithOwnAction).
+    likeMap[storyId] = hasLiked ? [] : [currentUser.id];
     saveLikeMap(STORY_LIKERS_STORAGE_KEY, likeMap);
 
     const nextLikedStories = hasLiked
@@ -2276,10 +2323,20 @@ export default function App() {
     mutateServer(hasLiked ? 'DELETE' : 'POST', `/api/stories/${storyId}/like`, undefined, `like:${storyId}`);
   };
 
+  // Listes de lecture : l'état local est mis à jour immédiatement (optimiste)
+  // ET poussé au serveur (idempotent, rejoué hors-ligne) pour être IDENTIQUE
+  // sur tous les appareils — app native comme PWA.
+  const syncReadingList = (storyId: string, list: 'currently' | 'completed' | 'later', active: boolean) => {
+    if (!isAuthenticated) return;
+    mutateServer('POST', '/api/me/reading-list', { storyId, list, active }, `rlist:${list}:${storyId}`);
+  };
+
   const handleToggleCurrentlyReading = (storyId: string) => {
+    const active = !currentlyReading.includes(storyId);
     setCurrentlyReading(prev =>
       prev.includes(storyId) ? prev.filter(id => id !== storyId) : [...prev, storyId]
     );
+    syncReadingList(storyId, 'currently', active);
   };
 
   const handleToggleCompletedStories = (storyId: string) => {
@@ -2292,12 +2349,15 @@ export default function App() {
     setCompletedStories(prev =>
       prev.includes(storyId) ? prev.filter(id => id !== storyId) : [...prev, storyId]
     );
+    syncReadingList(storyId, 'completed', isAdding);
   };
 
   const handleToggleReadLater = (storyId: string) => {
+    const active = !readLater.includes(storyId);
     setReadLater(prev =>
       prev.includes(storyId) ? prev.filter(id => id !== storyId) : [...prev, storyId]
     );
+    syncReadingList(storyId, 'later', active);
   };
 
   // À l'OUVERTURE d'un chapitre : on enregistre la session de lecture cote
@@ -2319,11 +2379,17 @@ export default function App() {
 
   // Chapitre REELLEMENT lu (defilement jusqu'a la fin) : il compte alors dans la
   // progression (% = chapitres lus / total) et la statistique de succes. Idempotent.
+  // Pousse aussi cote SERVEUR (table ChapterRead) : la progression est la meme
+  // sur tous les appareils, et l'hydratation au demarrage la restaure.
   const handleChapterFullyRead = (storyId: string, chapterId: string) => {
+    if (!currentUser) return;
     const readKey = `${currentUser.id}:${storyId}:${chapterId}`;
     if (readChapters.includes(readKey) || readChapters.includes(chapterId)) return;
     setReadChapters(prev => [...prev, readKey]);
     handleUpdateAndVerifyUserStats(st => { st.chaptersRead = st.chaptersRead + 1; });
+    if (isAuthenticated) {
+      mutateServer('POST', `/api/stories/${storyId}/chapters/${chapterId}/complete`, undefined, `chread:${chapterId}`);
+    }
   };
 
 
@@ -2375,23 +2441,21 @@ export default function App() {
   };
 
   const handleLikeComment = (commentId: string) => {
+    if (!currentUser) return;
     const likeMap = readLikeMap(COMMENT_LIKERS_STORAGE_KEY);
     const targetComment = comments.find((comment) => comment.id === commentId);
 
     if (!targetComment) return;
 
-    const initialLikedBy = mergeLikeIds(
-      likeMap[commentId],
-      targetComment.likedBy,
-      likeMap[commentId] || (targetComment.likedBy?.length ? [] : createLegacyLikeIds('legacy_comment_like', commentId, targetComment.likes || 0))
-    );
+    const initialLikedBy = mergeLikeIds(realIds(likeMap[commentId]), realIds(targetComment.likedBy));
 
     const hasLiked = initialLikedBy.includes(currentUser.id);
     const nextLikedBy = hasLiked
       ? initialLikedBy.filter((id) => id !== currentUser.id)
       : [...initialLikedBy, currentUser.id];
 
-    likeMap[commentId] = nextLikedBy;
+    // On ne persiste en local que SA propre appartenance (cf. mergeWithOwnAction).
+    likeMap[commentId] = hasLiked ? [] : [currentUser.id];
     saveLikeMap(COMMENT_LIKERS_STORAGE_KEY, likeMap);
 
     const likedCommentsKey = `plume_liked_comments_${currentUser.id}`;
@@ -2427,7 +2491,9 @@ export default function App() {
     });
 
     // Tolérant au hors-ligne : rejoué au retour du réseau (clé = clike:<id>).
-    mutateServer(hasLiked ? 'DELETE' : 'POST', `/api/comments/${commentId}/like`, undefined, `clike:${commentId}`);
+    // NB : la route serveur est un PUT avec { likedByMe } — l'ancien POST/DELETE
+    // tombait en 404 silencieux et le like n'était JAMAIS persisté.
+    mutateServer('PUT', `/api/comments/${commentId}/like`, { likedByMe: !hasLiked }, `clike:${commentId}`);
   };
 
   const handleAddReply = (commentId: string, content: string) => {
@@ -2504,15 +2570,11 @@ export default function App() {
             setComments(c.map((comment: Comment) => normalizeCommentLikesFromStorage(comment)));
           }
         })(),
+        // Données personnelles du compte (notifications, favoris, listes de
+        // lecture, progression, amis) : même hydratation qu'au démarrage.
         (async () => {
           if (!currentUser?.id) return;
-          const r = await fetch(`/api/notifications/${currentUser.id}`, { headers: authHeaders() });
-          if (r.ok) {
-            const n = await r.json();
-            const mapped = n.map(mapServerNotification).slice(0, 120);
-            setNotifications(mapped);
-            localStorage.setItem('plume_notifications', JSON.stringify(mapped));
-          }
+          await hydrateAccountData(currentUser);
         })(),
       ]);
     } catch (e) {
@@ -3179,7 +3241,8 @@ export default function App() {
     }
 
     const nextViewedBy = [...initialViewedBy, currentUser.id];
-    viewMap[storyId] = nextViewedBy;
+    // Marque locale = uniquement SA propre vue (dedoublonnage sur cet appareil).
+    viewMap[storyId] = [currentUser.id];
     saveLikeMap(STORY_VIEWERS_STORAGE_KEY, viewMap);
 
     // Vue optimiste : on ajoute +1 au total SERVEUR (et non a la liste locale, qui
@@ -3293,12 +3356,16 @@ export default function App() {
             onLoginSuccess={(user) => {
               setCurrentUser(user);
               setIsAuthenticated(true);
+              // Recharge les données du COMPTE (favoris, listes, progression…)
+              // sans attendre un redémarrage : sinon l'app restait sur les
+              // données locales de l'appareil (divergence app / PWA).
+              hydrateAccountData(user).catch(() => {});
             }}
             onRegisterSuccess={(newUser) => {
               setAllUsers([...allUsers, newUser]);
               setCurrentUser(newUser);
               setIsAuthenticated(true);
-              
+              hydrateAccountData(newUser).catch(() => {});
             }}
           />
         ) : !currentUser ? (

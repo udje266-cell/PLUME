@@ -215,6 +215,10 @@ function serializeComment(comment: any) {
     username: user?.username || comment.username || '',
     avatar: user?.avatar || comment.avatar || '',
     date: comment.createdAt ? new Date(comment.createdAt).toISOString() : undefined,
+    // Liste REELLE des likers (comme pour les récits) : chaque client affiche le
+    // même compte et sait si SON cœur est allumé, sur tous les appareils.
+    likedBy: Array.isArray(comment.commentLikes) ? comment.commentLikes.map((l: any) => l.userId).filter(Boolean) : (Array.isArray(comment.likedBy) ? comment.likedBy : undefined),
+    commentLikes: undefined,
     replies: Array.isArray(comment.replies)
       ? comment.replies.map((reply: any) => {
           const replyUser = reply.user ? serializeUser(reply.user) : null;
@@ -2574,12 +2578,12 @@ export async function createServerInstance() {
   app.get('/api/comments', requireAuth, async (_req, res) => {
     // Auth requise + plafond : evite le dump anonyme de TOUS les commentaires et
     // le DoS quand leur nombre explose.
-    const comments = await prisma.comment.findMany({ include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } } } }, orderBy: { createdAt: 'desc' }, take: 2000 });
+    const comments = await prisma.comment.findMany({ include: { user: { select: SAFE_USER_SELECT }, commentLikes: { select: { userId: true } }, replies: { include: { user: { select: SAFE_USER_SELECT } } } }, orderBy: { createdAt: 'desc' }, take: 2000 });
     res.json(comments.map(serializeComment));
   });
 
   app.get('/api/stories/:storyId/comments', async (req, res) => {
-    const comments = await prisma.comment.findMany({ where: { storyId: req.params.storyId }, include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
+    const comments = await prisma.comment.findMany({ where: { storyId: req.params.storyId }, include: { user: { select: SAFE_USER_SELECT }, commentLikes: { select: { userId: true } }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
     res.json(comments.map(serializeComment));
   });
 
@@ -4314,6 +4318,112 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Erreur lors de l'effacement de l'historique" });
+    }
+  });
+
+  // ----- État de lecture partagé entre appareils (app native ↔ PWA) -----
+  // Listes de lecture + chapitres réellement lus, en une seule requête au
+  // démarrage. Le client FUSIONNE (union) avec son état local.
+  app.get('/api/me/reading-state', requireAuth, async (req: any, res) => {
+    try {
+      const [entries, reads] = await Promise.all([
+        prisma.readingListEntry.findMany({ where: { userId: req.user.id }, select: { storyId: true, list: true } }),
+        prisma.chapterRead.findMany({ where: { userId: req.user.id }, select: { storyId: true, chapterId: true } }),
+      ]);
+      res.json({
+        currentlyReading: entries.filter((e) => e.list === 'currently').map((e) => e.storyId),
+        completedStories: entries.filter((e) => e.list === 'completed').map((e) => e.storyId),
+        readLater: entries.filter((e) => e.list === 'later').map((e) => e.storyId),
+        fullyRead: reads,
+      });
+    } catch (error) {
+      console.error('[READING-STATE] chargement:', error);
+      res.status(500).json({ error: "Erreur lors du chargement de l'état de lecture" });
+    }
+  });
+
+  // Ajout/retrait IDEMPOTENT d'un récit dans une liste (rejouable par la file
+  // hors-ligne sans effet de bord).
+  app.post('/api/me/reading-list', requireAuth, async (req: any, res) => {
+    try {
+      const storyId = typeof req.body.storyId === 'string' ? req.body.storyId : '';
+      const list = String(req.body.list || '');
+      const active = Boolean(req.body.active);
+      if (!storyId || !['currently', 'completed', 'later'].includes(list)) {
+        return res.status(400).json({ error: 'storyId et list (currently|completed|later) sont requis' });
+      }
+      if (active) {
+        await prisma.readingListEntry.upsert({
+          where: { userId_storyId_list: { userId: req.user.id, storyId, list } },
+          update: {},
+          create: { userId: req.user.id, storyId, list },
+        });
+      } else {
+        await prisma.readingListEntry.deleteMany({ where: { userId: req.user.id, storyId, list } });
+      }
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[READING-LIST] mise à jour:', error);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour de la liste de lecture' });
+    }
+  });
+
+  // Chapitre RÉELLEMENT lu (défilé jusqu'au bout) : idempotent, alimente la
+  // progression de lecture partagée — distinct de /read qui trace l'OUVERTURE.
+  app.post('/api/stories/:storyId/chapters/:chapterId/complete', requireAuth, async (req: any, res) => {
+    try {
+      const read = await prisma.chapterRead.upsert({
+        where: { userId_chapterId: { userId: req.user.id, chapterId: req.params.chapterId } },
+        update: {},
+        create: { userId: req.user.id, storyId: req.params.storyId, chapterId: req.params.chapterId },
+      });
+      res.status(201).json(read);
+    } catch (error) {
+      console.error('[CHAPTER-READ] enregistrement:', error);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de la lecture du chapitre' });
+    }
+  });
+
+  // ----- Citations sauvegardées (persistées par compte) -----
+  app.get('/api/me/quotes', requireAuth, async (req: any, res) => {
+    try {
+      const quotes = await prisma.savedQuote.findMany({ where: { userId: req.user.id }, orderBy: { createdAt: 'desc' }, take: 500 });
+      res.json(quotes);
+    } catch (error) {
+      console.error('[QUOTES] chargement:', error);
+      res.status(500).json({ error: 'Erreur lors du chargement des citations' });
+    }
+  });
+
+  app.post('/api/me/quotes', requireAuth, async (req: any, res) => {
+    try {
+      const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+      if (!content) return res.status(400).json({ error: 'content est requis' });
+      if (content.length > 2000) return res.status(400).json({ error: 'Citation trop longue (2000 caractères maximum).' });
+      const quote = await prisma.savedQuote.create({
+        data: {
+          userId: req.user.id,
+          content,
+          storyId: typeof req.body.storyId === 'string' ? req.body.storyId : null,
+          chapterId: typeof req.body.chapterId === 'string' ? req.body.chapterId : null,
+          storyTitle: typeof req.body.storyTitle === 'string' ? req.body.storyTitle.slice(0, 300) : null,
+          author: typeof req.body.author === 'string' ? req.body.author.slice(0, 100) : null,
+        },
+      });
+      res.status(201).json(quote);
+    } catch (error) {
+      console.error('[QUOTES] création:', error);
+      res.status(500).json({ error: 'Erreur lors de la sauvegarde de la citation' });
+    }
+  });
+
+  app.delete('/api/me/quotes/:id', requireAuth, async (req: any, res) => {
+    try {
+      await prisma.savedQuote.deleteMany({ where: { id: req.params.id, userId: req.user.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error('[QUOTES] suppression:', error);
+      res.status(500).json({ error: 'Erreur lors de la suppression de la citation' });
     }
   });
 

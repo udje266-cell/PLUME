@@ -41,6 +41,7 @@ import {
 import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
+import { authHeaders } from '../utils/auth';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 
 // ── Rendu du contenu de chapitre avec mise en forme inline (gras/italique/
@@ -488,14 +489,50 @@ export default function ReadingView({
   // Discrete interactions & reactions
   const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
   const [likedPassagesMe, setLikedPassagesMe] = useState<Record<string, boolean>>({});
+  // Citations : clé SCOPÉE PAR UTILISATEUR (l'ancienne clé globale faisait fuir
+  // le carnet d'un compte vers l'autre sur le même appareil) + persistance
+  // serveur (survit au changement d'appareil, identique app/PWA).
+  const quotesStorageKey = `plume_saved_quotes_${currentUser.id}`;
   const [savedQuotes, setSavedQuotes] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('plume_saved_quotes');
-      return saved ? JSON.parse(saved) : [];
+      const scoped = localStorage.getItem(quotesStorageKey);
+      if (scoped !== null) return JSON.parse(scoped);
+      // Migration douce depuis l'ancienne clé globale.
+      const legacy = localStorage.getItem('plume_saved_quotes');
+      return legacy ? JSON.parse(legacy) : [];
     } catch {
       return [];
     }
   });
+  // content → id serveur, pour pouvoir supprimer une citation côté serveur.
+  const quoteIdsRef = useRef<Record<string, string>>({});
+
+  // Hydratation serveur (une fois) : fusionne les citations du compte et pousse
+  // celles que le serveur ne connaît pas encore (migration douce).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/me/quotes', { headers: authHeaders() });
+        if (!r.ok || cancelled) return;
+        const list = await r.json();
+        const map: Record<string, string> = {};
+        for (const q of list) map[q.content] = q.id;
+        quoteIdsRef.current = map;
+        let local: string[] = [];
+        try { local = JSON.parse(localStorage.getItem(quotesStorageKey) || localStorage.getItem('plume_saved_quotes') || '[]'); } catch { local = []; }
+        for (const c of local.filter((content) => !map[content]).slice(0, 100)) {
+          fetch('/api/me/quotes', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ content: c }) })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((q) => { if (q) quoteIdsRef.current[q.content] = q.id; })
+            .catch(() => {});
+        }
+        if (!cancelled) setSavedQuotes((prev) => Array.from(new Set([...prev, ...list.map((q: any) => q.content)])));
+      } catch { /* hors-ligne : le carnet local reste utilisable */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
   const emojiIdCounter = useRef<number>(0);
 
@@ -768,10 +805,10 @@ export default function ReadingView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChapterIndex, story.id]);
 
-  // Save quotes synchronize
+  // Save quotes synchronize (clé scopée par utilisateur)
   useEffect(() => {
-    localStorage.setItem('plume_saved_quotes', JSON.stringify(savedQuotes));
-  }, [savedQuotes]);
+    localStorage.setItem(quotesStorageKey, JSON.stringify(savedQuotes));
+  }, [savedQuotes, quotesStorageKey]);
 
   // Références pour gérer le défilement fluide sans conflit avec l'écouteur de scroll
   const isClickScrollingRef = useRef<boolean>(false);
@@ -934,13 +971,27 @@ export default function ReadingView({
     }, 2000);
   };
 
-  // Saved Passage toggle
+  // Saved Passage toggle — miroir serveur : la citation suit le compte (et non
+  // l'appareil), et sa suppression se propage partout.
   const toggleSavePassage = (txt: string) => {
     const stripped = txt.replace(/^[#\-\*\s]+/, '').trim();
     if (savedQuotes.includes(stripped)) {
       setSavedQuotes(prev => prev.filter(q => q !== stripped));
+      const serverId = quoteIdsRef.current[stripped];
+      if (serverId) {
+        delete quoteIdsRef.current[stripped];
+        fetch(`/api/me/quotes/${serverId}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {});
+      }
     } else {
       setSavedQuotes(prev => [...prev, stripped]);
+      fetch('/api/me/quotes', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ content: stripped, storyId: story.id, chapterId: activeChapter?.id, storyTitle: story.title, author: story.authorName }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((q) => { if (q) quoteIdsRef.current[stripped] = q.id; })
+        .catch(() => {});
       alert("Citation sauvegardée dans votre carnet personnel !");
     }
   };
