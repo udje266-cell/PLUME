@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { 
@@ -37,6 +37,7 @@ import { GENRES, CATEGORIES, AMBIANCES, FORMATS, LANGUAGES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { generateCoverDataUri } from '../utils/coverImage';
 import { useAndroidBack } from '../utils/backButton';
+import { authHeaders } from '../utils/auth';
 
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -157,6 +158,21 @@ export default function WriteView({
     }
     return false;
   });
+
+  // Statistiques SERVEUR par chapitre (lectures complètes via ChapterRead +
+  // taux de complétion) — chargées à l'ouverture de l'onglet Statistiques.
+  interface AuthorStatsChapter { id: string; title: string; order: number; opens: number; fullReads: number }
+  interface AuthorStatsStory { id: string; title: string; status: string; views: number; readers: number; completion: number; chapters: AuthorStatsChapter[] }
+  const [authorStats, setAuthorStats] = useState<AuthorStatsStory[] | null>(null);
+  useEffect(() => {
+    if (activeSubTab !== 'performance-dashboard') return;
+    let cancelled = false;
+    fetch('/api/me/author-stats', { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d && Array.isArray(d.stories)) setAuthorStats(d.stories); })
+      .catch(() => { /* hors-ligne : la section serveur reste masquée */ });
+    return () => { cancelled = true; };
+  }, [activeSubTab]);
 
   const resetStoryForm = () => {
     setTitle('');
@@ -904,6 +920,49 @@ export default function WriteView({
                     </div>
 
                   </div>
+
+                  {/* PARCOURS DE LECTURE PAR CHAPITRE : la donnée que les
+                      compteurs bruts ne donnent jamais — OÙ les lecteurs
+                      décrochent (lectures COMPLÈTES par chapitre). */}
+                  {authorStats && authorStats.some((s) => s.chapters.length > 0) && (
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-200/50 dark:border-purple-900/20 rounded-2xl p-6 space-y-6">
+                      <div>
+                        <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider">Parcours de lecture par chapitre</h3>
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Lecteurs ayant lu chaque chapitre <span className="font-bold">en entier</span> — là où la barre chute, c'est là qu'on décroche.
+                        </p>
+                      </div>
+                      {authorStats.filter((s) => s.chapters.length > 0).map((s) => {
+                        const maxReads = Math.max(1, ...s.chapters.map((c) => c.fullReads));
+                        return (
+                          <div key={s.id} className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">{s.title}</span>
+                              <span className="text-[9px] font-mono text-gray-400 whitespace-nowrap">
+                                {s.readers} lecteur{s.readers > 1 ? 's' : ''} · complétion {s.completion}%
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {s.chapters.map((c, i) => (
+                                <div key={c.id} className="flex items-center gap-2" title={c.title}>
+                                  <span className="w-10 text-[9px] font-mono text-gray-400 text-right shrink-0">Ch. {i + 1}</span>
+                                  <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div className="h-full bg-purple-600 rounded-full transition-all" style={{ width: `${(c.fullReads / maxReads) * 100}%` }} />
+                                  </div>
+                                  <span className="w-16 text-[9px] font-mono text-gray-500 dark:text-gray-400 shrink-0 text-right">
+                                    {c.fullReads} lecture{c.fullReads > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[9px] text-gray-400 italic">
+                        Compte les lectures complètes (chapitre parcouru jusqu'au bout), pas les simples ouvertures — le suivi démarre à partir d'aujourd'hui.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Visual bar completion */}

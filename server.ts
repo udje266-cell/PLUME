@@ -603,6 +603,48 @@ export async function createServerInstance() {
     }).catch(() => {});
   };
 
+  // Notifie les ABONNÉS de l'auteur qu'un NOUVEAU CHAPITRE est disponible —
+  // la boucle qui ramène les lecteurs (et récompense la régularité des
+  // auteurs). Appelée uniquement à la TRANSITION vers « publié » d'un chapitre
+  // d'un récit lui-même publié (jamais lors d'une simple re-sauvegarde).
+  const notifyFollowersNewChapter = async (story: any, chapter: any) => {
+    try {
+      if (!story || story.status !== 'PUBLIE' || !chapter?.isPublished) return;
+      const followers = await prisma.follow.findMany({
+        where: { followingId: story.authorId },
+        select: { followerId: true },
+        take: 2000,
+      });
+      if (!followers.length) return;
+      const author = await prisma.user.findUnique({ where: { id: story.authorId }, select: { username: true, avatar: true } });
+      const payload = {
+        actorId: story.authorId,
+        actorName: author?.username || '',
+        actorAvatar: author?.avatar || '',
+        storyId: story.id,
+        storyTitle: story.title,
+        chapterId: chapter.id,
+        chapterTitle: chapter.title || '',
+      } as any;
+      for (const f of followers) {
+        prisma.notification
+          .create({
+            data: {
+              userId: f.followerId,
+              type: 'NEW_CHAPTER',
+              title: 'Nouveau chapitre 🪶',
+              message: `${author?.username || 'Un auteur'} a publié « ${chapter.title || 'un nouveau chapitre'} » dans ${story.title}.`,
+              data: payload,
+            },
+          })
+          .then((n) => notifyUser(f.followerId, n))
+          .catch(() => { /* un destinataire en échec ne bloque pas les autres */ });
+      }
+    } catch (e) {
+      console.error('[NEW-CHAPTER] notification abonnés :', e);
+    }
+  };
+
   // Diffuse en TEMPS RÉEL les compteurs d'un récit à son auteur (et aux clients)
   // après un like/favori → la stat « Mentions » du profil se met à jour sans
   // rafraîchissement.
@@ -2471,6 +2513,8 @@ export async function createServerInstance() {
       await recomputeCertification(story.authorId);
       // XP auteur : +30 si le chapitre est créé directement publié.
       if (newChapter.isPublished) awardXp(story.authorId, 'author', XP.publishChapter).catch(() => {});
+      // Nouveau chapitre publié d'un récit publié → on prévient les abonnés.
+      if (newChapter.isPublished) notifyFollowersNewChapter(story, newChapter).catch(() => {});
       res.status(201).json(serializeChapter(newChapter));
     } catch (error) {
       console.error(error);
@@ -2508,6 +2552,8 @@ export async function createServerInstance() {
       // XP auteur : +30 à la PREMIÈRE publication du chapitre (transition).
       if (!existingChapter.isPublished && updatedChapter.isPublished) {
         awardXp(existingChapter.story.authorId, 'author', XP.publishChapter).catch(() => {});
+        // Transition brouillon → publié : on prévient les abonnés de l'auteur.
+        notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
       }
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
@@ -2557,6 +2603,10 @@ export async function createServerInstance() {
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
+      // Transition brouillon → publié : on prévient les abonnés de l'auteur.
+      if (!existingChapter.isPublished && updatedChapter.isPublished) {
+        notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
+      }
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
       console.error(error);
@@ -4312,6 +4362,66 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de l’enregistrement de la lecture' });
+    }
+  });
+
+  // ----- Tableau de bord AUTEUR -----
+  // La vérité sur la lecture : ouvertures ET lectures complètes par chapitre
+  // (table ChapterRead = défilé jusqu'au bout), lecteurs distincts, taux de
+  // complétion (lecteurs du dernier chapitre / lecteurs du premier). C'est ce
+  // que les compteurs bruts (vues/likes) ne disent jamais : OÙ on décroche.
+  app.get('/api/me/author-stats', requireAuth, async (req: any, res) => {
+    try {
+      const stories = await prisma.story.findMany({
+        where: { authorId: req.user.id },
+        select: {
+          id: true, title: true, status: true, views: true, reads: true,
+          chapters: { orderBy: { order: 'asc' }, select: { id: true, title: true, order: true, isPublished: true, views: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+      const chapterIds = stories.flatMap((s) => s.chapters.map((c) => c.id));
+      // Lectures COMPLÈTES par chapitre.
+      const fullReads = chapterIds.length
+        ? await prisma.chapterRead.groupBy({ by: ['chapterId'], where: { chapterId: { in: chapterIds } }, _count: { chapterId: true } })
+        : [];
+      const fullMap = new Map(fullReads.map((r: any) => [r.chapterId, r._count.chapterId]));
+      // Lecteurs DISTINCTS par récit (au moins un chapitre lu en entier).
+      const storyIds = stories.map((s) => s.id);
+      const readerRows = storyIds.length
+        ? await prisma.chapterRead.findMany({ where: { storyId: { in: storyIds } }, select: { storyId: true, userId: true }, distinct: ['storyId', 'userId'] })
+        : [];
+      const readersByStory = new Map<string, number>();
+      for (const r of readerRows) readersByStory.set(r.storyId, (readersByStory.get(r.storyId) || 0) + 1);
+
+      const result = stories.map((s) => {
+        const pub = s.chapters.filter((c) => c.isPublished);
+        const chapters = pub.map((c) => ({
+          id: c.id,
+          title: c.title,
+          order: c.order,
+          opens: c.views || 0,
+          fullReads: fullMap.get(c.id) || 0,
+        }));
+        const firstReads = chapters[0]?.fullReads || 0;
+        const lastReads = chapters.length ? chapters[chapters.length - 1].fullReads : 0;
+        // Complétion : parmi ceux qui ont VRAIMENT lu le début, combien vont au bout.
+        const completion = firstReads > 0 ? Math.round((lastReads / firstReads) * 100) : 0;
+        return {
+          id: s.id,
+          title: s.title,
+          status: storyStatusFromPrisma(s.status),
+          views: s.views || 0,
+          readers: readersByStory.get(s.id) || 0,
+          completion,
+          chapters,
+        };
+      });
+      res.json({ stories: result });
+    } catch (error) {
+      console.error('[AUTHOR-STATS]', error);
+      res.status(500).json({ error: "Erreur lors du calcul des statistiques d'auteur" });
     }
   });
 

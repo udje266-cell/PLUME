@@ -26,7 +26,8 @@ import {
   PenTool,
   Send,
   X as CloseIcon,
-  Check
+  Check,
+  Play
 } from 'lucide-react';
 import { User, Story, Chapter } from '../types';
 import { getDownloadedBooks, removeDownload } from '../utils/offline';
@@ -161,6 +162,24 @@ export default function HomeView({
 
     return { percent, lastRead };
   };
+
+  // Carte « Reprendre » : LE dernier chapitre ouvert, avec temps de lecture
+  // restant estimé (~220 mots/min). Un geste pour replonger exactement où on
+  // s'était arrêté — sans avoir à retrouver le livre soi-même.
+  const resumeInfo = (() => {
+    if (!lastReadProgress) return null;
+    const story = publishedStories.find((s) => s.id === lastReadProgress.storyId);
+    if (!story || story.chapters.length === 0) return null;
+    const rawIdx = story.chapters.findIndex((c) => c.id === lastReadProgress.chapterId);
+    const idx = rawIdx >= 0 ? rawIdx : 0;
+    const { percent } = getStoryProgressInfo(story);
+    if (percent >= 100) return null; // livre terminé : rien à reprendre
+    const countWords = (html: string) => html.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    const wordsLeft = story.chapters.slice(idx).reduce((sum, c) => sum + countWords(c.content || ''), 0);
+    const minutes = Math.max(1, Math.round(wordsLeft / 220));
+    const timeLabel = minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}` : `${minutes} min`;
+    return { story, chapterIndex: idx, chapterTitle: story.chapters[idx]?.title || '', percent, timeLabel };
+  })();
 
   // 2. "Pour toi" — diffusion personnalisée via l'algorithme de recommandation
   // (affinité de goût + signal social + qualité lissée + popularité à déclin
@@ -448,6 +467,42 @@ export default function HomeView({
                 <p className="text-[9px] text-gray-400 line-clamp-1">{book.authorName}</p>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* CARTE HÉRO « REPRENDRE » : replonger en un geste dans le dernier
+          chapitre ouvert, avec le temps de lecture restant. */}
+      {resumeInfo && (
+        <section
+          id="resume-reading-card"
+          onClick={() => onSelectStory(resumeInfo.story)}
+          className="relative overflow-hidden rounded-2xl border border-purple-500/25 bg-gradient-to-br from-purple-700 via-purple-800 to-[#1a1030] cursor-pointer shadow-lg active:scale-[0.99] transition"
+        >
+          <div className="flex items-stretch gap-3 p-3">
+            <div className="w-16 flex-shrink-0 rounded-xl overflow-hidden aspect-[2/3] bg-black/30">
+              {resumeInfo.story.cover && (
+                <img src={optimizedImage(resumeInfo.story.cover, 160)} alt={resumeInfo.story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 text-white">
+              <p className="text-[9px] font-black uppercase tracking-widest text-purple-200/90">Reprendre ta lecture</p>
+              <h3 className="text-sm font-black leading-tight line-clamp-1">{resumeInfo.story.title}</h3>
+              <p className="text-[11px] text-purple-100/90 line-clamp-1">
+                Chapitre {resumeInfo.chapterIndex + 1}{resumeInfo.chapterTitle ? ` · ${resumeInfo.chapterTitle}` : ''}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                  <div className="h-full bg-white/90 rounded-full" style={{ width: `${resumeInfo.percent}%` }} />
+                </div>
+                <span className="text-[9px] font-bold text-purple-100/80 whitespace-nowrap">~{resumeInfo.timeLabel} restantes</span>
+              </div>
+            </div>
+            <div className="flex items-center flex-shrink-0">
+              <span className="w-9 h-9 rounded-full bg-white text-purple-700 flex items-center justify-center shadow">
+                <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
+              </span>
+            </div>
           </div>
         </section>
       )}
