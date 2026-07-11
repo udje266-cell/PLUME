@@ -62,7 +62,7 @@ jobs:
       - name: Décoder le keystore depuis les secrets
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/plume-release.jks"
 
-      - name: Build de l'AAB signé
+      - name: Build de l'AAB signé (Play Store) et de l'APK signé (installation directe)
         working-directory: android
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/plume-release.jks
@@ -71,11 +71,20 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          ./gradlew bundleRelease --no-daemon
+          ./gradlew bundleRelease assembleRelease --no-daemon
 
       - name: Publier l'AAB signé en artefact
         uses: actions/upload-artifact@v4
         with:
           name: PLUME-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      # APK signé : s'installe directement sur un téléphone (contrairement à
+      # l'AAB) et sa signature release valide ENFIN les App Links (assetlinks).
+      - name: Publier l'APK signé en artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PLUME-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
