@@ -60,7 +60,27 @@ jobs:
         run: npx cap sync android
 
       - name: Décoder le keystore depuis les secrets
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/plume-release.jks"
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          # Nettoie les artefacts d'encodage courants : retours Windows (\r),
+          # espaces, et en-têtes ajoutés par `certutil -encode` sous Windows
+          # (-----BEGIN/END CERTIFICATE-----) qui corrompaient le décodage.
+          printf '%s' "$KS_B64" \
+            | tr -d '\r\n\t ' \
+            | sed -e 's/-----BEGIN[A-Z]*-----//g' -e 's/-----END[A-Z]*-----//g' \
+            | base64 -d > "$RUNNER_TEMP/plume-release.jks" || {
+              echo "::error::ANDROID_KEYSTORE_BASE64 n'est pas un base64 valide."
+              exit 1
+            }
+          # Vérification PRÉCOCE : échoue ici avec un message clair plutôt que
+          # 2 minutes plus tard au fond de Gradle.
+          keytool -list -keystore "$RUNNER_TEMP/plume-release.jks" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1 || {
+            echo "::error::Keystore illisible : le secret base64 est corrompu/tronqué OU KEYSTORE_PASSWORD est incorrect. Régénère le secret (PowerShell : [Convert]::ToBase64String([IO.File]::ReadAllBytes('plume-release.jks')) | Set-Clipboard)."
+            exit 1
+          }
+          echo "Keystore décodé et vérifié."
 
       - name: Build de l'AAB signé (Play Store) et de l'APK signé (installation directe)
         working-directory: android
