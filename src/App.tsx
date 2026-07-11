@@ -1111,6 +1111,10 @@ export default function App() {
   // Détection hors-ligne : on prévient l'utilisateur quand le réseau tombe
   // (l'app reste utilisable en lecture grâce aux livres téléchargés + caches).
   const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  // Session expirée CONFIRMÉE (un 401 en cours d'usage, re-vérifié par une sonde
+  // /api/auth/me) : bannière + reconnexion, au lieu d'échouer en silence.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const sessionProbeAtRef = useRef(0);
   const [pendingActions, setPendingActions] = useState<number>(() => queueLength());
   useEffect(() => {
     const goOnline = () => { setIsOffline(false); flushQueue(); };
@@ -3195,7 +3199,20 @@ export default function App() {
       // contente de tracer le 401 ; la requête concernée échoue simplement.
       if (response.status === 401) {
         const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-        if (!ignore401(urlStr)) console.warn('[AUTH] 401 sur', urlStr, '(ignoré, pas de déconnexion auto).');
+        if (!ignore401(urlStr)) {
+          console.warn('[AUTH] 401 sur', urlStr, '(vérification de session déclenchée).');
+          // CONFIRMATION avant d'alerter : un 401 isolé/transitoire ne suffit
+          // pas. On sonde /api/auth/me (au plus 1 fois/minute) ; si la sonde
+          // elle-même est en 401/403, la session est réellement morte → bannière
+          // « se reconnecter ». Toujours PAS de déconnexion automatique.
+          const now = Date.now();
+          if (isAuthenticatedRef.current && now - sessionProbeAtRef.current > 60_000) {
+            sessionProbeAtRef.current = now;
+            originalFetch('/api/auth/me', { headers: authHeaders() })
+              .then((r) => { if (r.status === 401 || r.status === 403) setSessionExpired(true); })
+              .catch(() => {});
+          }
+        }
       }
       return response;
     };
@@ -3343,6 +3360,19 @@ export default function App() {
           Synchronisation… {pendingActions} action{pendingActions > 1 ? 's' : ''} en attente
         </div>
       )}
+      {/* Session expirée (401 confirmé par sonde) : sans cette bannière, toutes
+          les actions échouaient en silence avec une interface « verte ». */}
+      {sessionExpired && isAuthenticated && (
+        <div className="fixed top-0 inset-x-0 z-[2147482001] bg-red-600 text-white text-[11px] font-black uppercase tracking-wider text-center py-1.5 shadow flex items-center justify-center gap-3 px-3" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <span>Session expirée — tes actions ne sont plus enregistrées</span>
+          <button
+            onClick={() => { setSessionExpired(false); handleLogout(); }}
+            className="underline decoration-2 underline-offset-2 shrink-0"
+          >
+            Se reconnecter
+          </button>
+        </div>
+      )}
 
       {/* Bandeau d'installation PWA (web uniquement, masqué si déjà installée). */}
       <InstallPrompt />
@@ -3356,6 +3386,7 @@ export default function App() {
             onLoginSuccess={(user) => {
               setCurrentUser(user);
               setIsAuthenticated(true);
+              setSessionExpired(false);
               // Recharge les données du COMPTE (favoris, listes, progression…)
               // sans attendre un redémarrage : sinon l'app restait sur les
               // données locales de l'appareil (divergence app / PWA).

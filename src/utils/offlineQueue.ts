@@ -97,6 +97,11 @@ export async function flushQueue(): Promise<void> {
         });
         if (res.ok || res.status === 404 || res.status === 409) {
           done = true; // succès, ou déjà appliqué/idempotent → on retire
+        } else if (res.status === 401 || res.status === 403) {
+          // Session expirée / non autorisé MAINTENANT : on CONSERVE l'action et
+          // on s'arrête — elle sera rejouée après reconnexion. La jeter perdait
+          // silencieusement des likes/lectures quand le token expirait.
+          stop = true;
         } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
           done = true; // erreur client définitive → on abandonne (pas de boucle)
         } else {
