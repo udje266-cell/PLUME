@@ -129,6 +129,9 @@ model Story {
   flagReason     String?
   featured       Boolean     @default(false)
   ageRating      String      @default("ALL")
+  // Mode d'organisation choisi à la création : "chapters" (liste plate, défaut,
+  // = comportement historique) ou "tomes" (chapitres regroupés en volumes).
+  structure      String      @default("chapters")
 
   authorId       String
   author         User        @relation(fields: [authorId], references: [id], onDelete: Cascade)

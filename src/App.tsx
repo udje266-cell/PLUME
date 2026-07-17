@@ -2700,7 +2700,9 @@ export default function App() {
       reads: 0,
       rating: 0,
       isFlagged: false,
-      ageRating: storyData.ageRating || 'all'
+      ageRating: storyData.ageRating || 'all',
+      structure: storyData.structure === 'tomes' ? 'tomes' : 'chapters',
+      tomes: [],
     };
 
     setStories([newStory, ...stories]);
@@ -2754,6 +2756,8 @@ export default function App() {
       // plus jamais forcé à « publié ». Par défaut publié si non précisé.
       isPublished: chapterData.isPublished ?? true,
       order: chapterData.order ?? nextOrder,
+      // Tome cible (créé directement DANS un tome depuis l'atelier), ou null.
+      tomeId: chapterData.tomeId ?? null,
       // Compteurs à 0 (alignés sur le serveur) : un chapitre tout neuf n'a pas
       // « 1 vue / 1 lecture ».
       views: 0,

@@ -203,6 +203,7 @@ function serializeStory(story: any) {
     tags: parseJsonArray(story.tags),
     status: storyStatusFromPrisma(story.status),
     ageRating: ageRatingFromPrisma(story.ageRating),
+    structure: story.structure === 'tomes' ? 'tomes' : 'chapters',
     publishDate: story.publishedAt ? new Date(story.publishedAt).toISOString().split('T')[0] : undefined,
     chapters: Array.isArray(story.chapters) ? story.chapters.map(serializeChapter) : [],
     // Tomes (optionnels) triés par ordre. Absents => [] => lecture plate.
@@ -2420,6 +2421,7 @@ export async function createServerInstance() {
           // valeurs par défaut du schéma et n'évoluent que via les routes
           // dédiées (/read, /like) ou la modération admin.
           ageRating: ageRatingToPrisma(story.ageRating),
+          structure: story.structure === 'tomes' ? 'tomes' : 'chapters',
           authorId: req.user.id,
           publishedAt: story.status === 'Publié' ? new Date() : null,
         },
@@ -2455,6 +2457,8 @@ export async function createServerInstance() {
         tags: Array.isArray(story.tags) ? JSON.stringify(story.tags) : undefined,
         status: story.status ? storyStatusToPrisma(story.status) : undefined,
         ageRating: story.ageRating ? ageRatingToPrisma(story.ageRating) : undefined,
+        // Mode d'organisation (chapitres/tomes) modifiable seulement s'il est fourni.
+        structure: story.structure === 'tomes' ? 'tomes' : (story.structure === 'chapters' ? 'chapters' : undefined),
         // Date de publication figée à la transition brouillon → publié : une
         // simple re-sauvegarde d'un récit publié ne la fait plus dériver.
         publishedAt: story.status === 'Publié' && existing.status !== 'PUBLIE' ? new Date() : undefined,

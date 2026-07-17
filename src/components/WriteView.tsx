@@ -139,6 +139,8 @@ export default function WriteView({
   const [language, setLanguage] = useState(LANGUAGES[0]);
   const [tagsInput, setTagsInput] = useState('');
   const [ageRating, setAgeRating] = useState<'all' | '12' | '16' | '18'>('all');
+  // Mode d'organisation choisi à la création : chapitres (simple) ou tomes.
+  const [storyStructure, setStoryStructure] = useState<'chapters' | 'tomes'>('chapters');
   const [coverImage, setCoverImage] = useState('');
   const [coverImageSrc, setCoverImageSrc] = useState<string | null>(null);
   const [coverFileName, setCoverFileName] = useState('cover.jpg');
@@ -148,7 +150,9 @@ export default function WriteView({
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   // Chapter editing screen (l'éditeur immersif gère titre/contenu en interne).
-  const [editingChapterInStory, setEditingChapterInStory] = useState<{ story: Story; chapter: Chapter | null } | null>(null);
+  // tomeId : tome cible quand on crée un NOUVEAU chapitre directement dans un
+  // tome (« + Chapitre » sous un tome). Ignoré à l'édition d'un chapitre existant.
+  const [editingChapterInStory, setEditingChapterInStory] = useState<{ story: Story; chapter: Chapter | null; tomeId?: string | null } | null>(null);
 
   // Bouton retour Android : ferme la surcouche la plus haute de CETTE vue au
   // lieu de renvoyer brutalement à l'accueil (voire de quitter l'app).
@@ -241,6 +245,7 @@ export default function WriteView({
     setLanguage(LANGUAGES[0]);
     setTagsInput('');
     setAgeRating('all');
+    setStoryStructure('chapters');
     setCoverImage('');
     setIsCreatingStory(false);
     setSelectedStoryToEdit(null);
@@ -257,6 +262,7 @@ export default function WriteView({
     setLanguage(story.language || LANGUAGES[0]);
     setTagsInput(story.tags.join(', '));
     setAgeRating(story.ageRating || 'all');
+    setStoryStructure(story.structure === 'tomes' ? 'tomes' : 'chapters');
     setCoverImage(story.cover || '');
     setIsCreatingStory(true);
   };
@@ -372,6 +378,7 @@ export default function WriteView({
         isFlagged: false,
         chapters: [],
         ageRating,
+        structure: storyStructure,
         status: 'Brouillon',
         publishDate: new Date().toISOString().split('T')[0],
         tags: tagsArray
@@ -387,14 +394,21 @@ export default function WriteView({
       setAmbiance(AMBIANCES[0]);
       setFormat(FORMATS[0]);
       setLanguage(LANGUAGES[0]);
+      const chosenStructure = storyStructure;
       setTagsInput('');
       setAgeRating('all');
+      setStoryStructure('chapters');
       setCoverImage('');
       setIsCreatingStory(false);
       setSelectedStoryToEdit(null);
 
-      // Instantly open chapter creator with the newly generated story
-      handleOpenChapterEditor(newStory, null);
+      // Mode TOMES : on ouvre l'atelier pour créer le 1er tome puis écrire
+      // dedans. Mode CHAPITRES : on ouvre directement l'éditeur (flux actuel).
+      if (chosenStructure === 'tomes') {
+        setManagingStoryChapters(newStory);
+      } else {
+        handleOpenChapterEditor(newStory, null);
+      }
       return; // bypass automatic resetStoryForm at the end
     }
 
@@ -402,8 +416,8 @@ export default function WriteView({
   };
 
   // Ouvre l'éditeur immersif (qui gère lui-même titre/contenu + auto-sauvegarde).
-  const handleOpenChapterEditor = (story: Story, chapterToEdit: Chapter | null) => {
-    setEditingChapterInStory({ story, chapter: chapterToEdit });
+  const handleOpenChapterEditor = (story: Story, chapterToEdit: Chapter | null, tomeId?: string | null) => {
+    setEditingChapterInStory({ story, chapter: chapterToEdit, tomeId: tomeId ?? null });
   };
 
   // Toggle book state Publié vs Brouillon
@@ -519,7 +533,7 @@ export default function WriteView({
               chapter={editingChapterInStory.chapter}
               fontFamily={currentUser.readingFontFamily}
               fontSize={currentUser.readingFontSize}
-              onPersistNew={(data) => onAddChapter(editingChapterInStory.story.id, data)}
+              onPersistNew={(data) => onAddChapter(editingChapterInStory.story.id, { ...data, tomeId: editingChapterInStory.tomeId ?? null })}
               onPersistUpdate={(chId, data) => onUpdateChapter(editingChapterInStory.story.id, chId, data)}
               onDelete={(chId) => onDeleteChapter(editingChapterInStory.story.id, chId)}
               onClose={() => setEditingChapterInStory(null)}
@@ -719,6 +733,31 @@ export default function WriteView({
               </div>
             </div>
 
+            {/* MODE D'ORGANISATION : chapitres (simple) ou tomes (volumes). */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Structure de l'œuvre</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  id="story-structure-chapters"
+                  onClick={() => setStoryStructure('chapters')}
+                  className={`text-left p-3 rounded-xl border transition ${storyStructure === 'chapters' ? 'border-purple-500 bg-purple-500/10' : 'border-gray-200 dark:border-zinc-800 hover:border-purple-400/50'}`}
+                >
+                  <span className="block text-xs font-black text-gray-900 dark:text-white">📖 Par chapitres</span>
+                  <span className="block text-[10px] text-gray-400 mt-0.5 leading-snug">Une suite de chapitres. Simple et direct.</span>
+                </button>
+                <button
+                  type="button"
+                  id="story-structure-tomes"
+                  onClick={() => setStoryStructure('tomes')}
+                  className={`text-left p-3 rounded-xl border transition ${storyStructure === 'tomes' ? 'border-purple-500 bg-purple-500/10' : 'border-gray-200 dark:border-zinc-800 hover:border-purple-400/50'}`}
+                >
+                  <span className="block text-xs font-black text-gray-900 dark:text-white">📚 Par tomes</span>
+                  <span className="block text-[10px] text-gray-400 mt-0.5 leading-snug">Des volumes (Tome 1, 2…), chacun avec ses chapitres.</span>
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1.5">Tags (séparés par des virgules)</label>
               <input
@@ -892,10 +931,12 @@ export default function WriteView({
                 );
               })()}
 
-              {/* GESTION DES TOMES (optionnelle) — structurer l'œuvre en volumes.
-                  Invisible dans la lecture tant qu'aucun tome n'est créé. */}
+              {/* GESTION DES TOMES : affichée seulement pour une œuvre en MODE
+                  TOMES (choisi à la création). En mode chapitres, rien de tout
+                  ça n'apparaît — l'atelier reste une simple liste de chapitres. */}
               {(() => {
                 const story = currentStoryToManage || managingStoryChapters;
+                if (story.structure !== 'tomes' && (story.tomes?.length || 0) === 0) return null;
                 const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
                 return (
                   <div className="rounded-xl border border-gray-150 dark:border-purple-900/15 bg-gray-55/60 dark:bg-black/40 p-4 space-y-3">
@@ -951,7 +992,7 @@ export default function WriteView({
                 );
               })()}
 
-              {!(currentStoryToManage || managingStoryChapters).chapters || (currentStoryToManage || managingStoryChapters).chapters.length === 0 ? (
+              {((currentStoryToManage || managingStoryChapters).chapters?.length || 0) === 0 && ((currentStoryToManage || managingStoryChapters).tomes?.length || 0) === 0 && (currentStoryToManage || managingStoryChapters).structure !== 'tomes' ? (
                 <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
                   <BookOpen className="w-10 h-10 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
                   <h4 className="font-sans font-bold text-sm text-gray-900 dark:text-gray-200">Aucun chapitre encore rédigé</h4>
@@ -968,7 +1009,8 @@ export default function WriteView({
               ) : (() => {
                 const story = currentStoryToManage || managingStoryChapters;
                 const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
-                const hasTomes = tomes.length > 0;
+                // Mode tomes = structure choisie OU tomes déjà présents (compat).
+                const hasTomes = story.structure === 'tomes' || tomes.length > 0;
 
                 // Une ligne de chapitre (numérotée globalement, comme le lecteur).
                 const chapterRow = (chapter: Chapter, idx: number) => (
@@ -1028,7 +1070,19 @@ export default function WriteView({
                   );
                 }
 
-                // Avec tomes : chaque tome (dans l'ordre) puis « Hors tome ».
+                // Mode tomes mais AUCUN tome encore : on invite à créer le premier.
+                if (tomes.length === 0) {
+                  return (
+                    <div className="text-center py-10 border border-dashed border-purple-400/40 rounded-xl">
+                      <BookMarked className="w-9 h-9 text-purple-400 mx-auto mb-2" />
+                      <h4 className="font-sans font-bold text-sm text-gray-900 dark:text-gray-200">Crée ton premier tome</h4>
+                      <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">Cette œuvre est organisée en tomes. Ajoute un tome ci-dessus (« Ajouter un tome »), puis écris ses chapitres dedans.</p>
+                    </div>
+                  );
+                }
+
+                // Avec tomes : chaque tome (dans l'ordre, MÊME vide) est un
+                // conteneur où l'on écrit directement, puis « Hors tome ».
                 const groups: { id: string | null; title: string }[] = [
                   ...tomes.map((t) => ({ id: t.id as string | null, title: t.title })),
                   { id: null, title: 'Hors tome' },
@@ -1039,15 +1093,35 @@ export default function WriteView({
                       const items = story.chapters
                         .map((c, i) => ({ c, i }))
                         .filter(({ c }) => (c.tomeId || null) === g.id);
-                      if (items.length === 0) return null;
+                      const isTome = g.id !== null;
+                      // « Hors tome » vide : on ne l'affiche pas (bruit inutile).
+                      // Un tome vide, lui, s'affiche avec une invite à écrire.
+                      if (items.length === 0 && !isTome) return null;
                       return (
-                        <div key={g.id || 'none'} className="space-y-2">
-                          <h3 className="text-[11px] font-black text-purple-500 uppercase tracking-widest">
-                            {g.title} ({items.length})
-                          </h3>
-                          <div className="grid grid-cols-1 gap-2.5">
-                            {items.map(({ c, i }) => chapterRow(c, i))}
+                        <div key={g.id || 'none'} className="space-y-2 rounded-xl border border-purple-500/10 dark:border-purple-900/15 p-3 bg-gray-55/40 dark:bg-black/20">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-[11px] font-black text-purple-500 uppercase tracking-widest truncate">
+                              {g.title} ({items.length})
+                            </h3>
+                            {isTome && (
+                              <button
+                                onClick={() => handleOpenChapterEditor(story, null, g.id)}
+                                className="h-7 px-2.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[10px] font-bold flex items-center gap-1 shrink-0 transition"
+                                title={`Écrire un chapitre dans « ${g.title} »`}
+                              >
+                                <Plus className="w-3 h-3" /> Écrire un chapitre
+                              </button>
+                            )}
                           </div>
+                          {items.length === 0 ? (
+                            <p className="text-[10.5px] text-gray-400 italic py-2 px-1">
+                              Ce tome est vide. Clique sur « Écrire un chapitre » pour commencer à le remplir.
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-2.5">
+                              {items.map(({ c, i }) => chapterRow(c, i))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

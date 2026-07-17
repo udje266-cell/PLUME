@@ -119,6 +119,8 @@ export interface Story {
   format: string;
   language: string;
   chapters: Chapter[];
+  // Mode d'organisation choisi à la création : 'chapters' (défaut) ou 'tomes'.
+  structure?: 'chapters' | 'tomes';
   // Tomes optionnels (triés par ordre). Absent/vide = œuvre à lecture plate.
   tomes?: Tome[];
   likes: number;
