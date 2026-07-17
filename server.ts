@@ -709,7 +709,7 @@ export async function createServerInstance() {
 
     if (!brevoApiKey) {
       console.warn(`[PLUME EMAIL] Configuration BREVO_API_KEY manquante. OTP pour ${email} : ${code} (Simulation)`);
-      return true;
+      return { ok: true as const };
     }
 
     let senderName = "PLUME";
@@ -749,11 +749,12 @@ export async function createServerInstance() {
       }
 
       console.log(`[PLUME EMAIL] OTP envoyé avec succès à ${email}`);
-      return true;
+      return { ok: true as const };
     } catch (error: any) {
-      console.error("[PLUME EMAIL] Erreur Brevo lors de l'envoi d'e-mail :", error?.message || error);
+      const reason = String(error?.message || error);
+      console.error("[PLUME EMAIL] Erreur Brevo lors de l'envoi d'e-mail :", reason);
       console.warn(`[PLUME EMAIL] Échec envoi, OTP pour ${email} : ${code}`);
-      return process.env.NODE_ENV !== 'production';
+      return { ok: false as const, reason };
     }
   }
 
@@ -1361,26 +1362,37 @@ export async function createServerInstance() {
       });
       console.log(`[OTP] Sauvegarde OTP réussie pour ${normalizedEmail}`);
 
+      const emailConfigured = !!process.env.BREVO_API_KEY;
       const sent = await sendOtpEmail(email, code, reason);
-      if (!sent) {
-        return res.status(500).json({ error: "Échec de l'envoi de l'e-mail de validation." });
+
+      // INSCRIPTION : l'envoi d'e-mail ne doit JAMAIS bloquer la création d'un
+      // compte. Si l'e-mail n'est pas configuré OU si l'envoi échoue (compte
+      // Brevo neuf encore restreint, quota, domaine freemail refusé…), on
+      // renvoie le code directement à l'app pour que l'inscription aboutisse.
+      // (Sans risque de prise de contrôle : le compte n'existe pas encore et le
+      // code ne permet de créer QUE ce compte-là, avec cette adresse.)
+      if (reason === 'register') {
+        if (sent.ok && emailConfigured) {
+          return res.json({ message: 'Code OTP envoyé avec succès.', email });
+        }
+        return res.json({
+          message: sent.ok
+            ? 'Code OTP (mode test : e-mail non configuré).'
+            : "L'e-mail n'a pas pu être envoyé ; utilise le code affiché ci-dessous.",
+          email,
+          devCode: code,
+          emailError: sent.ok ? undefined : (sent.reason || '').slice(0, 300),
+        });
       }
 
-      // Mode « e-mail NON configure » (pas de BREVO_API_KEY) : aucun e-mail ne part
-      // reellement -> l'inscription serait bloquee. Pour ne pas bloquer le demarrage,
-      // on renvoie le code directement a l'app, UNIQUEMENT pour l'INSCRIPTION (jamais
-      // pour la reinitialisation, afin d'eviter toute prise de controle de compte).
-      // Des que BREVO_API_KEY est defini, ce code n'est plus jamais expose.
-      const emailConfigured = !!process.env.BREVO_API_KEY;
-      if (!emailConfigured && reason === 'register') {
-        return res.json({ message: 'Code OTP (mode test : e-mail non configuré).', email, devCode: code });
-      }
-      // Reinitialisation / changement d'e-mail : on NE renvoie JAMAIS le code
-      // (sinon prise de controle / appropriation d'une adresse d'autrui). Si
-      // l'e-mail n'est pas configure, on echoue clairement au lieu de faire
-      // croire qu'un e-mail est parti (l'utilisateur restait bloque sur l'OTP).
-      if (!emailConfigured && (reason === 'reset' || reason === 'email_change')) {
+      // RÉINITIALISATION / CHANGEMENT D'E-MAIL : on ne renvoie JAMAIS le code
+      // (sinon prise de contrôle / appropriation d'une adresse d'autrui). Un
+      // échec d'envoi est donc une vraie erreur ici.
+      if (!emailConfigured) {
         return res.status(503).json({ error: "Opération indisponible : le service e-mail n'est pas configuré." });
+      }
+      if (!sent.ok) {
+        return res.status(500).json({ error: "Échec de l'envoi de l'e-mail de validation. Réessaie dans un instant." });
       }
 
       res.json({ message: 'Code OTP envoyé avec succès.', email });

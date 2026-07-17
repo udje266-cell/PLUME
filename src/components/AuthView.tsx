@@ -157,11 +157,15 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
       });
 
       setMode('otp');
-      // Mode TEST (e-mail non configuré côté serveur) : le code est renvoyé
-      // directement -> on pré-remplit les 6 cases pour ne pas bloquer l'inscription.
+      // Repli : le serveur renvoie le code directement quand l'e-mail n'a pas pu
+      // partir (service non configuré, OU compte Brevo neuf encore restreint,
+      // quota…). On pré-remplit les 6 cases pour que l'inscription aboutisse
+      // quand même — l'envoi par e-mail redeviendra la norme une fois Brevo prêt.
       if (typeof data.devCode === 'string' && /^\d{6}$/.test(data.devCode)) {
         setOtpCode(data.devCode.split(''));
-        setSuccessMsg('E-mail non configuré : code de validation pré-rempli. Touchez « Vérifier le Code ».');
+        setSuccessMsg(data.emailError
+          ? "L'e-mail n'a pas pu être envoyé : code pré-rempli, touchez « Vérifier le Code »."
+          : 'Code de validation pré-rempli. Touchez « Vérifier le Code ».');
       } else {
         setSuccessMsg(data.message || 'Code OTP envoyé par e-mail.');
       }
