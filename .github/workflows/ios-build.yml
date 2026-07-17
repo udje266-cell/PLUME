@@ -47,6 +47,18 @@ jobs:
       - name: Générer icônes & splash iOS
         run: npx capacitor-assets generate --ios || echo "assets generation skipped"
 
+      # CocoaPods génère App.xcworkspace : sans lui, xcodebuild échoue avec
+      # « App.xcworkspace does not exist ». On l'exécute EXPLICITEMENT (cap sync
+      # ne le déclenche pas toujours en CI) et on affiche des diagnostics.
+      - name: Installer les CocoaPods (génère App.xcworkspace)
+        run: |
+          pod --version
+          cd ios/App
+          pod install --repo-update
+          echo "--- Contenu de ios/App ---"
+          ls -la
+          test -d App.xcworkspace || { echo "::error::App.xcworkspace toujours absent après pod install."; exit 1; }
+
       - name: Compiler (non signé, simulateur)
         run: |
           xcodebuild \
