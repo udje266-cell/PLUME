@@ -1168,6 +1168,26 @@ const user = freshViewedUser || freshCurrentUser;
   const totalLikes = writtenStories.reduce((acc, curr) => acc + curr.likes, 0);
   const totalViews = writtenStories.reduce((acc, curr) => acc + curr.views, 0);
   const totalReads = writtenStories.reduce((acc, curr) => acc + curr.reads, 0);
+  const totalFavoritesReceived = writtenStories.reduce((acc, curr) => acc + (curr.favoritesCount || 0), 0);
+
+  // Score de POPULARITÉ réel. Avant : basé UNIQUEMENT sur les vues des œuvres,
+  // donc figé sur « Nouvelle Plume » pour tout lecteur et tout auteur < 500 vues.
+  // Désormais il combine l'AUDIENCE (abonnés — compte aussi pour les lecteurs)
+  // et l'ENGAGEMENT reçu (likes, favoris, lectures), avec les vues en signal
+  // faible. La mention reflète enfin l'activité réelle du profil.
+  const popularityScore = Math.round(
+    (user.followers?.length || 0) * 8 +
+    totalLikes * 3 +
+    totalFavoritesReceived * 4 +
+    totalReads * 1 +
+    totalViews * 0.05
+  );
+  const popularityLabel =
+    popularityScore >= 500 ? 'Popularité : Légendaire ✨' :
+    popularityScore >= 200 ? 'Popularité : Très apprécié 🌟' :
+    popularityScore >= 60 ? 'Popularité : En plein essor 📈' :
+    popularityScore >= 15 ? 'Popularité : Plume montante 🔥' :
+    'Popularité : Nouvelle Plume 🌱';
 
   // Amis = abonnement MUTUEL (cohérent quel que soit le point de vue). Sur son
   // propre profil, on y ajoute aussi les amitiés explicites (demandes acceptées)
@@ -1579,13 +1599,13 @@ const user = freshViewedUser || freshCurrentUser;
             )}
           </p>
 
-          {/* Mention de popularité globale */}
+          {/* Mention de popularité globale (score réel : abonnés + engagement reçu) */}
           <div className="mt-2.5 flex items-center justify-center">
-            <span className="px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/15 flex items-center gap-1">
-              {totalViews >= 2000 ? "Popularité : Légendaire ✨" :
-               totalViews >= 1000 ? "Popularité : Très apprécié 🌟" :
-               totalViews >= 500 ? "Popularité : En plein essor 📈" :
-               "Popularité : Nouvelle Plume 🌱"}
+            <span
+              title={`Score de popularité : ${popularityScore} — basé sur les abonnés, likes, favoris et lectures reçus.`}
+              className="px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/15 flex items-center gap-1"
+            >
+              {popularityLabel}
             </span>
           </div>
         </div>
