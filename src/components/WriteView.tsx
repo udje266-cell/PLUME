@@ -101,7 +101,7 @@ interface WriteViewProps {
   onCreateTome: (storyId: string, title: string) => void;
   onRenameTome: (storyId: string, tomeId: string, title: string) => void;
   onDeleteTome: (storyId: string, tomeId: string) => void;
-  onImportChapters: (storyId: string, chapters: { title: string; content: string }[]) => Promise<number>;
+  onImportChapters: (storyId: string, chapters: { title: string; content: string }[], tomeId?: string | null) => Promise<number>;
   comments: Comment[];
 }
 
@@ -183,6 +183,8 @@ export default function WriteView({
   const [importState, setImportState] = useState<'idle' | 'parsing' | 'saving'>('idle');
   const [importError, setImportError] = useState<string | null>(null);
   const [importPreview, setImportPreview] = useState<{ fileName: string; html: string; split: ImportedChapter[] } | null>(null);
+  // Tome cible de l'import ('' = hors tome). Réinitialisé à chaque nouvel import.
+  const [importTomeId, setImportTomeId] = useState<string>('');
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -195,6 +197,7 @@ export default function WriteView({
       const html = await fileToHtml(file);
       const split = splitIntoChapters(html);
       const baseName = file.name.replace(/\.[^.]+$/, '').slice(0, 200);
+      setImportTomeId('');
       setImportPreview({ fileName: baseName, html, split });
     } catch (err: any) {
       setImportError(err?.message || "Impossible de lire ce fichier.");
@@ -206,7 +209,7 @@ export default function WriteView({
   const runImport = async (chapters: { title: string; content: string }[], storyId: string) => {
     setImportState('saving');
     try {
-      const n = await onImportChapters(storyId, chapters);
+      const n = await onImportChapters(storyId, chapters, importTomeId || null);
       setImportPreview(null);
       if (n > 0) {
         setImportError(null);
@@ -814,6 +817,7 @@ export default function WriteView({
                 const story = currentStoryToManage || managingStoryChapters;
                 const canSplit = importPreview.split.length >= 2;
                 const importingNow = importState === 'saving';
+                const storyTomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
                 return (
                   <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 animate-fade-in">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !importingNow && setImportPreview(null)} />
@@ -826,6 +830,21 @@ export default function WriteView({
                           Les chapitres sont créés en <b>brouillon</b> : tu les relis et les publies quand tu veux.
                         </p>
                       </div>
+
+                      {/* Tome cible : présent seulement si l'œuvre a des tomes. */}
+                      {storyTomes.length > 0 && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase tracking-wider text-purple-500">Ranger dans</label>
+                          <select
+                            value={importTomeId}
+                            onChange={(e) => setImportTomeId(e.target.value)}
+                            className="w-full h-9 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-xs rounded-lg px-2 dark:text-gray-200"
+                          >
+                            <option value="">Hors tome</option>
+                            {storyTomes.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                          </select>
+                        </div>
+                      )}
 
                       {canSplit && (
                         <div className="rounded-xl border border-purple-500/25 bg-purple-500/5 p-3">

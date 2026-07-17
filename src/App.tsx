@@ -2851,6 +2851,7 @@ export default function App() {
   const handleImportChapters = async (
     storyId: string,
     chapters: { title: string; content: string }[],
+    tomeId?: string | null,
   ): Promise<number> => {
     let created = 0;
     let words = 0;
@@ -2864,6 +2865,7 @@ export default function App() {
             title: (ch.title || '').trim() || `Chapitre importé ${i + 1}`,
             content: ch.content || '',
             isPublished: false, // brouillon : relecture avant publication
+            tomeId: tomeId || null, // range directement dans le tome choisi (ou hors tome)
           }),
         });
         if (!res.ok) continue;
