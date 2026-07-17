@@ -179,7 +179,19 @@ function serializeChapter(chapter: any) {
   if (!chapter) return chapter;
   return {
     ...chapter,
+    // tomeId passe automatiquement via le spread (NULL si hors tome).
     publishDate: chapter.publishedAt ? new Date(chapter.publishedAt).toISOString().split('T')[0] : undefined,
+  };
+}
+
+function serializeTome(tome: any) {
+  if (!tome) return tome;
+  return {
+    id: tome.id,
+    storyId: tome.storyId,
+    title: tome.title,
+    description: tome.description || '',
+    order: tome.order,
   };
 }
 
@@ -193,6 +205,8 @@ function serializeStory(story: any) {
     ageRating: ageRatingFromPrisma(story.ageRating),
     publishDate: story.publishedAt ? new Date(story.publishedAt).toISOString().split('T')[0] : undefined,
     chapters: Array.isArray(story.chapters) ? story.chapters.map(serializeChapter) : [],
+    // Tomes (optionnels) triés par ordre. Absents => [] => lecture plate.
+    tomes: Array.isArray(story.tomes) ? story.tomes.map(serializeTome) : [],
     author,
     authorName: author?.username || story.authorName || '',
     authorAvatar: author?.avatar || story.authorAvatar || '',
@@ -351,6 +365,15 @@ async function checkOtp(
   }
   if (consume) await prisma.otp.delete({ where: { email } }).catch(() => {});
   return { ok: true, status: 200, error: '' };
+}
+
+// Valide qu'un tomeId (optionnel) appartient bien à CE récit avant de l'affecter
+// à un chapitre. Renvoie l'id validé, ou null (chapitre hors tome). Empêche
+// d'assigner un chapitre au tome d'une autre œuvre.
+async function resolveTomeId(tomeId: unknown, storyId: string): Promise<string | null> {
+  if (typeof tomeId !== 'string' || !tomeId) return null;
+  const tome = await prisma.tome.findFirst({ where: { id: tomeId, storyId }, select: { id: true } }).catch(() => null);
+  return tome ? tome.id : null;
 }
 
 // Seuil de signalements distincts à partir duquel un compte est automatiquement
@@ -2233,7 +2256,7 @@ export async function createServerInstance() {
       if (ids.length === 0) return res.json([]);
       const stories = await prisma.story.findMany({
         where: { id: { in: ids } },
-        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       // On restaure l'ordre du tri SQL (createdAt DESC), perdu par le `in`.
       const order = new Map(ids.map((id, i) => [id, i]));
@@ -2339,7 +2362,7 @@ export async function createServerInstance() {
         : requester
           ? { OR: [{ status: 'PUBLIE' }, { authorId: requester.id }] }
           : { status: 'PUBLIE' };
-      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
+      const stories = await prisma.story.findMany({ where, include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true }, orderBy: { createdAt: 'desc' }, ...parsePagination(req) });
       res.json(stories.map((s) => serializeStory(filterDraftChapters(s, requester?.id, isAdmin))));
     } catch (error) {
       console.error(error);
@@ -2351,7 +2374,7 @@ export async function createServerInstance() {
     try {
       const story = await prisma.story.findUnique({
         where: { id: req.params.id },
-        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true, comments: { include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true, comments: { include: { user: { select: SAFE_USER_SELECT }, replies: { include: { user: { select: SAFE_USER_SELECT } }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } } },
       });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const requester = await getUserFromAuthorizationHeader(req);
@@ -2400,7 +2423,7 @@ export async function createServerInstance() {
           authorId: req.user.id,
           publishedAt: story.status === 'Publié' ? new Date() : null,
         },
-        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       await recomputeCertification(req.user.id);
       res.status(201).json(serializeStory(newStory));
@@ -2448,7 +2471,7 @@ export async function createServerInstance() {
       const updatedStory = await prisma.story.update({
         where: { id: req.params.id },
         data,
-        include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
+        include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       await recomputeCertification(existing.authorId);
       // XP auteur : +80 à la PREMIÈRE publication d'un récit (transition vers Publié).
@@ -2510,12 +2533,14 @@ export async function createServerInstance() {
         select: { order: true },
       });
       const nextOrder = (lastChapter?.order ?? 0) + 1;
+      const tomeId = await resolveTomeId(chapter.tomeId, req.params.storyId);
       const newChapter = await prisma.chapter.create({
         data: {
           id: chapter.id || undefined,
           title: chapter.title || 'Chapitre sans titre',
           content: chapter.content || '',
           order: nextOrder,
+          tomeId, // NULL si non fourni / invalide (chapitre hors tome).
           isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
           // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
           storyId: req.params.storyId,
@@ -2545,6 +2570,11 @@ export async function createServerInstance() {
       if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
         return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
       }
+      // Affectation de tome : traitée seulement si le client la fournit
+      // explicitement (undefined => on ne touche pas au tome courant).
+      const tomeUpdate = chapter.tomeId !== undefined
+        ? { tomeId: await resolveTomeId(chapter.tomeId, existingChapter.storyId) }
+        : {};
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.id },
         data: {
@@ -2554,6 +2584,7 @@ export async function createServerInstance() {
           // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
+          ...tomeUpdate,
           isPublished: chapter.isPublished,
           // La date de publication est figée à la PREMIÈRE publication : une
           // simple re-sauvegarde d'un chapitre publié ne la fait plus dériver.
@@ -2600,6 +2631,9 @@ export async function createServerInstance() {
       if (tooLong(chapter.title, LIMITS.title) || tooLong(chapter.content, LIMITS.chapterContent)) {
         return res.status(400).json({ error: 'Titre (max 300) ou contenu (max 200000) du chapitre trop long.' });
       }
+      const tomeUpdate2 = chapter.tomeId !== undefined
+        ? { tomeId: await resolveTomeId(chapter.tomeId, existingChapter.storyId) }
+        : {};
       const updatedChapter = await prisma.chapter.update({
         where: { id: req.params.chapterId },
         data: {
@@ -2609,6 +2643,7 @@ export async function createServerInstance() {
           // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
           // views/reads volontairement omis : non modifiables par le client.
+          ...tomeUpdate2,
           isPublished: chapter.isPublished,
           // Date de publication figée à la PREMIÈRE publication (pas de dérive).
           publishedAt: chapter.isPublished && !existingChapter.isPublished ? new Date() : undefined,
@@ -2637,6 +2672,66 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(404).json({ error: 'Chapitre non trouvé ou erreur de suppression' });
+    }
+  });
+
+  // ----- Tomes (volumes) : regroupement optionnel de chapitres -----
+  // Réservés à l'auteur / admin. La lecture des tomes se fait via serializeStory
+  // (ils accompagnent l'œuvre), pas besoin d'un GET dédié.
+  app.post('/api/stories/:storyId/tomes', requireAuth, async (req: any, res) => {
+    try {
+      const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      if (story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+      if (!title) return res.status(400).json({ error: 'Titre du tome requis.' });
+      if (title.length > 200) return res.status(400).json({ error: 'Titre du tome trop long (200 caractères maximum).' });
+      const description = typeof req.body.description === 'string' ? req.body.description.slice(0, 2000) : '';
+      // Ordre calculé côté serveur (max + 1) pour respecter @@unique([storyId, order]).
+      const last = await prisma.tome.findFirst({ where: { storyId: req.params.storyId }, orderBy: { order: 'desc' }, select: { order: true } });
+      const tome = await prisma.tome.create({
+        data: { storyId: req.params.storyId, title, description, order: (last?.order ?? 0) + 1 },
+      });
+      res.status(201).json(serializeTome(tome));
+    } catch (error) {
+      console.error('[TOME] création :', error);
+      res.status(500).json({ error: 'Erreur lors de la création du tome.' });
+    }
+  });
+
+  app.put('/api/tomes/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existing = await prisma.tome.findUnique({ where: { id: req.params.id }, include: { story: { select: { authorId: true } } } });
+      if (!existing) return res.status(404).json({ error: 'Tome non trouvé' });
+      if (existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      const data: any = {};
+      if (typeof req.body.title === 'string') {
+        const t = req.body.title.trim();
+        if (!t) return res.status(400).json({ error: 'Titre du tome requis.' });
+        if (t.length > 200) return res.status(400).json({ error: 'Titre du tome trop long (200 caractères maximum).' });
+        data.title = t;
+      }
+      if (typeof req.body.description === 'string') data.description = req.body.description.slice(0, 2000);
+      const tome = await prisma.tome.update({ where: { id: req.params.id }, data });
+      res.json(serializeTome(tome));
+    } catch (error) {
+      console.error('[TOME] modification :', error);
+      res.status(500).json({ error: 'Erreur lors de la modification du tome.' });
+    }
+  });
+
+  app.delete('/api/tomes/:id', requireAuth, async (req: any, res) => {
+    try {
+      const existing = await prisma.tome.findUnique({ where: { id: req.params.id }, include: { story: { select: { authorId: true } } } });
+      if (!existing) return res.status(404).json({ error: 'Tome non trouvé' });
+      if (existing.story.authorId !== req.user.id && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
+      // Les chapitres du tome ne sont PAS supprimés : la FK SetNull les remet
+      // simplement « hors tome » (jamais de perte de contenu).
+      await prisma.tome.delete({ where: { id: req.params.id } });
+      res.status(204).end();
+    } catch (error) {
+      console.error('[TOME] suppression :', error);
+      res.status(500).json({ error: 'Erreur lors de la suppression du tome.' });
     }
   });
 
@@ -4344,7 +4439,7 @@ export async function createServerInstance() {
   });
 
   app.get('/api/me/favorites', requireAuth, async (req: any, res) => {
-    const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
+    const favorites = await prisma.favorite.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true } } }, orderBy: { createdAt: 'desc' } });
     res.json(favorites.map((f: any) => serializeStory(f.story)));
   });
 
@@ -4440,7 +4535,7 @@ export async function createServerInstance() {
   app.get('/api/me/history', requireAuth, async (req: any, res) => {
     // Borné aux 300 dernières entrées : l'historique trace CHAQUE ouverture de
     // chapitre, il grossit vite (le client n'en affiche qu'une fraction).
-    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' }, take: 300 });
+    const history = await prisma.readingHistory.findMany({ where: { userId: req.user.id }, include: { story: { include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true } }, chapter: true }, orderBy: { createdAt: 'desc' }, take: 300 });
     res.json(history.map((h: any) => ({ ...h, story: serializeStory(h.story), chapter: serializeChapter(h.chapter) })));
   });
 

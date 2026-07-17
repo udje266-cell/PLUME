@@ -97,6 +97,9 @@ interface WriteViewProps {
   onUpdateChapter: (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => void;
   onDeleteChapter: (storyId: string, chapterId: string) => void;
   onDeleteStory: (storyId: string) => void;
+  onCreateTome: (storyId: string, title: string) => void;
+  onRenameTome: (storyId: string, tomeId: string, title: string) => void;
+  onDeleteTome: (storyId: string, tomeId: string) => void;
   comments: Comment[];
 }
 
@@ -111,6 +114,9 @@ export default function WriteView({
   onUpdateChapter,
   onDeleteChapter,
   onDeleteStory,
+  onCreateTome,
+  onRenameTome,
+  onDeleteTome,
   comments
 }: WriteViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<TabType>('my-books');
@@ -164,6 +170,10 @@ export default function WriteView({
   interface AuthorStatsChapter { id: string; title: string; order: number; opens: number; fullReads: number }
   interface AuthorStatsStory { id: string; title: string; status: string; views: number; readers: number; completion: number; chapters: AuthorStatsChapter[] }
   const [authorStats, setAuthorStats] = useState<AuthorStatsStory[] | null>(null);
+  // Saisie du titre d'un nouveau tome (atelier). Fermé par défaut : l'auteur
+  // n'y touche que s'il veut structurer son œuvre en volumes.
+  const [showTomeInput, setShowTomeInput] = useState(false);
+  const [tomeTitleInput, setTomeTitleInput] = useState('');
   useEffect(() => {
     if (activeSubTab !== 'performance-dashboard') return;
     let cancelled = false;
@@ -729,6 +739,65 @@ export default function WriteView({
                 </div>
               </div>
 
+              {/* GESTION DES TOMES (optionnelle) — structurer l'œuvre en volumes.
+                  Invisible dans la lecture tant qu'aucun tome n'est créé. */}
+              {(() => {
+                const story = currentStoryToManage || managingStoryChapters;
+                const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
+                return (
+                  <div className="rounded-xl border border-gray-150 dark:border-purple-900/15 bg-gray-55/60 dark:bg-black/40 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase tracking-widest flex items-center gap-1.5">
+                          <BookMarked className="w-3.5 h-3.5 text-purple-600" /> Tomes {tomes.length > 0 ? `(${tomes.length})` : ''}
+                        </h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Optionnel : regroupe tes chapitres en volumes (Tome 1, Tome 2…).</p>
+                      </div>
+                      {!showTomeInput && (
+                        <button
+                          onClick={() => { setShowTomeInput(true); setTomeTitleInput(`Tome ${tomes.length + 1}`); }}
+                          className="h-8 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[10.5px] font-bold flex items-center gap-1.5 shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Ajouter un tome
+                        </button>
+                      )}
+                    </div>
+                    {showTomeInput && (
+                      <form
+                        onSubmit={(e) => { e.preventDefault(); const t = tomeTitleInput.trim(); if (t) onCreateTome(story.id, t); setTomeTitleInput(''); setShowTomeInput(false); }}
+                        className="flex items-center gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={tomeTitleInput}
+                          onChange={(e) => setTomeTitleInput(e.target.value)}
+                          maxLength={200}
+                          placeholder="Titre du tome (ex. Tome 1 : L'éveil)"
+                          className="flex-1 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 dark:text-white"
+                        />
+                        <button type="submit" className="h-8 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[10.5px] font-bold">Créer</button>
+                        <button type="button" onClick={() => { setShowTomeInput(false); setTomeTitleInput(''); }} className="text-gray-400 hover:text-purple-600 text-lg px-1 leading-none">×</button>
+                      </form>
+                    )}
+                    {tomes.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {tomes.map((t) => {
+                          const count = story.chapters.filter((c) => c.tomeId === t.id).length;
+                          return (
+                            <div key={t.id} className="flex items-center gap-1.5 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg px-2.5 py-1.5">
+                              <span className="text-[11px] font-bold text-gray-800 dark:text-gray-100">{t.title}</span>
+                              <span className="text-[9px] font-mono text-gray-400">{count} ch.</span>
+                              <button onClick={() => { const nt = window.prompt('Renommer le tome :', t.title); if (nt && nt.trim()) onRenameTome(story.id, t.id, nt.trim()); }} className="text-gray-400 hover:text-purple-600" title="Renommer"><Edit className="w-3 h-3" /></button>
+                              <button onClick={() => { if (window.confirm(`Supprimer « ${t.title} » ? Ses chapitres seront conservés (remis hors tome).`)) onDeleteTome(story.id, t.id); }} className="text-gray-400 hover:text-red-500" title="Supprimer"><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {!(currentStoryToManage || managingStoryChapters).chapters || (currentStoryToManage || managingStoryChapters).chapters.length === 0 ? (
                 <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
                   <BookOpen className="w-10 h-10 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
@@ -743,46 +812,95 @@ export default function WriteView({
                     <span>Écrire le premier chapitre</span>
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                    Chapitres rédigés ({(currentStoryToManage || managingStoryChapters).chapters.length})
-                  </h3>
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {(currentStoryToManage || managingStoryChapters).chapters.map((chapter, idx) => (
-                      <div 
-                        key={chapter.id}
-                        className="p-4 bg-gray-55 dark:bg-black rounded-xl border border-gray-150 dark:border-purple-900/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left"
+              ) : (() => {
+                const story = currentStoryToManage || managingStoryChapters;
+                const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
+                const hasTomes = tomes.length > 0;
+
+                // Une ligne de chapitre (numérotée globalement, comme le lecteur).
+                const chapterRow = (chapter: Chapter, idx: number) => (
+                  <div
+                    key={chapter.id}
+                    className="p-4 bg-gray-55 dark:bg-black rounded-xl border border-gray-150 dark:border-purple-900/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-mono text-xs font-black w-8 h-8 rounded-lg bg-purple-500/10 text-[#7C3AED] dark:text-purple-400 flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <h4 className="font-sans font-bold text-xs text-gray-950 dark:text-gray-50 truncate">{chapter.title}</h4>
+                        <p className="text-[10px] text-gray-450 dark:text-gray-400 font-mono mt-0.5">
+                          {chapter.isPublished
+                            ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vues`
+                            : 'Brouillon — non visible des lecteurs'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                      {hasTomes && (
+                        <select
+                          value={chapter.tomeId || ''}
+                          onChange={(e) => onUpdateChapter(story.id, chapter.id, { tomeId: e.target.value || null })}
+                          title="Ranger ce chapitre dans un tome"
+                          className="h-8 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-[10px] rounded-lg px-1.5 dark:text-gray-200 max-w-[120px]"
+                        >
+                          <option value="">Hors tome</option>
+                          {tomes.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                        </select>
+                      )}
+                      <button
+                        id={`btn-edit-chapter-${chapter.id}`}
+                        onClick={() => handleOpenChapterEditor(story, chapter)}
+                        className="h-8 px-3 rounded-lg border border-gray-200 dark:border-zinc-800 text-[10.5px] font-bold text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition flex items-center gap-1.5"
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs font-black w-8 h-8 rounded-lg bg-purple-500/10 text-[#7C3AED] dark:text-purple-400 flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
-                          <div>
-                            <h4 className="font-sans font-bold text-xs text-gray-950 dark:text-gray-50">
-                              {chapter.title}
-                            </h4>
-                            <p className="text-[10px] text-gray-450 dark:text-gray-400 font-mono mt-0.5">
-                              {chapter.isPublished
-                                ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vues`
-                                : 'Brouillon — non visible des lecteurs'}
-                            </p>
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Modifier</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+
+                // Sans tome : liste plate, strictement identique à avant.
+                if (!hasTomes) {
+                  return (
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                        Chapitres rédigés ({story.chapters.length})
+                      </h3>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {story.chapters.map((chapter, idx) => chapterRow(chapter, idx))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Avec tomes : chaque tome (dans l'ordre) puis « Hors tome ».
+                const groups: { id: string | null; title: string }[] = [
+                  ...tomes.map((t) => ({ id: t.id as string | null, title: t.title })),
+                  { id: null, title: 'Hors tome' },
+                ];
+                return (
+                  <div className="space-y-5">
+                    {groups.map((g) => {
+                      const items = story.chapters
+                        .map((c, i) => ({ c, i }))
+                        .filter(({ c }) => (c.tomeId || null) === g.id);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={g.id || 'none'} className="space-y-2">
+                          <h3 className="text-[11px] font-black text-purple-500 uppercase tracking-widest">
+                            {g.title} ({items.length})
+                          </h3>
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {items.map(({ c, i }) => chapterRow(c, i))}
                           </div>
                         </div>
-                        
-                        <button
-                          id={`btn-edit-chapter-${chapter.id}`}
-                          onClick={() => handleOpenChapterEditor(currentStoryToManage || managingStoryChapters, chapter)}
-                          className="h-8 px-3 rounded-lg border border-gray-200 dark:border-zinc-800 text-[10.5px] font-bold text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition flex items-center gap-1.5 self-start sm:self-center shrink-0"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Modifier</span>
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           ) : (
             /* STANDARD MASTER VIEWS WITH GRILLS & ALIGNEMENTS */

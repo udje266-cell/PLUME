@@ -67,6 +67,17 @@ export interface Chapter {
   views: number;
   viewedBy?: string[];
   reads: number;
+  // Tome OPTIONNEL auquel appartient le chapitre (null/absent = hors tome).
+  tomeId?: string | null;
+}
+
+// Tome / volume : regroupement optionnel de chapitres dans une œuvre.
+export interface Tome {
+  id: string;
+  storyId: string;
+  title: string;
+  description: string;
+  order: number;
 }
 
 export interface CommentReply {
@@ -108,6 +119,8 @@ export interface Story {
   format: string;
   language: string;
   chapters: Chapter[];
+  // Tomes optionnels (triés par ordre). Absent/vide = œuvre à lecture plate.
+  tomes?: Tome[];
   likes: number;
   likedBy?: string[];
   favoritesCount: number;

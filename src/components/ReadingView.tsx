@@ -597,6 +597,15 @@ export default function ReadingView({
 
   const isOwnStory = story.authorId === currentUser.id;
 
+  // Tomes (optionnels) indexés par id : vide => œuvre à lecture plate, aucun
+  // changement visuel. Sert au sommaire groupé et au libellé « Tome X ».
+  const tomesById = React.useMemo(() => {
+    const m = new Map<string, { title: string; order: number }>();
+    (story.tomes || []).forEach((t) => m.set(t.id, { title: t.title, order: t.order }));
+    return m;
+  }, [story.tomes]);
+  const activeTome = activeChapter.tomeId ? tomesById.get(activeChapter.tomeId) : null;
+
   useEffect(() => {
     if (!isOwnStory && !currentlyReading.includes(story.id) && !completedStories.includes(story.id)) {
       onToggleCurrentlyReading(story.id);
@@ -1785,6 +1794,11 @@ export default function ReadingView({
 
           {/* Chapter headers */}
           <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
+            {activeTome && (
+              <span className="text-[10px] uppercase font-mono tracking-widest text-purple-500 font-black block mb-1 leading-none">
+                {activeTome.title}
+              </span>
+            )}
             <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
               Récit {story.category} • Chapitre {activeChapterIndex + 1} de {story.chapters.length}
             </span>
@@ -2423,9 +2437,19 @@ export default function ReadingView({
               {story.chapters.map((ch, idx) => {
                 const isSelected = activeChapterIndex === idx;
                 const isRead = readChapters.includes(ch.id);
+                // En-tête de TOME : inséré au changement de tome entre deux
+                // chapitres consécutifs (uniquement si l'œuvre a des tomes).
+                const tomeHeader = tomesById.size > 0 && ch.tomeId !== (story.chapters[idx - 1]?.tomeId ?? null)
+                  ? (ch.tomeId ? (tomesById.get(ch.tomeId)?.title || 'Tome') : 'Hors tome')
+                  : null;
                 return (
+                  <React.Fragment key={ch.id}>
+                  {tomeHeader && (
+                    <div className="pt-3 pb-1 px-1 first:pt-0">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-purple-500">{tomeHeader}</span>
+                    </div>
+                  )}
                   <button
-                    key={ch.id}
                     onClick={() => {
                       setActiveChapterIndex(idx);
                       setIsChaptersOpen(false);
@@ -2452,6 +2476,7 @@ export default function ReadingView({
                       <span className="text-[9.5px] text-gray-400 font-bold uppercase tracking-wider">Non lu</span>
                     )}
                   </button>
+                  </React.Fragment>
                 );
               })}
             </div>

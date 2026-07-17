@@ -2824,6 +2824,53 @@ export default function App() {
     }));
   };
 
+  // ----- Tomes (optionnels) : gestion depuis l'atelier -----
+  // Création : on attend la réponse serveur pour récupérer l'id réel du tome
+  // (nécessaire pour y assigner ensuite des chapitres).
+  const handleCreateTome = async (storyId: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    try {
+      const res = await fetch(`/api/stories/${storyId}/tomes`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ title: clean }),
+      });
+      if (!res.ok) { alert('Impossible de créer le tome.'); return; }
+      const tome = await res.json();
+      setStories(prev => prev.map(s => (s.id === storyId ? { ...s, tomes: [...(s.tomes || []), tome] } : s)));
+    } catch {
+      alert('Erreur réseau lors de la création du tome.');
+    }
+  };
+
+  const handleRenameTome = (storyId: string, tomeId: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    setStories(prev => prev.map(s => (s.id === storyId
+      ? { ...s, tomes: (s.tomes || []).map(t => (t.id === tomeId ? { ...t, title: clean } : t)) }
+      : s)));
+    fetch(`/api/tomes/${tomeId}`, {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ title: clean }),
+    }).catch(() => {});
+  };
+
+  // Suppression : le tome disparaît, ses chapitres redeviennent « hors tome »
+  // (jamais supprimés — miroir du SetNull côté serveur).
+  const handleDeleteTome = (storyId: string, tomeId: string) => {
+    setStories(prev => prev.map(s => {
+      if (s.id !== storyId) return s;
+      return {
+        ...s,
+        tomes: (s.tomes || []).filter(t => t.id !== tomeId),
+        chapters: s.chapters.map(ch => (ch.tomeId === tomeId ? { ...ch, tomeId: null } : ch)),
+      };
+    }));
+    fetch(`/api/tomes/${tomeId}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {});
+  };
+
   // Messages operations
   const handleSendMessage = (conversationId: string, content: string, replyToId?: string | null) => {
     if (!currentUser) return;
@@ -3651,6 +3698,9 @@ export default function App() {
                       onUpdateChapter={handleUpdateChapter}
                       onDeleteChapter={handleDeleteChapter}
                       onDeleteStory={handleDeleteStory}
+                      onCreateTome={handleCreateTome}
+                      onRenameTome={handleRenameTome}
+                      onDeleteTome={handleDeleteTome}
                       comments={comments}
                     />
                   )}

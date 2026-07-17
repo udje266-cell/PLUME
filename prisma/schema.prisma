@@ -133,6 +133,7 @@ model Story {
   authorId       String
   author         User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
   chapters       Chapter[]
+  tomes          Tome[]
   comments       Comment[]
   likes          StoryLike[]
   ratings        StoryRating[]
@@ -154,6 +155,10 @@ model Chapter {
   id          String   @id @default(cuid())
   storyId     String
   story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  // Tome OPTIONNEL : NULL = chapitre hors tome (comportement historique). Un
+  // tome supprimé remet ses chapitres à NULL (jamais de perte de chapitre).
+  tomeId      String?
+  tome        Tome?    @relation(fields: [tomeId], references: [id], onDelete: SetNull)
   title       String
   content     String
   order       Int
@@ -164,6 +169,26 @@ model Chapter {
   comments    Comment[]
   readingProgress ReadingProgress[]
   readingHistory ReadingHistory[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storyId, order])
+  @@index([storyId])
+  @@index([tomeId])
+}
+
+// Tome / volume : regroupement OPTIONNEL de chapitres au sein d'une œuvre (pour
+// les sagas et longues séries). Purement additif — une œuvre sans tome se lit
+// exactement comme avant. L'ordre des chapitres reste global à l'œuvre ; le
+// tome ne sert qu'au regroupement et à l'affichage.
+model Tome {
+  id          String   @id @default(cuid())
+  storyId     String
+  story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  title       String
+  description String   @default("")
+  order       Int
+  chapters    Chapter[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

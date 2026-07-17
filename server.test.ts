@@ -58,6 +58,13 @@ vi.mock('./src/server/prisma', () => {
       chapter: {
         update: vi.fn(),
       },
+      tome: {
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
       otp: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -123,6 +130,72 @@ describe('API Integration Tests (Express routes)', () => {
       expect(story.ageRating).toBe('all'); // Mapped ageRating
       expect(story.tags).toEqual(['aventure', 'fantasy']); // Parsed tags JSON
       expect(story.authorName).toBe('AuteurPlume');
+      // Rétrocompatibilité tomes : une œuvre sans tome renvoie un tableau vide
+      // (jamais undefined) → lecture plate identique à avant.
+      expect(story.tomes).toEqual([]);
+    });
+  });
+
+  describe('Tomes (volumes optionnels)', () => {
+    const authorId = 'tome-author';
+    const authorUser = {
+      id: authorId, email: 'a@ex.com', username: 'auteur', role: 'Auteur',
+      gender: 'HOMME', createdAt: new Date('2026-01-01'), followers: [], following: [], blockedUsers: [],
+    };
+    const token = jwt.sign({ userId: authorId }, JWT_SECRET, { expiresIn: '1h' });
+
+    it('crée un tome (auteur), ordre calculé côté serveur', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ authorId } as any);
+      vi.mocked(prisma.tome.findFirst).mockResolvedValue({ order: 2 } as any); // dernier tome
+      vi.mocked(prisma.tome.create).mockResolvedValue({ id: 'tome-3', storyId: 'story-1', title: 'Tome 3', description: '', order: 3 } as any);
+
+      const res = await request(app)
+        .post('/api/stories/story-1/tomes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'Tome 3' })
+        .expect(201);
+
+      expect(res.body.title).toBe('Tome 3');
+      expect(res.body.order).toBe(3);
+      // L'ordre est bien max+1, jamais celui fourni par le client.
+      expect(vi.mocked(prisma.tome.create).mock.calls[0][0].data.order).toBe(3);
+    });
+
+    it('refuse la création d\'un tome par un tiers (403)', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ authorId: 'quelqu-un-dautre' } as any);
+
+      await request(app)
+        .post('/api/stories/story-1/tomes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'Tome pirate' })
+        .expect(403);
+      expect(vi.mocked(prisma.tome.create)).not.toHaveBeenCalled();
+    });
+
+    it('refuse un titre de tome vide (400)', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.story.findUnique).mockResolvedValue({ authorId } as any);
+
+      await request(app)
+        .post('/api/stories/story-1/tomes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: '   ' })
+        .expect(400);
+    });
+
+    it('supprime un tome sans supprimer ses chapitres (SetNull)', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(authorUser as any);
+      vi.mocked(prisma.tome.findUnique).mockResolvedValue({ id: 'tome-1', story: { authorId } } as any);
+      vi.mocked(prisma.tome.delete).mockResolvedValue({ id: 'tome-1' } as any);
+
+      await request(app)
+        .delete('/api/tomes/tome-1')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+      // Seul le tome est supprimé ; aucune suppression de chapitre déclenchée.
+      expect(vi.mocked(prisma.tome.delete)).toHaveBeenCalledWith({ where: { id: 'tome-1' } });
     });
   });
 
