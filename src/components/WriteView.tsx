@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { 
@@ -38,6 +38,7 @@ import { uploadImageToCloudinary } from '../utils/uploadImage';
 import { generateCoverDataUri } from '../utils/coverImage';
 import { useAndroidBack } from '../utils/backButton';
 import { authHeaders } from '../utils/auth';
+import { fileToHtml, splitIntoChapters, type ImportedChapter } from '../utils/importDocument';
 
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -100,6 +101,7 @@ interface WriteViewProps {
   onCreateTome: (storyId: string, title: string) => void;
   onRenameTome: (storyId: string, tomeId: string, title: string) => void;
   onDeleteTome: (storyId: string, tomeId: string) => void;
+  onImportChapters: (storyId: string, chapters: { title: string; content: string }[]) => Promise<number>;
   comments: Comment[];
 }
 
@@ -117,6 +119,7 @@ export default function WriteView({
   onCreateTome,
   onRenameTome,
   onDeleteTome,
+  onImportChapters,
   comments
 }: WriteViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<TabType>('my-books');
@@ -174,6 +177,47 @@ export default function WriteView({
   // n'y touche que s'il veut structurer son œuvre en volumes.
   const [showTomeInput, setShowTomeInput] = useState(false);
   const [tomeTitleInput, setTomeTitleInput] = useState('');
+
+  // Import d'un document déjà écrit (Word/texte) vers des chapitres.
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importState, setImportState] = useState<'idle' | 'parsing' | 'saving'>('idle');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<{ fileName: string; html: string; split: ImportedChapter[] } | null>(null);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permet de ré-importer le même fichier
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { setImportError('Fichier trop lourd (15 Mo maximum).'); return; }
+    setImportError(null);
+    setImportState('parsing');
+    try {
+      const html = await fileToHtml(file);
+      const split = splitIntoChapters(html);
+      const baseName = file.name.replace(/\.[^.]+$/, '').slice(0, 200);
+      setImportPreview({ fileName: baseName, html, split });
+    } catch (err: any) {
+      setImportError(err?.message || "Impossible de lire ce fichier.");
+    } finally {
+      setImportState('idle');
+    }
+  };
+
+  const runImport = async (chapters: { title: string; content: string }[], storyId: string) => {
+    setImportState('saving');
+    try {
+      const n = await onImportChapters(storyId, chapters);
+      setImportPreview(null);
+      if (n > 0) {
+        setImportError(null);
+        alert(n > 1 ? `${n} chapitres importés en brouillon. Relis-les puis publie-les.` : 'Chapitre importé en brouillon. Relis-le puis publie-le.');
+      } else {
+        setImportError("L'import a échoué (aucun chapitre créé).");
+      }
+    } finally {
+      setImportState('idle');
+    }
+  };
   useEffect(() => {
     if (activeSubTab !== 'performance-dashboard') return;
     let cancelled = false;
@@ -719,7 +763,25 @@ export default function WriteView({
                   </h2>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Import d'un document déjà écrit (Word/texte) — évite de retaper. */}
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".docx,.txt,text/plain"
+                    onChange={handleImportFile}
+                    className="hidden"
+                  />
+                  <button
+                    id="btn-import-document"
+                    onClick={() => importInputRef.current?.click()}
+                    disabled={importState !== 'idle'}
+                    className="h-9 px-4 rounded-xl border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                    title="Importer un fichier Word (.docx) ou texte (.txt)"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>{importState === 'parsing' ? 'Lecture…' : 'Importer'}</span>
+                  </button>
                   <button
                     id="btn-add-chapter-directly"
                     onClick={() => handleOpenChapterEditor(currentStoryToManage || managingStoryChapters, null)}
@@ -728,7 +790,7 @@ export default function WriteView({
                     <Plus className="w-4 h-4" />
                     <span>Nouveau Chapitre</span>
                   </button>
-                  
+
                   <button
                     id="btn-back-to-books"
                     onClick={() => setManagingStoryChapters(null)}
@@ -738,6 +800,78 @@ export default function WriteView({
                   </button>
                 </div>
               </div>
+
+              {/* Erreur d'import (format non géré, fichier illisible…). */}
+              {importError && (
+                <div className="rounded-xl border border-red-400/40 bg-red-50 dark:bg-red-950/20 p-3 flex items-start justify-between gap-3">
+                  <p className="text-[11px] text-red-600 dark:text-red-300 font-semibold">⚠️ {importError}</p>
+                  <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600 text-sm leading-none">×</button>
+                </div>
+              )}
+
+              {/* MODAL de confirmation d'import : 1 chapitre ou découpage détecté. */}
+              {importPreview && (() => {
+                const story = currentStoryToManage || managingStoryChapters;
+                const canSplit = importPreview.split.length >= 2;
+                const importingNow = importState === 'saving';
+                return (
+                  <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !importingNow && setImportPreview(null)} />
+                    <div className="relative w-full max-w-md bg-white dark:bg-zinc-950 border border-gray-150 dark:border-purple-900/25 rounded-2xl p-5 shadow-2xl space-y-4">
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-purple-600" /> Importer « {importPreview.fileName} »
+                        </h3>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          Les chapitres sont créés en <b>brouillon</b> : tu les relis et les publies quand tu veux.
+                        </p>
+                      </div>
+
+                      {canSplit && (
+                        <div className="rounded-xl border border-purple-500/25 bg-purple-500/5 p-3">
+                          <p className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
+                            📚 {importPreview.split.length} sections détectées dans le document.
+                          </p>
+                          <ul className="mt-1.5 space-y-0.5 max-h-28 overflow-y-auto">
+                            {importPreview.split.slice(0, 8).map((c, i) => (
+                              <li key={i} className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                                {i + 1}. {c.title || `Chapitre ${i + 1}`}
+                              </li>
+                            ))}
+                            {importPreview.split.length > 8 && <li className="text-[10px] text-gray-400">…</li>}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-2">
+                        {canSplit && (
+                          <button
+                            disabled={importingNow}
+                            onClick={() => runImport(importPreview.split, story.id)}
+                            className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider transition disabled:opacity-60"
+                          >
+                            {importingNow ? 'Import…' : `Découper en ${importPreview.split.length} chapitres`}
+                          </button>
+                        )}
+                        <button
+                          disabled={importingNow}
+                          onClick={() => runImport([{ title: importPreview.fileName, content: importPreview.html }], story.id)}
+                          className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition disabled:opacity-60 ${canSplit ? 'border border-gray-200 dark:border-zinc-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-900' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                        >
+                          {importingNow ? 'Import…' : 'Importer en 1 seul chapitre'}
+                        </button>
+                        <button
+                          disabled={importingNow}
+                          onClick={() => setImportPreview(null)}
+                          className="w-full py-1.5 text-[11px] font-bold text-gray-400 hover:text-purple-600 transition"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* GESTION DES TOMES (optionnelle) — structurer l'œuvre en volumes.
                   Invisible dans la lecture tant qu'aucun tome n'est créé. */}

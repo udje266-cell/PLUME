@@ -2844,6 +2844,47 @@ export default function App() {
     }
   };
 
+  // Import de chapitres depuis un document (Word/texte) : on POST SÉQUENTIELLEMENT
+  // (await) pour que le serveur assigne des ordres consécutifs sans collision.
+  // Importés en BROUILLON : l'auteur relit/ajuste puis publie quand il veut.
+  // Renvoie le nombre de chapitres réellement créés.
+  const handleImportChapters = async (
+    storyId: string,
+    chapters: { title: string; content: string }[],
+  ): Promise<number> => {
+    let created = 0;
+    let words = 0;
+    for (let i = 0; i < chapters.length; i++) {
+      const ch = chapters[i];
+      try {
+        const res = await fetch(`/api/stories/${storyId}/chapters`, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            title: (ch.title || '').trim() || `Chapitre importé ${i + 1}`,
+            content: ch.content || '',
+            isPublished: false, // brouillon : relecture avant publication
+          }),
+        });
+        if (!res.ok) continue;
+        const newChapter = await res.json();
+        words += (ch.content || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+        setStories(prev => prev.map(s => (s.id === storyId ? { ...s, chapters: [...s.chapters, newChapter] } : s)));
+        created++;
+      } catch {
+        /* un chapitre en échec n'interrompt pas l'import des autres */
+      }
+    }
+    if (created > 0) {
+      handleUpdateAndVerifyUserStats(st => {
+        st.chaptersPublished = st.chaptersPublished + created;
+        st.wordsWritten = st.wordsWritten + words;
+      });
+      refreshCurrentUser();
+    }
+    return created;
+  };
+
   const handleRenameTome = (storyId: string, tomeId: string, title: string) => {
     const clean = title.trim();
     if (!clean) return;
@@ -3701,6 +3742,7 @@ export default function App() {
                       onCreateTome={handleCreateTome}
                       onRenameTome={handleRenameTome}
                       onDeleteTome={handleDeleteTome}
+                      onImportChapters={handleImportChapters}
                       comments={comments}
                     />
                   )}
