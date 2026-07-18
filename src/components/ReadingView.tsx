@@ -474,10 +474,20 @@ export default function ReadingView({
     }
   })();
 
-  const [fontSize, setFontSize] = useState<number>(prefFontSize); // Font Size Slider (14px - 32px)
-  const [fontStyle, setFontStyle] = useState<FontStyleType>(prefFontStyle); // Typography presets
-  const [lineSpacing, setLineSpacing] = useState<LineSpacingType>('normal');
-  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(prefTheme);
+  // Apparence de lecture PERSISTÉE par utilisateur : avant, tout réglage fait
+  // en cours de lecture (taille, thème, interligne, police) était PERDU en
+  // fermant le livre — il fallait tout re-régler à chaque session.
+  const readingPrefsKey = `plume_reading_prefs_${currentUser.id}`;
+  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme }> => {
+    try { return JSON.parse(localStorage.getItem(readingPrefsKey) || '{}'); } catch { return {}; }
+  })();
+  const [fontSize, setFontSize] = useState<number>(savedPrefs.fontSize ?? prefFontSize); // Font Size Slider (14px - 32px)
+  const [fontStyle, setFontStyle] = useState<FontStyleType>(savedPrefs.fontStyle ?? prefFontStyle); // Typography presets
+  const [lineSpacing, setLineSpacing] = useState<LineSpacingType>(savedPrefs.lineSpacing ?? 'normal');
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(savedPrefs.readingTheme ?? prefTheme);
+  useEffect(() => {
+    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme })); } catch { /* plein */ }
+  }, [fontSize, fontStyle, lineSpacing, readingTheme, readingPrefsKey]);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
   
   // Interactive Custom controls

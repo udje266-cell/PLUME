@@ -12,6 +12,7 @@
  */
 
 import type { Socket } from 'socket.io-client';
+import { getIceServers } from './iceConfig';
 
 export type CallStatus = 'idle' | 'calling' | 'incoming' | 'connected' | 'ended';
 
@@ -21,15 +22,6 @@ export interface CallPeer {
   avatar?: string;
 }
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  // TURN public gratuit (OpenRelay) : repli si la connexion directe échoue
-  // (NAT symétrique, réseaux mobiles stricts…).
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-];
 
 export interface CallCallbacks {
   onStatus: (status: CallStatus) => void;
@@ -85,7 +77,7 @@ export class CallManager {
 
   /** Crée la connexion P2P et branche le micro local + le flux distant. */
   private async createPeer(): Promise<RTCPeerConnection> {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: await getIceServers() });
 
     // Réducteur de bruit parasite intégré (activé par défaut, ajustable en appel).
     this.localStream = await navigator.mediaDevices.getUserMedia({

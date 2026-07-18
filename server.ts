@@ -1298,6 +1298,29 @@ export async function createServerInstance() {
     res.json({ key: process.env.VAPID_PUBLIC_KEY || null });
   });
 
+  // Configuration ICE (STUN/TURN) des appels WebRTC, PILOTABLE PAR ENV — le
+  // jour où un vrai compte TURN est créé (ex. Metered, 0,5 Go/mois gratuit),
+  // il suffit de définir TURN_URLS / TURN_USERNAME / TURN_CREDENTIAL sur
+  // Render : les appels deviennent fiables SANS reconstruire l'application.
+  // Sans env : repli sur STUN Google + relais public OpenRelay (best-effort).
+  app.get('/api/webrtc/ice', requireAuth, (_req, res) => {
+    const servers: any[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+    const turnUrls = (process.env.TURN_URLS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (turnUrls.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+      servers.push({ urls: turnUrls, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+    } else {
+      servers.push(
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      );
+    }
+    res.json({ iceServers: servers });
+  });
+
   app.post('/api/devices/unregister', requireAuth, async (req: any, res) => {
     try {
       const token = String(req.body?.token || '').trim();
@@ -2531,26 +2554,34 @@ export async function createServerInstance() {
       // Ordre calculé CÔTÉ SERVEUR (max existant + 1) pour garantir l'unicité
       // imposée par @@unique([storyId, order]). Auparavant l'ordre valait toujours
       // 1 → le 2e chapitre violait la contrainte et n'était jamais enregistré.
-      const lastChapter = await prisma.chapter.findFirst({
-        where: { storyId: req.params.storyId },
-        orderBy: { order: 'desc' },
-        select: { order: true },
-      });
-      const nextOrder = (lastChapter?.order ?? 0) + 1;
       const tomeId = await resolveTomeId(chapter.tomeId, req.params.storyId);
-      const newChapter = await prisma.chapter.create({
-        data: {
-          id: chapter.id || undefined,
-          title: chapter.title || 'Chapitre sans titre',
-          content: chapter.content || '',
-          order: nextOrder,
-          tomeId, // NULL si non fourni / invalide (chapitre hors tome).
-          isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
-          // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
-          storyId: req.params.storyId,
-          publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
-        },
-      });
+      // Collision d'ordre possible si deux créations arrivent en même temps
+      // (P2002 sur @@unique([storyId, order])) : on recalcule et on réessaie.
+      let newChapter: any = null;
+      for (let attempt = 0; attempt < 3 && !newChapter; attempt++) {
+        const lastCh = await prisma.chapter.findFirst({
+          where: { storyId: req.params.storyId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        try {
+          newChapter = await prisma.chapter.create({
+            data: {
+              id: chapter.id || undefined,
+              title: chapter.title || 'Chapitre sans titre',
+              content: chapter.content || '',
+              order: (lastCh?.order ?? 0) + 1 + attempt,
+              tomeId, // NULL si non fourni / invalide (chapitre hors tome).
+              isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
+              // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
+              storyId: req.params.storyId,
+              publishedAt: chapter.isPublished || chapter.status === 'Publié' ? new Date() : null,
+            },
+          });
+        } catch (e: any) {
+          if (e?.code !== 'P2002' || attempt === 2) throw e;
+        }
+      }
       await recomputeCertification(story.authorId);
       // XP auteur : +30 si le chapitre est créé directement publié.
       if (newChapter.isPublished) awardXp(story.authorId, 'author', XP.publishChapter).catch(() => {});
@@ -2693,11 +2724,19 @@ export async function createServerInstance() {
       if (!title) return res.status(400).json({ error: 'Titre du tome requis.' });
       if (title.length > 200) return res.status(400).json({ error: 'Titre du tome trop long (200 caractères maximum).' });
       const description = typeof req.body.description === 'string' ? req.body.description.slice(0, 2000) : '';
-      // Ordre calculé côté serveur (max + 1) pour respecter @@unique([storyId, order]).
-      const last = await prisma.tome.findFirst({ where: { storyId: req.params.storyId }, orderBy: { order: 'desc' }, select: { order: true } });
-      const tome = await prisma.tome.create({
-        data: { storyId: req.params.storyId, title, description, order: (last?.order ?? 0) + 1 },
-      });
+      // Ordre calculé côté serveur (max + 1). En cas de collision d'unicité
+      // (deux créations simultanées → P2002), on recalcule et on réessaie.
+      let tome: any = null;
+      for (let attempt = 0; attempt < 3 && !tome; attempt++) {
+        const last = await prisma.tome.findFirst({ where: { storyId: req.params.storyId }, orderBy: { order: 'desc' }, select: { order: true } });
+        try {
+          tome = await prisma.tome.create({
+            data: { storyId: req.params.storyId, title, description, order: (last?.order ?? 0) + 1 + attempt },
+          });
+        } catch (e: any) {
+          if (e?.code !== 'P2002' || attempt === 2) throw e;
+        }
+      }
       res.status(201).json(serializeTome(tome));
     } catch (error) {
       console.error('[TOME] création :', error);

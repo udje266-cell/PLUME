@@ -10,14 +10,8 @@
  */
 
 import type { Socket } from 'socket.io-client';
+import { getIceServers } from './iceConfig';
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-];
 
 export interface GroupCallCallbacks {
   onActive: (active: boolean) => void;
@@ -104,7 +98,7 @@ export class GroupCallManager {
     const existing = this.peers.get(peerId);
     if (existing) return existing.pc;
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: await getIceServers() });
     this.localStream?.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
 
     const audio = new Audio();
