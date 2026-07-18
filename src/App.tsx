@@ -2246,7 +2246,6 @@ export default function App() {
         return updatedStoryForSync;
       });
 
-      localStorage.setItem('plume_stories_backup', JSON.stringify(nextStories));
       return nextStories;
     });
 
@@ -2334,7 +2333,6 @@ export default function App() {
         return updatedStoryForSync;
       });
 
-      localStorage.setItem('plume_stories_backup', JSON.stringify(nextStories));
       return nextStories;
     });
 
@@ -2484,12 +2482,28 @@ export default function App() {
       excerpt: content.trim(),
     });
 
-    // Async sync to the backend Express server
+    // Sync serveur AVEC réconciliation : succès → on remplace le commentaire
+    // optimiste par la version serveur (id réel, indispensable pour liker /
+    // répondre / supprimer ensuite) ; échec → ROLLBACK (plus de commentaire
+    // fantôme affiché alors qu'il n'existe nulle part).
     fetch('/api/comments', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(newComment)
-    }).catch(e => console.error('[PLUME] Erreur de création du commentaire sur le serveur :', e));
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const serverComment = await res.json();
+        if (serverComment && serverComment.id) {
+          setComments(prev => prev.map(c => (c.id === newComment.id ? { ...c, ...serverComment } : c)));
+        }
+      })
+      .catch(e => {
+        console.error('[PLUME] Erreur de création du commentaire sur le serveur :', e);
+        setComments(prev => prev.filter(c => c.id !== newComment.id));
+        handleUpdateAndVerifyUserStats(st => { st.commentsPosted = Math.max(0, st.commentsPosted - 1); });
+        alert("Ton commentaire n'a pas pu être publié (connexion ?). Réessaie.");
+      });
   };
 
   const handleLikeComment = (commentId: string) => {
@@ -2568,20 +2582,46 @@ export default function App() {
       return c;
     }));
 
-    // Async sync of reply to the parent comment on server
+    // Sync serveur avec réconciliation (id réel) et ROLLBACK en cas d'échec.
     fetch(`/api/comments/${commentId}/replies`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(newReply)
-    }).catch(e => console.error('[PLUME] Erreur d’ajout de la réponse sur le serveur :', e));
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const serverReply = await res.json();
+        if (serverReply && serverReply.id) {
+          setComments(prev => prev.map(c => (c.id === commentId
+            ? { ...c, replies: c.replies.map(r => (r.id === newReply.id ? { ...r, ...serverReply } : r)) }
+            : c)));
+        }
+      })
+      .catch(e => {
+        console.error('[PLUME] Erreur d’ajout de la réponse sur le serveur :', e);
+        setComments(prev => prev.map(c => (c.id === commentId
+          ? { ...c, replies: c.replies.filter(r => r.id !== newReply.id) }
+          : c)));
+        alert("Ta réponse n'a pas pu être publiée (connexion ?). Réessaie.");
+      });
   };
 
   const handleDeleteComment = (commentId: string) => {
+    // Suppression optimiste AVEC restauration si le serveur refuse : le
+    // commentaire ne disparaît plus « pour de faux » (il serait revenu au
+    // prochain rechargement).
+    const removed = comments.find(c => c.id === commentId);
     setComments(comments.filter(c => c.id !== commentId));
 
-    // Delete comment on backend
     fetch(`/api/comments/${commentId}`, { method: 'DELETE', headers: authHeaders() })
-      .catch(e => console.error('[PLUME] Erreur de suppression commentaire backend :', e));
+      .then((res) => {
+        if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+      })
+      .catch(e => {
+        console.error('[PLUME] Erreur de suppression commentaire backend :', e);
+        if (removed) setComments(prev => [removed, ...prev]);
+        alert('La suppression du commentaire a échoué (connexion ?). Réessaie.');
+      });
   };
 
   // Stories creations (for Authors)
@@ -2707,12 +2747,14 @@ export default function App() {
 
     setStories([newStory, ...stories]);
 
-    // Send new story to the backend server
-    fetch('/api/stories', {
+    // Send new story to the backend server. On RENVOIE la promesse : le mode
+    // « tomes » attend la confirmation serveur avant d'ouvrir l'atelier (sinon
+    // créer un tome dans la foulée tombait en 404, l'œuvre n'existant pas encore).
+    return fetch('/api/stories', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(newStory)
-    }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur de création de récit sur le serveur :', e));
+    }).then(() => { refreshCurrentUser(); }).catch(e => console.error('[PLUME] Erreur de création de récit sur le serveur :', e));
   };
 
   const handleUpdateStory = (storyId: string, updatedStory: Partial<Story>) => {
@@ -3423,7 +3465,6 @@ export default function App() {
         return updatedStoryForSync;
       });
 
-      localStorage.setItem('plume_stories_backup', JSON.stringify(nextStories));
       return nextStories;
     });
 

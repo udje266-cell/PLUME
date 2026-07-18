@@ -38,6 +38,7 @@ import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDis
 import { authHeaders } from '../utils/auth';
 import { storyShareUrl, shareStoryNative, openShareIntent, ShareNetwork } from '../utils/share';
 import { wordsOf, storyMinutes, formatMinutes } from '../utils/readingTime';
+import { generateCoverDataUri } from '../utils/coverImage';
 
 /** Formate un compteur de façon compacte : 1234 → « 1,2 k », 1500000 → « 1,5 M ». */
 function formatStat(n: number): string {
@@ -126,6 +127,15 @@ export default function HomeView({
     } catch {
       /* stockage indisponible : on garde juste l'état en mémoire */
     }
+  };
+
+  // Repli d'image : une couverture morte (URL cassee) est remplacee par une
+  // couverture generee localement (titre + degrade) au lieu d'une icone cassee.
+  const onCoverError = (title: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.dataset.fallback) return; // pas de boucle si le repli echouait aussi
+    img.dataset.fallback = '1';
+    img.src = generateCoverDataUri(title || 'PLUME');
   };
 
   // Filter out published and safe stories
@@ -410,7 +420,7 @@ export default function HomeView({
                 {featuredStories.map((story) => (
                   <div key={story.id} className="w-40 flex-shrink-0">
                     <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer ring-2 ring-amber-400/40">
-                      <img src={optimizedImage(story.cover, 220)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       <span className="absolute top-1 left-1 text-[8px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded uppercase shadow flex items-center gap-0.5"><Sparkles className="w-2.5 h-2.5" />À la une</span>
                     </div>
                     <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-xs font-black text-gray-950 dark:text-gray-50 line-clamp-1 cursor-pointer hover:text-purple-600">{story.title}</h4>
@@ -452,7 +462,7 @@ export default function HomeView({
                   className="aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer bg-gray-100 dark:bg-zinc-900 border border-emerald-500/20 relative group"
                 >
                   {book.cover && (
-                    <img src={optimizedImage(book.cover, 220)} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={optimizedImage(book.cover, 220)} alt={book.title} onError={onCoverError(book.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   )}
                   <span className="absolute top-1 left-1 text-[7px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded uppercase shadow">Hors ligne</span>
                   <button
@@ -482,7 +492,7 @@ export default function HomeView({
           <div className="flex items-stretch gap-3 p-3">
             <div className="w-16 flex-shrink-0 rounded-xl overflow-hidden aspect-[2/3] bg-black/30">
               {resumeInfo.story.cover && (
-                <img src={optimizedImage(resumeInfo.story.cover, 160)} alt={resumeInfo.story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={optimizedImage(resumeInfo.story.cover, 160)} alt={resumeInfo.story.title} onError={onCoverError(resumeInfo.story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               )}
             </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 text-white">
@@ -525,7 +535,7 @@ export default function HomeView({
             return (
               <div key={story.id} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
                 <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
-                  <img src={optimizedImage(story.cover, 220)} alt={story.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   {started && (
                     <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
                       <div className="h-full bg-purple-500" style={{ width: `${percent}%` }} />
@@ -614,7 +624,7 @@ export default function HomeView({
               {list.slice(0, 12).map((story, i) => (
                 <div key={story.id} className="w-28 flex-shrink-0">
                   <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden">
-                    <img onClick={() => onSelectStory(story)} src={optimizedImage(story.cover, 180)} alt={story.title} className="w-full h-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
+                    <img onClick={() => onSelectStory(story)} src={optimizedImage(story.cover, 180)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
                     <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>
                     <button
                       aria-label="Partager"

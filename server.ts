@@ -2599,8 +2599,9 @@ export async function createServerInstance() {
       // XP auteur : +30 à la PREMIÈRE publication du chapitre (transition).
       if (!existingChapter.isPublished && updatedChapter.isPublished) {
         awardXp(existingChapter.story.authorId, 'author', XP.publishChapter).catch(() => {});
-        // Transition brouillon → publié : on prévient les abonnés de l'auteur.
-        notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
+        // PREMIÈRE publication uniquement (publishedAt encore vide avant) : un
+        // dépublier/republier ne re-notifie pas tous les abonnés (anti-spam).
+        if (!existingChapter.publishedAt) notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
       }
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
@@ -2654,8 +2655,9 @@ export async function createServerInstance() {
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
-      // Transition brouillon → publié : on prévient les abonnés de l'auteur.
-      if (!existingChapter.isPublished && updatedChapter.isPublished) {
+      // PREMIÈRE publication uniquement : un dépublier/republier ne re-notifie
+      // pas les abonnés (anti-spam).
+      if (!existingChapter.isPublished && updatedChapter.isPublished && !existingChapter.publishedAt) {
         notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
       }
       res.json(serializeChapter(updatedChapter));
@@ -4605,10 +4607,30 @@ export async function createServerInstance() {
   // progression de lecture partagée — distinct de /read qui trace l'OUVERTURE.
   app.post('/api/stories/:storyId/chapters/:chapterId/complete', requireAuth, async (req: any, res) => {
     try {
+      // INTÉGRITÉ des statistiques : on ne compte une « lecture complète » que
+      // pour un chapitre RÉEL, PUBLIÉ, appartenant bien au récit indiqué — et
+      // jamais pour l'auteur sur sa propre œuvre (auto-gonflage). Sans ces
+      // gardes, n'importe qui pouvait fausser les stats de n'importe quel auteur.
+      const chapter = await prisma.chapter.findUnique({
+        where: { id: req.params.chapterId },
+        select: { id: true, storyId: true, isPublished: true, story: { select: { authorId: true, status: true } } },
+      });
+      if (!chapter || chapter.storyId !== req.params.storyId) {
+        return res.status(404).json({ error: 'Chapitre introuvable pour ce récit.' });
+      }
+      if (!chapter.isPublished || chapter.story.status !== 'PUBLIE') {
+        return res.status(400).json({ error: 'Chapitre non publié.' });
+      }
+      if (chapter.story.authorId === req.user.id) {
+        // L'auteur qui relit son œuvre ne compte pas comme lecteur (no-op OK,
+        // pour ne pas faire échouer la file hors-ligne du client).
+        return res.status(200).json({ skipped: true });
+      }
       const read = await prisma.chapterRead.upsert({
-        where: { userId_chapterId: { userId: req.user.id, chapterId: req.params.chapterId } },
+        where: { userId_chapterId: { userId: req.user.id, chapterId: chapter.id } },
         update: {},
-        create: { userId: req.user.id, storyId: req.params.storyId, chapterId: req.params.chapterId },
+        // storyId pris du CHAPITRE (jamais du client) : cohérence garantie.
+        create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id },
       });
       res.status(201).json(read);
     } catch (error) {
@@ -4796,6 +4818,24 @@ if (process.env.NODE_ENV !== 'test') {
           .catch((e) => console.warn('[KEEPALIVE] auto-ping échoué :', e?.message || e));
       }, KEEPALIVE_MS).unref?.();
     }
+
+    // Rétention des NOTIFICATIONS : sans purge, la table croît sans limite
+    // (une ligne PAR ABONNÉ à chaque publication de chapitre). On supprime les
+    // notifications LUES de plus de 30 jours et TOUTES celles de plus de 120
+    // jours — au démarrage puis une fois par jour.
+    const purgeOldNotifications = async () => {
+      try {
+        const d30 = new Date(Date.now() - 30 * 86_400_000);
+        const d120 = new Date(Date.now() - 120 * 86_400_000);
+        const a = await prisma.notification.deleteMany({ where: { isRead: true, createdAt: { lt: d30 } } });
+        const b = await prisma.notification.deleteMany({ where: { createdAt: { lt: d120 } } });
+        if (a.count || b.count) console.log(`[RETENTION] notifications purgées : ${a.count + b.count}`);
+      } catch (e) {
+        console.warn('[RETENTION] purge notifications échouée :', (e as any)?.message || e);
+      }
+    };
+    purgeOldNotifications();
+    setInterval(purgeOldNotifications, 24 * 60 * 60 * 1000).unref?.();
 
     // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
     // nouvelles connexions puis on libère Prisma et Redis pour ne pas fuiter de

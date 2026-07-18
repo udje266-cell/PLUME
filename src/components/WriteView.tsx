@@ -92,7 +92,7 @@ const getCroppedImageFile = async (
 interface WriteViewProps {
   currentUser: User;
   userStories: Story[];
-  onCreateStory: (storyData: Partial<Story>) => void;
+  onCreateStory: (storyData: Partial<Story>) => void | Promise<void>;
   onUpdateStory: (storyId: string, updatedStory: Partial<Story>) => void;
   onAddChapter: (storyId: string, chapterData: Partial<Chapter>) => Chapter | void;
   onUpdateChapter: (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => void;
@@ -141,6 +141,8 @@ export default function WriteView({
   const [ageRating, setAgeRating] = useState<'all' | '12' | '16' | '18'>('all');
   // Mode d'organisation choisi à la création : chapitres (simple) ou tomes.
   const [storyStructure, setStoryStructure] = useState<'chapters' | 'tomes'>('chapters');
+  // Anti double-clic + attente de la confirmation serveur (mode tomes).
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const [coverImage, setCoverImage] = useState('');
   const [coverImageSrc, setCoverImageSrc] = useState<string | null>(null);
   const [coverFileName, setCoverFileName] = useState('cover.jpg');
@@ -332,8 +334,9 @@ export default function WriteView({
     setCoverImage('');
   };
 
-  const handleCreateStorySubmit = (e: React.FormEvent) => {
+  const handleCreateStorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (creatingBusy) return; // anti double-clic (deux œuvres identiques)
     if (!title.trim() || !description.trim()) return;
 
     const tagsArray = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
@@ -384,7 +387,20 @@ export default function WriteView({
         tags: tagsArray
       };
 
-      onCreateStory(newStory);
+      const chosenStructure = storyStructure;
+      setCreatingBusy(true);
+      try {
+        if (chosenStructure === 'tomes') {
+          // Mode TOMES : on ATTEND la confirmation serveur avant d'ouvrir
+          // l'atelier — sinon « Ajouter un tome » dans la foulée tombait en 404
+          // (l'œuvre n'existait pas encore côté serveur sur connexion lente).
+          await Promise.resolve(onCreateStory(newStory));
+        } else {
+          onCreateStory(newStory);
+        }
+      } finally {
+        setCreatingBusy(false);
+      }
 
       // Clean creator values so they are fresh for any future session
       setTitle('');
@@ -394,7 +410,6 @@ export default function WriteView({
       setAmbiance(AMBIANCES[0]);
       setFormat(FORMATS[0]);
       setLanguage(LANGUAGES[0]);
-      const chosenStructure = storyStructure;
       setTagsInput('');
       setAgeRating('all');
       setStoryStructure('chapters');
@@ -782,9 +797,10 @@ export default function WriteView({
               <button
                 id="submit-story-btn"
                 type="submit"
-                className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-xs font-bold transition shadow-md shadow-purple-500/10"
+                disabled={creatingBusy}
+                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl px-5 py-2.5 text-xs font-bold transition shadow-md shadow-purple-500/10"
               >
-                {selectedStoryToEdit ? "Sauvegarder les modifications" : "Valider et Créer l’œuvre"}
+                {creatingBusy ? 'Création…' : (selectedStoryToEdit ? "Sauvegarder les modifications" : "Valider et Créer l’œuvre")}
               </button>
             </div>
           </form>

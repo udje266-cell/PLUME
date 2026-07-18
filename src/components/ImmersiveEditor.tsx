@@ -889,6 +889,14 @@ export default function ImmersiveEditor({
         <div
           ref={editorRef}
           contentEditable
+          onPaste={(e) => {
+            // Collage en TEXTE BRUT : le HTML de Word/Docs (styles inline,
+            // spans, classes) salissait le contenu stocke. Pour importer un
+            // document entier avec sa mise en forme, passer par « Importer ».
+            e.preventDefault();
+            const text = e.clipboardData.getData('text/plain');
+            if (text) document.execCommand('insertText', false, text);
+          }}
           suppressContentEditableWarning
           onInput={onEditorInput}
           onFocus={wakeChrome}
