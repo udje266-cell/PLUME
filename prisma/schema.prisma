@@ -143,6 +143,7 @@ model Story {
   favorites      Favorite[]
   readingProgress ReadingProgress[]
   readingHistory ReadingHistory[]
+  chapterReads   ChapterRead[]
 
   publishedAt    DateTime?
   createdAt      DateTime    @default(now())
@@ -172,6 +173,7 @@ model Chapter {
   comments    Comment[]
   readingProgress ReadingProgress[]
   readingHistory ReadingHistory[]
+  chapterReads ChapterRead[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -394,10 +396,15 @@ model ChapterRead {
   storyId   String
   chapterId String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  / FK en cascade : sans elles, la suppression d'un chapitre ou d'une œuvre
+  // laissait des lignes orphelines qui gonflaient les stats pour toujours.
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@unique([userId, chapterId])
   @@index([userId])
+  @@index([storyId])
 }
 
 // Citations sauvegardées pendant la lecture : persistées côté serveur (elles

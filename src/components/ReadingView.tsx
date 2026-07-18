@@ -479,7 +479,18 @@ export default function ReadingView({
   // fermant le livre — il fallait tout re-régler à chaque session.
   const readingPrefsKey = `plume_reading_prefs_${currentUser.id}`;
   const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme }> => {
-    try { return JSON.parse(localStorage.getItem(readingPrefsKey) || '{}'); } catch { return {}; }
+    try {
+      const raw = JSON.parse(localStorage.getItem(readingPrefsKey) || '{}') || {};
+      // VALIDATION : des valeurs corrompues (NaN, 999, enum inconnu) cassaient
+      // le rendu jusqu'à re-réglage manuel.
+      const out: any = {};
+      const fs = Number(raw.fontSize);
+      if (Number.isFinite(fs)) out.fontSize = Math.min(32, Math.max(14, Math.round(fs)));
+      if (['serif', 'sans', 'mono'].includes(raw.fontStyle)) out.fontStyle = raw.fontStyle;
+      if (['compact', 'normal', 'relaxed'].includes(raw.lineSpacing)) out.lineSpacing = raw.lineSpacing;
+      if (['light', 'sepia', 'dark', 'dimmed'].includes(raw.readingTheme)) out.readingTheme = raw.readingTheme;
+      return out;
+    } catch { return {}; }
   })();
   const [fontSize, setFontSize] = useState<number>(savedPrefs.fontSize ?? prefFontSize); // Font Size Slider (14px - 32px)
   const [fontStyle, setFontStyle] = useState<FontStyleType>(savedPrefs.fontStyle ?? prefFontStyle); // Typography presets
@@ -542,11 +553,14 @@ export default function ReadingView({
         quoteIdsRef.current = map;
         let local: string[] = [];
         try { local = JSON.parse(localStorage.getItem(quotesStorageKey) || localStorage.getItem('plume_saved_quotes') || '[]'); } catch { local = []; }
+        // SÉQUENTIEL : une rafale de 100 POST simultanés saturait le réseau
+        // (et multipliait les doublons si deux appareils migraient en même temps).
         for (const c of local.filter((content) => !map[content]).slice(0, 100)) {
-          fetch('/api/me/quotes', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ content: c }) })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((q) => { if (q) quoteIdsRef.current[q.content] = q.id; })
-            .catch(() => {});
+          if (cancelled) break;
+          try {
+            const r2 = await fetch('/api/me/quotes', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ content: c }) });
+            if (r2.ok) { const q = await r2.json(); if (q) quoteIdsRef.current[q.content] = q.id; }
+          } catch { break; }
         }
         if (!cancelled) setSavedQuotes((prev) => Array.from(new Set([...prev, ...list.map((q: any) => q.content)])));
       } catch { /* hors-ligne : le carnet local reste utilisable */ }
@@ -745,6 +759,31 @@ export default function ReadingView({
   }, [flushProgressSync]);
   // Flush au démontage (fermeture du livre) pour ne pas perdre la dernière position.
   useEffect(() => () => { flushProgressSync(); }, [flushProgressSync]);
+  // … et à la fermeture d'onglet / mise en arrière-plan (le cleanup React ne
+  // s'exécute pas lors d'un kill) : fetch keepalive, le navigateur termine
+  // l'envoi même une fois la page fermée.
+  useEffect(() => {
+    const flushKeepalive = () => {
+      const p = progressSyncRef.current;
+      if (!p || !p.chapterId || p.chapterId === '__empty__') return;
+      progressSyncRef.current = null;
+      try {
+        fetch(`/api/chapters/${p.chapterId}/progress`, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ progressPercent: p.percent }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch { /* ignore */ }
+    };
+    const onHide = () => { if (document.visibilityState === 'hidden') flushKeepalive(); };
+    window.addEventListener('pagehide', flushKeepalive);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flushKeepalive);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, []);
   // Chapitres REELLEMENT lus (defilement >= 95 % OU temps de lecture suffisant)
   // pendant cette session : evite de re-signaler le meme chapitre en boucle.
   const fullyReadRef = useRef<Set<string>>(new Set());
@@ -877,12 +916,17 @@ export default function ReadingView({
   useEffect(() => {
     if (getBookProgress(currentUser.id, story.id)) return; // le local prime
     let cancelled = false;
+    const timers: any[] = [];
     (async () => {
       try {
         const res = await fetch(`/api/me/progress/${story.id}`, { headers: authHeaders() });
         if (!res.ok || cancelled) return;
         const sp = await res.json();
         if (!sp || !sp.chapterId) return;
+        // ANTI-COURSE : si l'utilisateur a commencé à lire pendant la requête
+        // (le onScroll a déjà écrit une progression locale), on abandonne — le
+        // replacer maintenant provoquerait un saut brutal en pleine lecture.
+        if (cancelled || getBookProgress(currentUser.id, story.id)) return;
         const idx = story.chapters.findIndex((c) => c.id === sp.chapterId);
         if (idx < 0) return;
         const ratio = Math.min(1, Math.max(0, (Number(sp.progressPercent) || 0) / 100));
@@ -890,13 +934,14 @@ export default function ReadingView({
         // On écrit la position serveur dans le stockage local : les prochaines
         // ouvertures passeront par le chemin de reprise habituel.
         saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent });
-        if (cancelled) return;
         setActiveChapterIndex(idx);
         setReadPercent(percent);
         if (ratio > 0.01) {
           // Ré-application en plusieurs passes (rendu progressif du chapitre),
-          // comme la restauration locale.
+          // comme la restauration locale — timers NETTOYÉS au démontage pour ne
+          // pas défiler un autre écran après fermeture du livre.
           const apply = () => {
+            if (cancelled) return;
             const el = getScrollParent(readerRootRef.current);
             if (el) {
               const max = el.scrollHeight - el.clientHeight;
@@ -906,11 +951,11 @@ export default function ReadingView({
               if (wmax > 0) window.scrollTo({ top: wmax * ratio, behavior: 'auto' });
             }
           };
-          [300, 700, 1200].forEach((d) => setTimeout(apply, d));
+          [300, 700, 1200].forEach((d) => timers.push(setTimeout(apply, d)));
         }
       } catch { /* hors-ligne : on démarre simplement au début */ }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; timers.forEach((t) => clearTimeout(t)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story.id]);
 

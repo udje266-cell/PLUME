@@ -650,22 +650,72 @@ export async function createServerInstance() {
         chapterId: chapter.id,
         chapterTitle: chapter.title || '',
       } as any;
-      for (const f of followers) {
-        prisma.notification
-          .create({
-            data: {
-              userId: f.followerId,
-              type: 'NEW_CHAPTER',
-              title: 'Nouveau chapitre 🪶',
-              message: `${author?.username || 'Un auteur'} a publié « ${chapter.title || 'un nouveau chapitre'} » dans ${story.title}.`,
-              data: payload,
-            },
-          })
-          .then((n) => notifyUser(f.followerId, n))
-          .catch(() => { /* un destinataire en échec ne bloque pas les autres */ });
+      // Envoi par LOTS de 10 (séquentiels) : des milliers de create lancés en
+      // parallèle épuisaient le pool de connexions Prisma à chaque publication
+      // d'un auteur populaire. Le create individuel est conservé (l'id réel est
+      // requis par le temps réel / marquer-comme-lu côté client).
+      for (let i = 0; i < followers.length; i += 10) {
+        const batch = followers.slice(i, i + 10);
+        await Promise.all(batch.map(async (f) => {
+          try {
+            const n = await prisma.notification.create({
+              data: {
+                userId: f.followerId,
+                type: 'NEW_CHAPTER',
+                title: 'Nouveau chapitre 🪶',
+                message: `${author?.username || 'Un auteur'} a publié « ${chapter.title || 'un nouveau chapitre'} » dans ${story.title}.`,
+                data: payload,
+              },
+            });
+            notifyUser(f.followerId, n);
+          } catch { /* un destinataire en échec ne bloque pas les autres */ }
+        }));
       }
     } catch (e) {
       console.error('[NEW-CHAPTER] notification abonnés :', e);
+    }
+  };
+
+  // Notifie les abonnés qu'une NOUVELLE ŒUVRE est publiée (première publication
+  // du récit uniquement). Couvre aussi le cas des chapitres publiés AVANT
+  // l'œuvre : leurs notifications individuelles avortent tant que le récit est
+  // en brouillon, celle-ci prend le relais au moment où il paraît.
+  const notifyFollowersStoryPublished = async (story: any) => {
+    try {
+      if (!story) return;
+      const followers = await prisma.follow.findMany({
+        where: { followingId: story.authorId },
+        select: { followerId: true },
+        take: 2000,
+      });
+      if (!followers.length) return;
+      const author = await prisma.user.findUnique({ where: { id: story.authorId }, select: { username: true, avatar: true } });
+      const payload = {
+        actorId: story.authorId,
+        actorName: author?.username || '',
+        actorAvatar: author?.avatar || '',
+        storyId: story.id,
+        storyTitle: story.title,
+      } as any;
+      for (let i = 0; i < followers.length; i += 10) {
+        const batch = followers.slice(i, i + 10);
+        await Promise.all(batch.map(async (f) => {
+          try {
+            const n = await prisma.notification.create({
+              data: {
+                userId: f.followerId,
+                type: 'NEW_STORY',
+                title: 'Nouvelle œuvre 🪶',
+                message: `${author?.username || 'Un auteur'} vient de publier « ${story.title} ».`,
+                data: payload,
+              },
+            });
+            notifyUser(f.followerId, n);
+          } catch { /* un destinataire en échec ne bloque pas les autres */ }
+        }));
+      }
+    } catch (e) {
+      console.error('[NEW-STORY] notification abonnés :', e);
     }
   };
 
@@ -1304,6 +1354,8 @@ export async function createServerInstance() {
   // Render : les appels deviennent fiables SANS reconstruire l'application.
   // Sans env : repli sur STUN Google + relais public OpenRelay (best-effort).
   app.get('/api/webrtc/ice', requireAuth, (_req, res) => {
+    // Credentials TURN : jamais mis en cache (rotation possible cote env).
+    res.set('Cache-Control', 'no-store');
     const servers: any[] = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -2501,9 +2553,12 @@ export async function createServerInstance() {
         include: { author: true, chapters: { orderBy: { order: 'asc' } }, tomes: { orderBy: { order: 'asc' } }, likes: true, favorites: true },
       });
       await recomputeCertification(existing.authorId);
-      // XP auteur : +80 à la PREMIÈRE publication d'un récit (transition vers Publié).
-      if (existing.status !== 'PUBLIE' && data.status === 'PUBLIE') {
+      // PREMIÈRE publication du récit (publishedAt encore vide avant) :
+      // XP auteur + notification « nouvelle œuvre » aux abonnés. Le garde
+      // publishedAt empêche le farming XP et le spam par dépublier/republier.
+      if (existing.status !== 'PUBLIE' && data.status === 'PUBLIE' && !existing.publishedAt) {
         awardXp(existing.authorId, 'author', XP.publishStory).catch(() => {});
+        notifyFollowersStoryPublished(updatedStory).catch(() => {});
       }
       res.json(serializeStory(updatedStory));
     } catch (error) {
@@ -2570,7 +2625,7 @@ export async function createServerInstance() {
               id: chapter.id || undefined,
               title: chapter.title || 'Chapitre sans titre',
               content: chapter.content || '',
-              order: (lastCh?.order ?? 0) + 1 + attempt,
+              order: (lastCh?.order ?? 0) + 1,
               tomeId, // NULL si non fourni / invalide (chapitre hors tome).
               isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
               // views/reads partent à 0 (défaut schéma) : non pilotables par le client.
@@ -2627,12 +2682,12 @@ export async function createServerInstance() {
         },
       });
       await recomputeCertification(existingChapter.story.authorId);
-      // XP auteur : +30 à la PREMIÈRE publication du chapitre (transition).
-      if (!existingChapter.isPublished && updatedChapter.isPublished) {
+      // XP auteur : +30 à la PREMIÈRE publication SEULEMENT (publishedAt encore
+      // vide avant) — sinon dépublier/republier en boucle = XP infini. Même
+      // garde pour la notification aux abonnés (anti-spam).
+      if (!existingChapter.isPublished && updatedChapter.isPublished && !existingChapter.publishedAt) {
         awardXp(existingChapter.story.authorId, 'author', XP.publishChapter).catch(() => {});
-        // PREMIÈRE publication uniquement (publishedAt encore vide avant) : un
-        // dépublier/republier ne re-notifie pas tous les abonnés (anti-spam).
-        if (!existingChapter.publishedAt) notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
+        notifyFollowersNewChapter(existingChapter.story, updatedChapter).catch(() => {});
       }
       res.json(serializeChapter(updatedChapter));
     } catch (error) {
@@ -2731,7 +2786,7 @@ export async function createServerInstance() {
         const last = await prisma.tome.findFirst({ where: { storyId: req.params.storyId }, orderBy: { order: 'desc' }, select: { order: true } });
         try {
           tome = await prisma.tome.create({
-            data: { storyId: req.params.storyId, title, description, order: (last?.order ?? 0) + 1 + attempt },
+            data: { storyId: req.params.storyId, title, description, order: (last?.order ?? 0) + 1 },
           });
         } catch (e: any) {
           if (e?.code !== 'P2002' || attempt === 2) throw e;
@@ -4491,7 +4546,17 @@ export async function createServerInstance() {
   // Reading
   app.post('/api/stories/:id/read', requireAuth, async (req: any, res) => {
     try {
-      const chapterId = req.body.chapterId || null;
+      let chapterId = req.body.chapterId || null;
+      // INTÉGRITÉ : le récit doit exister ; un chapterId fourni doit appartenir
+      // à CE récit (sinon on pouvait gonfler les compteurs d'un chapitre
+      // arbitraire) ; et l'auteur ne gonfle pas ses propres compteurs.
+      const story = await prisma.story.findUnique({ where: { id: req.params.id }, select: { authorId: true } });
+      if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
+      if (chapterId) {
+        const ch = await prisma.chapter.findUnique({ where: { id: chapterId }, select: { storyId: true } });
+        if (!ch || ch.storyId !== req.params.id) chapterId = null; // id étranger : ignoré
+      }
+      const isSelfRead = story.authorId === req.user.id;
       // Anti-gonflage : les compteurs ne sont incrémentés qu'une fois par
       // fenêtre glissante (6 h) et par utilisateur. L'historique de lecture,
       // lui, est toujours enregistré.
@@ -4505,11 +4570,13 @@ export async function createServerInstance() {
         ? await prisma.readingHistory.findFirst({ where: { userId: req.user.id, storyId: req.params.id, chapterId }, select: { id: true } })
         : await prisma.readingHistory.findFirst({ where: { userId: req.user.id, storyId: req.params.id }, select: { id: true } });
       const history = await prisma.readingHistory.create({ data: { userId: req.user.id, storyId: req.params.id, chapterId } });
-      if (!alreadyCounted) {
+      // L'auteur qui relit son œuvre garde son historique (reprise de lecture)
+      // mais n'incrémente NI les compteurs publics NI son XP lecteur.
+      if (!alreadyCounted && !isSelfRead) {
         await prisma.story.update({ where: { id: req.params.id }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
         if (chapterId) await prisma.chapter.update({ where: { id: chapterId }, data: { reads: { increment: 1 }, views: { increment: 1 } } }).catch(() => null);
       }
-      if (!everReadChapter) awardXp(req.user.id, 'reader', XP.readChapter).catch(() => {});
+      if (!everReadChapter && !isSelfRead) awardXp(req.user.id, 'reader', XP.readChapter).catch(() => {});
       res.status(201).json(history);
     } catch (error) {
       console.error(error);
@@ -4600,8 +4667,11 @@ export async function createServerInstance() {
   // POST /api/chapters/:id/progress pendant la lecture.
   app.get('/api/me/progress/:storyId', requireAuth, async (req: any, res) => {
     try {
+      // On ne renvoie qu'une position pointant vers un chapitre encore PUBLIÉ
+      // (un chapitre dépublié après coup rendrait la reprise introuvable côté
+      // client) — repli sur la position publiée la plus récente.
       const last = await prisma.readingProgress.findFirst({
-        where: { userId: req.user.id, storyId: req.params.storyId },
+        where: { userId: req.user.id, storyId: req.params.storyId, chapter: { isPublished: true } },
         orderBy: { lastReadAt: 'desc' },
         select: { chapterId: true, progressPercent: true, lastReadAt: true },
       });
@@ -4747,7 +4817,9 @@ export async function createServerInstance() {
       if (!chapter.isPublished && chapter.story?.authorId !== req.user.id && req.user.role !== 'Administrateur') {
         return res.status(404).json({ error: 'Chapitre non trouvé' });
       }
-      const progressPercent = Math.min(100, Math.max(0, Number(req.body.progressPercent || 0)));
+      const rawPercent = Number(req.body.progressPercent);
+      // Number.isFinite : NaN traversait Math.min/max et finissait en base.
+      const progressPercent = Number.isFinite(rawPercent) ? Math.min(100, Math.max(0, rawPercent)) : 0;
       const progress = await prisma.readingProgress.upsert({
         where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },
         update: { progressPercent, lastReadAt: new Date() },
@@ -4762,8 +4834,13 @@ export async function createServerInstance() {
   });
 
   app.get('/api/stories/:id/progress', requireAuth, async (req: any, res) => {
-    const progress = await prisma.readingProgress.findMany({ where: { userId: req.user.id, storyId: req.params.id }, include: { chapter: true }, orderBy: { lastReadAt: 'desc' } });
-    res.json(progress.map((p: any) => ({ ...p, chapter: serializeChapter(p.chapter) })));
+    try {
+      const progress = await prisma.readingProgress.findMany({ where: { userId: req.user.id, storyId: req.params.id }, include: { chapter: true }, orderBy: { lastReadAt: 'desc' } });
+      res.json(progress.map((p: any) => ({ ...p, chapter: serializeChapter(p.chapter) })));
+    } catch (error) {
+      console.error('[PROGRESS] liste :', error);
+      res.status(500).json({ error: 'Erreur lors du chargement de la progression' });
+    }
   });
 
   // Block users

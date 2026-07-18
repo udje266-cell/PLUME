@@ -39,8 +39,12 @@ export async function getIceServers(): Promise<RTCIceServer[]> {
           }
         }
       } catch { /* serveur injoignable : repli local */ }
-      cached = FALLBACK_ICE;
-      return cached;
+      // ÉCHEC : on renvoie le repli SANS le mettre en cache, et on libère
+      // inFlight — le prochain appel retentera le serveur (sinon un premier
+      // échec au démarrage figeait le repli pour toute la session, et le vrai
+      // TURN configuré n'était plus jamais interrogé).
+      inFlight = null;
+      return FALLBACK_ICE;
     })();
   }
   return inFlight;

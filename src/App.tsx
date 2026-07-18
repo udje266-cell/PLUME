@@ -80,6 +80,7 @@ function mapServerNotificationType(type: string): AppNotification['type'] {
     MESSAGE: 'message',
     COMMENT_REPLY: 'comment',
     NEW_CHAPTER: 'comment',
+    NEW_STORY: 'comment', // porte un storyId → le clic ouvre l'œuvre
   };
   return map[type] || 'follow';
 }
@@ -829,7 +830,10 @@ export default function App() {
         showAppNotification('message', { title: senderName, body: preview, conversationId: message.conversationId });
       }
 
-      if (isCurrentActive) {
+      // Accusé de lecture UNIQUEMENT si l'app est réellement au premier plan :
+      // conversation « active » en arrière-plan ≠ message lu (faux ✓✓ sinon).
+      const isActuallyViewing = isCurrentActive && document.visibilityState === 'visible';
+      if (isActuallyViewing) {
         // Mark as read immediately on the server
         fetch('/api/messages/read', {
           method: 'PUT',
@@ -850,8 +854,8 @@ export default function App() {
         const updatedConv = {
           ...conv,
           updatedAt: message.createdAt || new Date().toISOString(),
-          messages: [...conv.messages, { ...message, isRead: isCurrentActive, date: message.createdAt }],
-          unreadCount: (conv.unreadCount || 0) + (isCurrentActive ? 0 : 1)
+          messages: [...conv.messages, { ...message, isRead: isActuallyViewing, date: message.createdAt }],
+          unreadCount: (conv.unreadCount || 0) + (isActuallyViewing ? 0 : 1)
         };
 
         const next = [...prev];
@@ -971,7 +975,17 @@ export default function App() {
 
     socket.on('group_updated', (group: ReadingGroup) => {
       if (!group || !group.id) return;
-      setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, ...group } : g)));
+      // Fusion défensive : le payload peut être PARTIEL (ex. renommage seul).
+      // On ignore les clés explicitement undefined pour ne pas écraser les
+      // champs locaux (roster, réglages…) avec du vide.
+      setGroups((prev) => prev.map((g) => {
+        if (g.id !== group.id) return g;
+        const patch: Partial<ReadingGroup> = {};
+        (Object.keys(group) as (keyof ReadingGroup)[]).forEach((k) => {
+          if (group[k] !== undefined) (patch as any)[k] = group[k];
+        });
+        return { ...g, ...patch };
+      }));
     });
     socket.on('group_removed', ({ groupId }: { groupId: string }) => {
       setGroups((prev) => prev.filter((g) => g.id !== groupId));
@@ -1308,8 +1322,11 @@ export default function App() {
         setSelectedStoryForReading(null);
         setActiveConversationId('');
         setActiveTab('messages');
-        // Laisse MessagesView se monter avant d'emettre l'ouverture du groupe.
-        setTimeout(() => window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: n.groupId } })), 60);
+        // Double canal : l'evenement sert si MessagesView est deja monte ; la
+        // cle sessionStorage est consommee a son montage (le setTimeout de
+        // 60 ms ratait l'ouverture si le montage etait plus lent).
+        try { sessionStorage.setItem('plume_pending_group', n.groupId); } catch { /* stockage indisponible */ }
+        window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: n.groupId } }));
         return;
       }
       // Message PRIVE : on ouvre la conversation EXACTE (par son id) si on l'a,
@@ -1617,7 +1634,8 @@ export default function App() {
         setSelectedStoryForReading(null);
         setActiveConversationId('');
         setActiveTab('messages');
-        setTimeout(() => window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: d.groupId } })), 60);
+        try { sessionStorage.setItem('plume_pending_group', d.groupId); } catch { /* stockage indisponible */ }
+        window.dispatchEvent(new CustomEvent('plume:open-group', { detail: { groupId: d.groupId } }));
         return;
       }
       openChatFromPush(d.conversationId);
@@ -2447,11 +2465,6 @@ export default function App() {
   const handleAddComment = (chapterId: string, content: string) => {
     if (!selectedStoryForReading) return;
 
-    // Increment comments stats for achievements
-    handleUpdateAndVerifyUserStats(st => {
-      st.commentsPosted = st.commentsPosted + 1;
-    });
-
     const newComment: Comment = {
       id: `comment_${Date.now()}`,
       storyId: selectedStoryForReading.id,
@@ -2465,7 +2478,7 @@ export default function App() {
       replies: []
     };
 
-    setComments([newComment, ...comments]);
+    setComments(prev => [newComment, ...prev]);
 
     if (!isAuthenticated) createLocalNotification({
       type: 'comment',
@@ -2497,11 +2510,13 @@ export default function App() {
         if (serverComment && serverComment.id) {
           setComments(prev => prev.map(c => (c.id === newComment.id ? { ...c, ...serverComment } : c)));
         }
+        // Statistique de succes incrementee APRES confirmation serveur : plus
+        // de toast de trophee annule ni de +1/-1 envoyes au serveur.
+        handleUpdateAndVerifyUserStats(st => { st.commentsPosted = st.commentsPosted + 1; });
       })
       .catch(e => {
         console.error('[PLUME] Erreur de création du commentaire sur le serveur :', e);
         setComments(prev => prev.filter(c => c.id !== newComment.id));
-        handleUpdateAndVerifyUserStats(st => { st.commentsPosted = Math.max(0, st.commentsPosted - 1); });
         alert("Ton commentaire n'a pas pu être publié (connexion ?). Réessaie.");
       });
   };
@@ -2552,7 +2567,6 @@ export default function App() {
         };
       });
 
-      localStorage.setItem('plume_comments_backup', JSON.stringify(nextComments));
       return nextComments;
     });
 

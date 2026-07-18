@@ -895,7 +895,21 @@ export default function ImmersiveEditor({
             // document entier avec sa mise en forme, passer par « Importer ».
             e.preventDefault();
             const text = e.clipboardData.getData('text/plain');
-            if (text) document.execCommand('insertText', false, text);
+            if (!text) return;
+            // Repli Selection/Range si execCommand échoue (sinon le texte
+            // collé était silencieusement perdu).
+            if (!document.execCommand('insertText', false, text)) {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                range.deleteContents();
+                range.insertNode(document.createTextNode(text));
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+              onEditorInput();
+            }
           }}
           suppressContentEditableWarning
           onInput={onEditorInput}

@@ -349,7 +349,10 @@ export default function MessagesView({
   const [showGroupSettings, setShowGroupSettings] = useState(false);
 
   // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
+  // Même verrou que le champ texte : composer bloqué = pas d'envoi (le panneau
+  // pouvait rester ouvert après un blocage / une perte du droit de poster).
   const sendSticker = (value: string) => {
+    if (composerLocked) { setShowStickers(false); return; }
     const content = encodeSticker(value);
     if (activeGroupId) {
       onSendGroupMessage(activeGroupId, content);
@@ -524,16 +527,29 @@ export default function MessagesView({
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
   // Ouverture d'un GROUPE depuis l'exterieur (clic sur une notification de
-  // message de groupe) : App emet `plume:open-group` et on ouvre le bon groupe.
+  // message de groupe) : App emet `plume:open-group` ET pose une cle
+  // sessionStorage. On consomme la cle au montage — l'evenement seul se
+  // perdait si MessagesView n'etait pas encore monte au moment de l'emission.
   useEffect(() => {
-    const onOpenGroup = (e: Event) => {
-      const gid = (e as CustomEvent).detail?.groupId;
-      if (!gid) return;
+    const openGroup = (gid: string) => {
       setActiveTab('groups');
       setActiveGroupId(gid);
       setMobileShowThread(true);
     };
+    const onOpenGroup = (e: Event) => {
+      const gid = (e as CustomEvent).detail?.groupId;
+      if (!gid) return;
+      try { sessionStorage.removeItem('plume_pending_group'); } catch { /* ignore */ }
+      openGroup(gid);
+    };
     window.addEventListener('plume:open-group', onOpenGroup);
+    try {
+      const pending = sessionStorage.getItem('plume_pending_group');
+      if (pending) {
+        sessionStorage.removeItem('plume_pending_group');
+        openGroup(pending);
+      }
+    } catch { /* stockage indisponible */ }
     return () => window.removeEventListener('plume:open-group', onOpenGroup);
   }, []);
 
@@ -588,6 +604,7 @@ export default function MessagesView({
 
   // New Group Form States
   const [newGroupName, setNewGroupName] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [newGroupStoryId, setNewGroupStoryId] = useState('');
   const [groupSelectedMembers, setGroupSelectedMembers] = useState<string[]>([]);
@@ -689,9 +706,13 @@ export default function MessagesView({
     }
   }, [activeConversationId]);
 
-  // Real-time messages read endpoint trigger on conversation activation
+  // Real-time messages read endpoint trigger on conversation activation.
+  // Rejoue aussi au RETOUR au premier plan : un message arrivé pendant que
+  // l'onglet était caché n'est marqué lu qu'une fois la discussion revue
+  // (App ne pose plus d'accusé de lecture quand l'app est en arrière-plan).
   useEffect(() => {
-    if (activeConversationId) {
+    if (!activeConversationId) return;
+    const markRead = () => {
       fetch('/api/messages/read', {
         method: 'PUT',
         // Auth via token mémoire (en-tête) et/ou cookie httpOnly.
@@ -709,7 +730,11 @@ export default function MessagesView({
         }
         return c;
       }));
-    }
+    };
+    markRead();
+    const onVisible = () => { if (document.visibilityState === 'visible') markRead(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [activeConversationId, currentUser.id, setConversations]);
 
   // Voice Note recording dynamic timer
@@ -929,6 +954,9 @@ export default function MessagesView({
       audioChunksRef.current = [];
       mediaRecorderRef.current = null;
       if (!blob.size) { setIsRecording(false); return; }
+      // Composer verrouillé (blocage…) : on n'upload PAS le fichier — avant,
+      // la note partait sur Cloudinary avant que le serveur rejette l'envoi.
+      if (composerLocked) { setIsRecording(false); return; }
       setUploadingVoice(true);
       try {
         const url = await uploadVoiceToCloudinary(blob);
@@ -954,30 +982,41 @@ export default function MessagesView({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Create new group handler (persisté côté serveur)
+  // Create new group handler (persisté côté serveur). Verrou anti double
+  // soumission + en cas d'échec : message d'erreur ET champs conservés
+  // (avant, un échec vidait silencieusement tout le formulaire).
   const handleCreateGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim() || creatingGroup) return;
 
-    const group = await onCreateGroup({
-      name: newGroupName.trim(),
-      description: newGroupDesc.trim() || 'Cercle de partage et de critiques narratives',
-      storyId: newGroupStoryId || undefined,
-      memberIds: groupSelectedMembers,
-    });
+    setCreatingGroup(true);
+    let group: ReadingGroup | null = null;
+    try {
+      group = await onCreateGroup({
+        name: newGroupName.trim(),
+        description: newGroupDesc.trim() || 'Cercle de partage et de critiques narratives',
+        storyId: newGroupStoryId || undefined,
+        memberIds: groupSelectedMembers,
+      });
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setCreatingGroup(false);
+    }
 
     if (group) {
       setActiveGroupId(group.id);
       setActiveTab('groups');
       setIsNewGroupOpen(false);
       setMobileShowThread(true);
+      // reset fields — uniquement en cas de succès
+      setNewGroupName('');
+      setNewGroupDesc('');
+      setNewGroupStoryId('');
+      setGroupSelectedMembers([]);
+    } else {
+      alert("La création du cercle a échoué (serveur injoignable ?). Vos champs sont conservés — réessayez.");
     }
-
-    // reset fields
-    setNewGroupName('');
-    setNewGroupDesc('');
-    setNewGroupStoryId('');
-    setGroupSelectedMembers([]);
   };
 
 
@@ -1093,18 +1132,20 @@ export default function MessagesView({
           {/* CONTACT & GROUPS DECK */}
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-900 bg-white dark:bg-black">
             
-            {/* Solo Discussions Deck View */}
+            {/* Solo Discussions Deck View. L'aperçu et la recherche ignorent
+                les messages « supprimés pour moi » : sinon un message masqué
+                du fil réapparaissait en aperçu de conversation. */}
             {activeTab === 'chats' && conversations.filter((conv) => {
               const q = convSearch.trim().toLowerCase();
               if (!q) return true;
               const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
-              const last = conv.messages[conv.messages.length - 1];
+              const last = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
               return (partner.username || '').toLowerCase().includes(q)
                 || (!!last && !last.deletedForEveryone && !parseSticker(last.content) && (last.content || '').toLowerCase().includes(q));
             }).map((conv) => {
               const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
               const isActive = conv.id === activeConversationId && !activeGroupId;
-              const lastMsg = conv.messages[conv.messages.length - 1];
+              const lastMsg = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
               const unreadCount = conv.unreadCount || 0;
 
               return (
@@ -1686,7 +1727,7 @@ export default function MessagesView({
             <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
             
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
-              {showEmojiPicker && (
+              {showEmojiPicker && !composerLocked && (
                 <div className="mb-2 p-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-lg grid grid-cols-8 gap-1 max-h-40 overflow-y-auto animate-fade-in">
                   {EMOJIS.map((emo) => (
                     <button
@@ -1701,8 +1742,9 @@ export default function MessagesView({
                 </div>
               )}
 
-              {/* Sélecteur de stickers (base + personnalisés) */}
-              {showStickers && (
+              {/* Sélecteur de stickers (base + personnalisés) — masqué quand le
+                  composer est verrouillé (blocage, droit de poster retiré). */}
+              {showStickers && !composerLocked && (
                 <div className="mb-2 p-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-lg max-h-56 overflow-y-auto animate-fade-in space-y-2">
                   <input
                     ref={stickerFileRef}
@@ -2083,10 +2125,10 @@ export default function MessagesView({
 
               <button
                 type="submit"
-                disabled={!newGroupName.trim()}
+                disabled={!newGroupName.trim() || creatingGroup}
                 className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-bold text-xs uppercase tracking-wider py-3 rounded-xl transition duration-150 shadow-md shadow-purple-500/10 uppercase"
               >
-                Créer le cercle de lecture
+                {creatingGroup ? 'Création en cours…' : 'Créer le cercle de lecture'}
               </button>
             </form>
           </div>

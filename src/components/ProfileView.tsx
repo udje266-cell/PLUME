@@ -583,6 +583,17 @@ const user = freshViewedUser || freshCurrentUser;
     setProfileBanner(user.banner || getSafeProfileBanner(user.id));
   }, [user.id, user.bio, user.banner]);
 
+  // Changement de profil affiché : on referme l'édition de bio et les
+  // panneaux ouverts, sinon l'UI d'édition du profil précédent « fuit »
+  // sur le nouveau profil (ex : éditer sa bio puis ouvrir un autre profil).
+  React.useEffect(() => {
+    setIsEditingBio(false);
+    setExpandedMenuStoryId(null);
+    setSelectedStoryToManage(null);
+    setShowAllAchievements(false);
+    setActiveSubTab('writings');
+  }, [user.id]);
+
   // State handles for story context menus & modals
   const [expandedMenuStoryId, setExpandedMenuStoryId] = useState<string | null>(null);
   
@@ -1751,8 +1762,11 @@ const user = freshViewedUser || freshCurrentUser;
 
         {/* LIVRES LUS ET LIVRES ÉCRITS DISPLAY */}
         {(() => {
-          const userStatsObj = getUserStats(user.id, user.role, user.username);
-          const booksReadCount = userStatsObj.completedReadCycles;
+          // Stats serveur d'abord (exactes pour TOUT profil) ; le localStorage
+          // ne connaît que l'activité du visiteur sur CET appareil, donc il ne
+          // sert que de repli pour son propre profil.
+          const booksReadCount = user.stats?.completedReadCycles
+            ?? (isOwnProfile ? getUserStats(user.id, user.role, user.username).completedReadCycles : 0);
           const booksWrittenCount = writtenStories.length;
 
           const isLecteurAccount = user.role === 'Lecteur';
@@ -1875,7 +1889,7 @@ const user = freshViewedUser || freshCurrentUser;
                 <button
                   id="cancel-bio-btn"
                   onClick={() => {
-                    setBioText(currentUser.bio);
+                    setBioText(user.bio);
                     setIsEditingBio(false);
                   }}
                   className="px-3 py-1 bg-zinc-100 dark:bg-zinc-850 text-zinc-650 text-[10px] rounded-lg font-bold cursor-pointer"
@@ -1893,9 +1907,9 @@ const user = freshViewedUser || freshCurrentUser;
             </div>
           )}
 
-          {!isEditingBio && currentUser.favoriteGenres.length > 0 && (
+          {!isEditingBio && (user.favoriteGenres || []).length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/60 font-sans">
-              {currentUser.favoriteGenres.map(g => (
+              {(user.favoriteGenres || []).map(g => (
                 <span key={g} className="text-[9px] font-bold bg-purple-500/10 text-purple-750 dark:text-purple-300 border border-purple-500/15 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   {g}
                 </span>
@@ -2062,12 +2076,16 @@ const user = freshViewedUser || freshCurrentUser;
       )}
 
       {/* 5. TABS NAVIGATION WITH HIGHLY LITERARY MOOD */}
-      <div className="grid grid-cols-2 border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl">
+      {/* L'Étagère est construite depuis la bibliothèque LOCALE du visiteur
+          (progression, favoris…) : sur le profil d'un autre, elle montrerait
+          les lectures du visiteur en les faisant passer pour celles du
+          profil visité. On ne l'affiche donc que sur son propre profil. */}
+      <div className={`grid ${isOwnProfile ? 'grid-cols-2' : 'grid-cols-1'} border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl`}>
         <button
           id="profile-tab-writings"
           onClick={() => setActiveSubTab('writings')}
           className={`py-3 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
-            activeSubTab === 'writings'
+            activeSubTab === 'writings' || !isOwnProfile
               ? 'bg-purple-600 text-white font-black shadow-md'
               : 'text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400'
           }`}
@@ -2076,6 +2094,7 @@ const user = freshViewedUser || freshCurrentUser;
           <span className="text-[9px] uppercase font-bold mt-1">Écritoire ({writtenStories.length})</span>
         </button>
 
+        {isOwnProfile && (
         <button
           id="profile-tab-favorites"
           onClick={() => setActiveSubTab('favorites')}
@@ -2088,6 +2107,7 @@ const user = freshViewedUser || freshCurrentUser;
           <BookOpen className="w-4 h-4" />
           <span className="text-[9px] uppercase font-bold mt-1">Étagère de Lectures</span>
         </button>
+        )}
       </div>
 
       {/* 6. COZY BOOKSHELVES TAB CONTENTS */}
@@ -2169,7 +2189,7 @@ const user = freshViewedUser || freshCurrentUser;
         )}
 
         {/* TAB 2: Bibliothèque de Favoris / Cabinet de Lecture */}
-        {activeSubTab === 'favorites' && (
+        {activeSubTab === 'favorites' && isOwnProfile && (
           <div className="space-y-6 animate-fade-in text-left">
             
             {/* Elegant headers filters */}
@@ -2721,7 +2741,7 @@ const user = freshViewedUser || freshCurrentUser;
                           </span>
                           <div>
                             <p className="text-xs font-bold text-gray-800 dark:text-gray-100 line-clamp-1">{ch.title}</p>
-                            <p className="text-[9px] text-gray-400 mt-0.5">Paru le {new Date(ch.publishDate).toLocaleDateString()} • {Math.round(ch.content.length / 5)} mots</p>
+                            <p className="text-[9px] text-gray-400 mt-0.5">{(() => { const d = ch.publishDate ? new Date(ch.publishDate) : null; return d && !isNaN(d.getTime()) ? `Paru le ${d.toLocaleDateString('fr-FR')} • ` : ''; })()}{Math.round(ch.content.length / 5)} mots</p>
                           </div>
                         </div>
 
@@ -4800,7 +4820,7 @@ const user = freshViewedUser || freshCurrentUser;
                 {activeUserListModal === 'following' && 'Suivis'}
                 {activeUserListModal === 'followers' && 'Abonnés'}
                 {activeUserListModal === 'friends' && 'Amis'}
-                {activeUserListModal === 'mentions' && 'Mentions'}
+                {activeUserListModal === 'mentions' && "J'aime reçus"}
               </span>
               <button
                 onClick={() => setActiveUserListModal(null)}
@@ -4832,10 +4852,16 @@ const user = freshViewedUser || freshCurrentUser;
                 }
 
                 if (activeUserListModal === 'mentions') {
+                  // Le compteur « J'aime » du profil totalise les j'aime reçus
+                  // sur les œuvres : le panneau reprend EXACTEMENT ce chiffre
+                  // (avant, il était titré « Mentions » et toujours vide).
                   return (
                     <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-                      <p className="text-zinc-500 dark:text-zinc-400 text-xs font-bold leading-normal">Aucune mention pour le moment.</p>
-                      <p className="text-zinc-400 text-[9px]">Toutes les réactions et mentions littéraires s'afficheront ici.</p>
+                      <p className="font-serif text-2xl font-black text-purple-600 dark:text-purple-400">{totalLikes}</p>
+                      <p className="text-zinc-500 dark:text-zinc-400 text-xs font-bold leading-normal">
+                        {totalLikes === 0 ? "Aucun j'aime reçu pour le moment." : `j'aime reçus sur ${totalLikes > 1 ? 'les œuvres' : "l'œuvre"} de ${user.username}.`}
+                      </p>
+                      <p className="text-zinc-400 text-[9px]">Ce total cumule les j'aime de toutes les œuvres publiées.</p>
                     </div>
                   );
                 }
