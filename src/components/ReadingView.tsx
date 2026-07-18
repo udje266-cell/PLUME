@@ -718,6 +718,33 @@ export default function ReadingView({
   // Suivi + reprise de la position de défilement réelle pour CE récit.
   const chapterIdxRef = useRef(activeChapterIndex);
   useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
+
+  // ── Synchronisation SERVEUR de la position de reprise (multi-appareils) ──
+  // Envoi débouncé (4 s) du chapitre courant + % de défilement vers
+  // /api/chapters/:id/progress (table ReadingProgress, jusqu'ici jamais
+  // alimentée par le client). Silencieux hors-ligne : la position locale reste.
+  const progressSyncRef = useRef<{ chapterId: string; percent: number } | null>(null);
+  const progressSyncTimerRef = useRef<any>(null);
+  const flushProgressSync = React.useCallback(() => {
+    const p = progressSyncRef.current;
+    progressSyncRef.current = null;
+    if (progressSyncTimerRef.current) { clearTimeout(progressSyncTimerRef.current); progressSyncTimerRef.current = null; }
+    if (!p || !p.chapterId || p.chapterId === '__empty__') return;
+    fetch(`/api/chapters/${p.chapterId}/progress`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ progressPercent: p.percent }),
+    }).catch(() => { /* hors-ligne : la position locale suffit en attendant */ });
+  }, []);
+  const scheduleProgressSync = React.useCallback(() => {
+    if (progressSyncTimerRef.current) return;
+    progressSyncTimerRef.current = setTimeout(() => {
+      progressSyncTimerRef.current = null;
+      flushProgressSync();
+    }, 4000);
+  }, [flushProgressSync]);
+  // Flush au démontage (fermeture du livre) pour ne pas perdre la dernière position.
+  useEffect(() => () => { flushProgressSync(); }, [flushProgressSync]);
   // Chapitres REELLEMENT lus (defilement >= 95 % OU temps de lecture suffisant)
   // pendant cette session : evite de re-signaler le meme chapitre en boucle.
   const fullyReadRef = useRef<Set<string>>(new Set());
@@ -768,6 +795,13 @@ export default function ReadingView({
         setReadPercent(percent);
         // On sauvegarde toujours la position de reprise (y compris pour l'auteur).
         saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
+        // … et on programme l'envoi (débouncé) de cette position au serveur,
+        // pour reprendre à la ligne près sur n'importe quel appareil.
+        const curCh = story.chapters[chapterIdxRef.current];
+        if (curCh && curCh.id !== '__empty__') {
+          progressSyncRef.current = { chapterId: curCh.id, percent: Math.round(ratio * 100) };
+          scheduleProgressSync();
+        }
 
         // Chapitre courant REELLEMENT lu : defile jusqu'au bout (>= 95 %).
         // C'est ICI (et non a l'ouverture) qu'un chapitre compte comme lu, ce
@@ -834,6 +868,51 @@ export default function ReadingView({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChapterIndex, story.id]);
+
+  // ── REPRISE MULTI-APPAREILS ──
+  // Aucune progression LOCALE pour ce livre (nouvel appareil, réinstallation,
+  // PWA vs app) ? On récupère la position SERVEUR (chapitre + % de défilement)
+  // et on s'y replace — à la ligne près. Le local, plus précis et plus frais,
+  // garde toujours la priorité quand il existe.
+  useEffect(() => {
+    if (getBookProgress(currentUser.id, story.id)) return; // le local prime
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/me/progress/${story.id}`, { headers: authHeaders() });
+        if (!res.ok || cancelled) return;
+        const sp = await res.json();
+        if (!sp || !sp.chapterId) return;
+        const idx = story.chapters.findIndex((c) => c.id === sp.chapterId);
+        if (idx < 0) return;
+        const ratio = Math.min(1, Math.max(0, (Number(sp.progressPercent) || 0) / 100));
+        const percent = Math.round(((idx + ratio) / Math.max(1, story.chapters.length)) * 100);
+        // On écrit la position serveur dans le stockage local : les prochaines
+        // ouvertures passeront par le chemin de reprise habituel.
+        saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent });
+        if (cancelled) return;
+        setActiveChapterIndex(idx);
+        setReadPercent(percent);
+        if (ratio > 0.01) {
+          // Ré-application en plusieurs passes (rendu progressif du chapitre),
+          // comme la restauration locale.
+          const apply = () => {
+            const el = getScrollParent(readerRootRef.current);
+            if (el) {
+              const max = el.scrollHeight - el.clientHeight;
+              if (max > 0) el.scrollTo({ top: max * ratio, behavior: 'auto' });
+            } else {
+              const wmax = document.documentElement.scrollHeight - window.innerHeight;
+              if (wmax > 0) window.scrollTo({ top: wmax * ratio, behavior: 'auto' });
+            }
+          };
+          [300, 700, 1200].forEach((d) => setTimeout(apply, d));
+        }
+      } catch { /* hors-ligne : on démarre simplement au début */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
 
   // Save quotes synchronize (clé scopée par utilisateur)
   useEffect(() => {

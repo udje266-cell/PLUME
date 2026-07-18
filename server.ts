@@ -4595,6 +4595,23 @@ export async function createServerInstance() {
     }
   });
 
+  // Position de REPRISE multi-appareils : dernière progression enregistrée
+  // pour CE récit (chapitre + % de défilement). Alimentée par le client via
+  // POST /api/chapters/:id/progress pendant la lecture.
+  app.get('/api/me/progress/:storyId', requireAuth, async (req: any, res) => {
+    try {
+      const last = await prisma.readingProgress.findFirst({
+        where: { userId: req.user.id, storyId: req.params.storyId },
+        orderBy: { lastReadAt: 'desc' },
+        select: { chapterId: true, progressPercent: true, lastReadAt: true },
+      });
+      res.json(last || null);
+    } catch (error) {
+      console.error('[PROGRESS] lecture :', error);
+      res.status(500).json({ error: 'Erreur lors du chargement de la progression' });
+    }
+  });
+
   // ----- État de lecture partagé entre appareils (app native ↔ PWA) -----
   // Listes de lecture + chapitres réellement lus, en une seule requête au
   // démarrage. Le client FUSIONNE (union) avec son état local.
