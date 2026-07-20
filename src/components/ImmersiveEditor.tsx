@@ -713,21 +713,35 @@ export default function ImmersiveEditor({
 
   const currentEditorText = () => htmlToTextWithBreaks(editorRef.current?.innerHTML || '').trim();
 
-  // Decoupage en paragraphes.
-  const runAIParagraphs = () => {
+  // Decoupage en paragraphes : IA (Gemini) si disponible, sinon moteur local.
+  const runAIParagraphs = async () => {
     const text = currentEditorText();
     const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+    setAiMode('paragraphs');
     if (words < 25) {
       setAiParas([]);
       setAiNote("Ecris ou colle d'abord un texte un peu plus long (au moins ~25 mots) pour que l'assistant puisse le decouper.");
-    } else {
-      const paras = segmentIntoParagraphs(text);
+      return;
+    }
+    setAiBusy(true);
+    setAiParas([]);
+    setAiNote('L’assistant IA découpe ton texte…');
+    try {
+      const ai = await requestAI('paragraphs', text);
+      const paras = ai
+        ? ai.split(/\n\s*\n+/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean)
+        : segmentIntoParagraphs(text);
       setAiParas(paras);
       setAiNote(paras.length <= 1
         ? "Le texte forme deja un seul bloc coherent : aucun decoupage supplementaire n'a ete trouve."
-        : `${paras.length} paragraphes proposes a partir de ${words} mots.`);
+        : `${paras.length} paragraphes proposes${ai ? ' par l’IA' : ''} a partir de ${words} mots.`);
+    } catch (e: any) {
+      const paras = segmentIntoParagraphs(text);
+      setAiParas(paras);
+      setAiNote(e?.message || `${paras.length} paragraphes proposes.`);
+    } finally {
+      setAiBusy(false);
     }
-    setAiMode('paragraphs');
   };
 
   // Avertit si du texte mis en forme va etre reecrit en texte simple (les outils
@@ -750,18 +764,35 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Nettoyage typographique & ponctuation.
-  const runAITypo = () => {
+  // Nettoyage typographique : IA (Gemini) si disponible, sinon moteur local.
+  const runAITypo = async () => {
     const text = currentEditorText();
+    setAiMode('typo');
     if (!text) {
       setAiTypo('');
       setAiNote("Ecris d'abord un peu de texte a nettoyer.");
-    } else {
-      const { text: cleaned, changes } = cleanFrenchTypography(text);
-      setAiTypo(cleaned);
-      setAiNote(changes === 0 ? "Rien a corriger : ta typographie est deja impeccable." : `${changes} correction(s) de ponctuation / espaces / majuscules.`);
+      return;
     }
-    setAiMode('typo');
+    setAiBusy(true);
+    setAiTypo('');
+    setAiNote('L’assistant IA nettoie la typographie…');
+    try {
+      const ai = await requestAI('typo', text);
+      if (ai) {
+        setAiTypo(ai);
+        setAiNote('Typographie corrigée par l’IA. Relis avant d’appliquer.');
+      } else {
+        const { text: cleaned, changes } = cleanFrenchTypography(text);
+        setAiTypo(cleaned);
+        setAiNote(changes === 0 ? "Rien a corriger : ta typographie est deja impeccable." : `${changes} correction(s) de ponctuation / espaces / majuscules.`);
+      }
+    } catch (e: any) {
+      const { text: cleaned } = cleanFrenchTypography(text);
+      setAiTypo(cleaned);
+      setAiNote(e?.message || 'Typographie nettoyée localement.');
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   const applyAITypo = () => {
@@ -812,17 +843,35 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Analyse du texte : statistiques + points d'amelioration concrets.
-  const runAnalyze = () => {
+  // Analyse du texte : statistiques locales (instantanees) + conseils qualitatifs
+  // rediges par l'IA quand elle est disponible (sinon conseils heuristiques locaux).
+  const runAnalyze = async () => {
     const text = currentEditorText();
+    setAiMode('analyze');
     if (text.trim().split(/\s+/).filter(Boolean).length < 30) {
       setAiAnalysis(null);
       setAiNote("Ecris au moins une trentaine de mots pour une analyse utile.");
-    } else {
-      setAiAnalysis(analyzeText(text));
-      setAiNote('');
+      return;
     }
-    setAiMode('analyze');
+    // Stats locales affichees tout de suite.
+    const local = analyzeText(text);
+    setAiAnalysis(local);
+    setAiBusy(true);
+    setAiNote('L’assistant IA analyse ton texte…');
+    try {
+      const ai = await requestAI('analyze', text);
+      if (ai) {
+        const tips = ai.split(/\n+/).map((l) => l.replace(/^[\s\-•*]+/, '').trim()).filter(Boolean);
+        if (tips.length) setAiAnalysis({ ...local, tips });
+        setAiNote('Conseils rédigés par l’IA.');
+      } else {
+        setAiNote('');
+      }
+    } catch {
+      setAiNote('');
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   // Resume : vraie IA (Gemini, resume redige) si disponible, sinon extractif local.
@@ -1069,14 +1118,14 @@ export default function ImmersiveEditor({
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><AlignLeft className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-black text-gray-900 dark:text-white">Découper en paragraphes</span>
-                    <span className="block text-[10px] text-gray-400">Aère un long bloc de texte en paragraphes lisibles.</span>
+                    <span className="block text-[10px] text-gray-400">Aère un long bloc en paragraphes lisibles (IA si disponible).</span>
                   </span>
                 </button>
                 <button onClick={runAITypo} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Type className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-black text-gray-900 dark:text-white">Typographie & ponctuation</span>
-                    <span className="block text-[10px] text-gray-400">Corrige espaces, ponctuation, majuscules, apostrophes.</span>
+                    <span className="block text-[10px] text-gray-400">Corrige espaces, ponctuation, majuscules, apostrophes (IA si disponible).</span>
                   </span>
                 </button>
                 <button onClick={runAITitle} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
@@ -1114,7 +1163,12 @@ export default function ImmersiveEditor({
             {aiMode === 'paragraphs' && (
               <>
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
-                  {aiParas.length === 0 ? (
+                  {aiBusy ? (
+                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                    </div>
+                  ) : aiParas.length === 0 ? (
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
                   ) : (
                     aiParas.map((p, i) => (
@@ -1125,7 +1179,7 @@ export default function ImmersiveEditor({
                     ))
                   )}
                 </div>
-                {aiParas.length > 0 && (
+                {!aiBusy && aiParas.length > 0 && (
                   <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
                     <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
                     <button onClick={applyAIParagraphs} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Appliquer</button>
@@ -1138,13 +1192,18 @@ export default function ImmersiveEditor({
             {aiMode === 'typo' && (
               <>
                 <div className="flex-1 overflow-y-auto px-4 py-3">
-                  {aiTypo ? (
+                  {aiBusy ? (
+                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                    </div>
+                  ) : aiTypo ? (
                     <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiTypo}</p>
                   ) : (
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
                   )}
                 </div>
-                {aiTypo && (
+                {!aiBusy && aiTypo && (
                   <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
                     <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
                     <button onClick={applyAITypo} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Appliquer</button>
@@ -1198,7 +1257,9 @@ export default function ImmersiveEditor({
                     </div>
 
                     <div>
-                      <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Conseils</h4>
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5">
+                        Conseils {aiBusy && <Loader2 className="w-3 h-3 animate-spin text-purple-500" />}
+                      </h4>
                       <ul className="space-y-1.5">
                         {aiAnalysis.tips.map((t, i) => (
                           <li key={i} className="flex gap-2 text-[12px] leading-snug text-gray-700 dark:text-gray-200">

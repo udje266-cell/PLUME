@@ -483,6 +483,14 @@ const AI_PROMPTS: Record<string, { sys: string; max: number }> = {
     sys: "Tu es un professeur d'ecriture creative francophone. Analyse l'extrait fourni et donne un retour constructif en francais sous forme de 4 a 6 puces courtes (points forts, points faibles, repetitions, rythme, conseils concrets). Renvoie uniquement les puces (chaque ligne commence par '- ').",
     max: 768,
   },
+  paragraphs: {
+    sys: "Tu reçois un texte en francais. Renvoie EXACTEMENT le meme texte, sans changer, ajouter ni supprimer le moindre mot ou signe de ponctuation, mais decoupe en paragraphes coherents : une LIGNE VIDE entre chaque paragraphe. Ne fais RIEN d'autre que d'inserer des sauts de paragraphe.",
+    max: 4096,
+  },
+  typo: {
+    sys: "Corrige UNIQUEMENT la typographie francaise du texte : espaces multiples, espaces insecables avant ; : ! ? et avant/apres les guillemets francais, apostrophes typographiques, points de suspension (…), majuscule en debut de phrase. Ne change AUCUN mot, ni le sens, ni l'ordre des phrases. Renvoie uniquement le texte corrige, sans commentaire.",
+    max: 4096,
+  },
 };
 
 // Détermine si `requesterId` a le droit de commenter une histoire selon le
