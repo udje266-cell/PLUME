@@ -436,7 +436,7 @@ const MESSAGE_REQUEST_LIMIT = 3;
 // Sinon l'endpoint renvoie 503 {unavailable:true} et le client bascule
 // automatiquement sur le moteur d'ecriture local (hors-ligne).
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 async function callGemini(systemPrompt: string, userText: string, maxTokens = 1024): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
