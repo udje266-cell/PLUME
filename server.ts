@@ -479,10 +479,6 @@ const AI_PROMPTS: Record<string, { sys: string; max: number }> = {
     sys: "Tu es un assistant d'ecriture francophone. Redige un resume clair et concis (3 a 5 phrases) de l'extrait fourni, en francais, a la 3e personne. Renvoie uniquement le resume, sans titre ni commentaire.",
     max: 512,
   },
-  continue: {
-    sys: "Tu es un co-auteur francophone. Ecris la SUITE immediate du texte fourni : un a deux paragraphes en francais qui prolongent naturellement le recit, en respectant le ton, le style et le temps de narration. Renvoie uniquement la suite, sans commentaire ni introduction.",
-    max: 1024,
-  },
   analyze: {
     sys: "Tu es un professeur d'ecriture creative francophone. Analyse l'extrait fourni et donne un retour constructif en francais sous forme de 4 a 6 puces courtes (points forts, points faibles, repetitions, rythme, conseils concrets). Renvoie uniquement les puces (chaque ligne commence par '- ').",
     max: 768,

@@ -523,7 +523,7 @@ export default function ImmersiveEditor({
   // automatique sur le moteur LOCAL hors-ligne (decoupage, typographie, titres,
   // analyse, resume). Reecriture et « continuer » necessitent l'IA.
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'analyze' | 'summary' | 'rewrite' | 'continue'>('menu');
+  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'analyze' | 'summary' | 'rewrite'>('menu');
   const [aiParas, setAiParas] = useState<string[]>([]);
   const [aiNote, setAiNote] = useState<string>('');
   const [aiTypo, setAiTypo] = useState<string>('');
@@ -872,29 +872,6 @@ export default function ImmersiveEditor({
     }
   };
 
-  // Suite du recit (IA uniquement).
-  const runContinue = async () => {
-    const text = currentEditorText();
-    setAiMode('continue');
-    if (text.trim().split(/\s+/).filter(Boolean).length < 20) {
-      setAiResult('');
-      setAiNote("Ecris au moins une vingtaine de mots pour que l'IA propose une suite.");
-      return;
-    }
-    setAiBusy(true);
-    setAiResult('');
-    setAiNote('L’assistant IA imagine la suite…');
-    try {
-      const ai = await requestAI('continue', text);
-      if (ai) { setAiResult(ai); setAiNote('Suite proposée par l’IA. Tu peux l’ajouter à la fin.'); }
-      else { setAiResult(''); setAiNote("Assistant IA indisponible : aucune clé n'est configurée sur le serveur."); }
-    } catch (e: any) {
-      setAiResult(''); setAiNote(e?.message || 'Assistant IA indisponible.');
-    } finally {
-      setAiBusy(false);
-    }
-  };
-
   // Applique la reecriture : remplace tout le contenu de l'editeur.
   const applyRewrite = () => {
     if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
@@ -903,18 +880,6 @@ export default function ImmersiveEditor({
     editorRef.current.innerHTML = html;
     contentRef.current = html;
     setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
-    setAiOpen(false);
-    scheduleSave();
-    wakeChrome();
-  };
-
-  // Ajoute la suite proposee a la FIN du texte.
-  const applyContinueAtEnd = () => {
-    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
-    const addition = paragraphsToEditorHtml(aiResult.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
-    editorRef.current.innerHTML = editorRef.current.innerHTML + '<div><br></div>' + addition;
-    contentRef.current = editorRef.current.innerHTML;
-    setWordCount(plainTextOf(contentRef.current).split(/\s+/).filter(Boolean).length);
     setAiOpen(false);
     scheduleSave();
     wakeChrome();
@@ -1090,7 +1055,6 @@ export default function ImmersiveEditor({
                     : aiMode === 'analyze' ? 'Analyse du texte'
                     : aiMode === 'summary' ? 'Résumé express'
                     : aiMode === 'rewrite' ? 'Réécrire (IA)'
-                    : aiMode === 'continue' ? "Continuer l’histoire (IA)"
                     : 'Titre du chapitre'}
                 </h3>
                 {aiMode !== 'menu' && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>}
@@ -1141,13 +1105,6 @@ export default function ImmersiveEditor({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 text-[13px] font-black text-gray-900 dark:text-white">Réécrire le passage <span className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">IA</span></span>
                     <span className="block text-[10px] text-gray-400">Améliore le style et la fluidité sans changer l’histoire.</span>
-                  </span>
-                </button>
-                <button onClick={runContinue} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
-                  <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0"><Sparkles className="w-4.5 h-4.5" /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-[13px] font-black text-gray-900 dark:text-white">Continuer l’histoire <span className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">IA</span></span>
-                    <span className="block text-[10px] text-gray-400">Propose la suite du récit dans ton style.</span>
                   </span>
                 </button>
               </div>
@@ -1330,29 +1287,6 @@ export default function ImmersiveEditor({
               </>
             )}
 
-            {/* CONTINUER L'HISTOIRE (IA) */}
-            {aiMode === 'continue' && (
-              <>
-                <div className="flex-1 overflow-y-auto px-4 py-3">
-                  {aiBusy ? (
-                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
-                    </div>
-                  ) : aiResult ? (
-                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiResult}</p>
-                  ) : (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
-                  )}
-                </div>
-                {!aiBusy && aiResult && (
-                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
-                    <button onClick={applyContinueAtEnd} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Ajouter à la fin</button>
-                  </div>
-                )}
-              </>
-            )}
           </div>
         </div>
       )}
