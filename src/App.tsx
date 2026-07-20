@@ -414,6 +414,7 @@ export default function App() {
   const handleMarkGroupRead = (groupId: string) => {
     if (!currentUser) return;
     setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [currentUser.id]: new Date().toISOString() } }));
+    setGroups((prev) => prev.map((g) => (g.id === groupId && g.unreadCount ? { ...g, unreadCount: 0 } : g)));
     fetch(`/api/groups/${groupId}/read`, { method: 'PUT', headers: authHeaders() }).catch(() => {});
   };
 
@@ -968,6 +969,17 @@ export default function App() {
       clearTyping(senderId);
     });
 
+    // Quelqu'un vient de me bloquer / débloquer : on met à jour le verrou du
+    // composer de la (des) conversation(s) concernée(s) en temps réel.
+    socket.on('block_status', ({ userId, blocked }: { userId: string; blocked: boolean }) => {
+      if (!userId) return;
+      setConversations((prev) => prev.map((c) =>
+        c.participants.some((p) => p.id === userId)
+          ? { ...c, blockedByPartner: blocked }
+          : c
+      ));
+    });
+
     socket.on('group_created', (group: ReadingGroup) => {
       if (!group || !group.id) return;
       setGroups((prev) => (prev.some((g) => g.id === group.id) ? prev.map((g) => (g.id === group.id ? { ...g, ...group } : g)) : [group, ...prev]));
@@ -1021,7 +1033,9 @@ export default function App() {
         return;
       }
       setGroupMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-      setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
+      // Badge de non-lus : +1 sur le groupe (MessagesView le remet a zero des
+      // que le groupe est ouvert, via onMarkGroupRead).
+      setGroups((prev) => prev.map((g) => (g.id === msg.groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date, unreadCount: (g.unreadCount || 0) + 1 } : g)));
     });
 
     // Gestionnaire d'appels audio : relié au même socket (signalisation).
@@ -1061,6 +1075,7 @@ export default function App() {
       socket.off('message_delivered');
       socket.off('message_updated');
       socket.off('story_stats');
+      socket.off('block_status');
       socket.off('group_created');
       socket.off('group_updated');
       socket.off('group_removed');
@@ -1615,7 +1630,8 @@ export default function App() {
 
   // Badge de non-lus : titre d'onglet « (N) PLUME », pastille de favicon et
   // badge d'icône de la PWA installée — synchronisés en temps réel.
-  const unreadMessagesTotal = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const unreadMessagesTotal = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)
+    + groups.reduce((sum, g) => sum + (g.unreadCount || 0), 0);
   useEffect(() => { setUnreadBadge(unreadMessagesTotal); }, [unreadMessagesTotal]);
 
   // Tap sur une notification push → ouvre la messagerie ET la conversation
@@ -3697,7 +3713,7 @@ export default function App() {
               notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
               onMarkNotificationsRead={handleMarkNotificationsRead}
               onOpenNotification={handleOpenNotification}
-              unreadMessagesCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
+              unreadMessagesCount={unreadMessagesTotal}
             />
             )}
 

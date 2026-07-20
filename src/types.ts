@@ -167,6 +167,9 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   unreadCount?: number;
+  // L'autre participant m'a bloqué : le composer est verrouillé (message
+  // neutre) au lieu de laisser envoyer pour un rejet serveur garanti.
+  blockedByPartner?: boolean;
 }
 
 export interface ReadingProgress {
@@ -222,6 +225,7 @@ export interface ReadingGroup {
   roster?: GroupMembership[]; // roles/statuts/dates d'entree
   lastMessage?: string;
   lastMessageDate?: string;
+  unreadCount?: number; // messages des autres depuis mon dernier marquage lu
   storyId?: string; // Tying group to a specific story
   // Parametres (style WhatsApp).
   visibility?: GroupVisibility;

@@ -664,13 +664,17 @@ export default function MessagesView({
   const [announceNext, setAnnounceNext] = useState(false);
   const announceMode = !!activeGroupId && activeGroup?.messagePermission === 'admins';
   const canPostInGroup = !activeGroupId || !announceMode || isGroupAdminPlus;
-  // Je sais seulement si MOI j'ai bloque l'interlocuteur ; un blocage inverse se
-  // revele a l'envoi (alerte serveur).
+  // Deux sens de blocage : moi -> lui (connu localement) et lui -> moi
+  // (flag serveur `blockedByPartner`, mis a jour en direct via le socket
+  // block_status). Le second verrouille avec un message NEUTRE.
   const iBlockedInterlocutor = !activeGroupId && !!interlocutor && (currentUser.blockedUsers || []).includes(interlocutor.id);
-  const composerLocked = (!!activeGroupId && !canPostInGroup) || iBlockedInterlocutor;
+  const blockedByPartner = !activeGroupId && !!activeConv?.blockedByPartner;
+  const composerLocked = (!!activeGroupId && !canPostInGroup) || iBlockedInterlocutor || blockedByPartner;
   const composerLockReason = iBlockedInterlocutor
     ? "Vous avez bloqué cette personne. Débloquez-la depuis son profil pour lui écrire."
-    : "Mode annonce : seuls les administrateurs peuvent écrire dans ce groupe.";
+    : blockedByPartner
+      ? "Vous ne pouvez pas envoyer de messages dans cette conversation."
+      : "Mode annonce : seuls les administrateurs peuvent écrire dans ce groupe.";
 
   // Indique « enregistre un audio… » à l'interlocuteur / au groupe.
   const emitRecording = (isRec: boolean) => {
@@ -1251,15 +1255,24 @@ export default function MessagesView({
                       </span>
                     </div>
 
-                    {groupTyping?.[group.id] ? (
-                      <p className="text-[10px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
-                        <Feather className="w-3 h-3 animate-feather-write" /> {groupTyping[group.id]} écrit…
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
-                        <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
-                      </p>
-                    )}
+                    <div className="flex items-center justify-between">
+                      {groupTyping?.[group.id] ? (
+                        <p className="text-[10px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
+                          <Feather className="w-3 h-3 animate-feather-write" /> {groupTyping[group.id]} écrit…
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
+                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
+                        </p>
+                      )}
+
+                      {/* Badge de non-lus (masqué sur le groupe déjà ouvert). */}
+                      {!isGroupActive && (group.unreadCount || 0) > 0 && (
+                        <span className="bg-purple-600 text-white font-black text-[9px] min-w-4.5 h-4.5 px-1 rounded-full flex items-center justify-center shrink-0">
+                          {(group.unreadCount || 0) > 99 ? '99+' : group.unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               );

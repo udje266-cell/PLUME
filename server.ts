@@ -3175,6 +3175,14 @@ export async function createServerInstance() {
         orderBy: { updatedAt: 'desc' }
       });
 
+      // Qui m'a bloqué ? (une seule requête) -> le client verrouille le
+      // composer au lieu de laisser taper/téléverser pour un rejet garanti.
+      const blockers = await prisma.blockedUser.findMany({
+        where: { blockedId: req.user.id },
+        select: { blockerId: true },
+      });
+      const blockerIds = new Set(blockers.map((b) => b.blockerId));
+
       // Compute unread count for each conversation
       const conversationsWithUnread = await Promise.all(
         conversations.map(async (conv) => {
@@ -3187,7 +3195,8 @@ export async function createServerInstance() {
           });
           return {
             ...conv,
-            unreadCount
+            unreadCount,
+            blockedByPartner: conv.participants.some((p: any) => p.id !== req.user.id && blockerIds.has(p.id)),
           };
         })
       );
@@ -3574,7 +3583,26 @@ export async function createServerInstance() {
         include: GROUP_INCLUDE,
         orderBy: { updatedAt: 'desc' },
       });
-      res.json(groups.map(serializeGroup));
+      // Non-lus par groupe : messages des autres posterieurs a mon dernier
+      // marquage de lecture (GroupRead) — aucun marquage = tout est non lu.
+      const reads = await prisma.groupRead.findMany({
+        where: { userId: req.user.id, groupId: { in: groups.map((g) => g.id) } },
+        select: { groupId: true, lastRead: true },
+      });
+      const lastReadByGroup = new Map(reads.map((r) => [r.groupId, r.lastRead]));
+      const withUnread = await Promise.all(groups.map(async (g) => {
+        const lastRead = lastReadByGroup.get(g.id);
+        const unreadCount = await prisma.groupMessage.count({
+          where: {
+            groupId: g.id,
+            senderId: { not: req.user.id },
+            deletedForEveryone: false,
+            ...(lastRead ? { createdAt: { gt: lastRead } } : {}),
+          },
+        });
+        return { ...serializeGroup(g), unreadCount };
+      }));
+      res.json(withUnread);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des groupes.' });
@@ -4855,6 +4883,8 @@ export async function createServerInstance() {
       });
       // Application immédiate aux relais temps réel (saisie/appels).
       blockPairCache.delete(req.user.id < blockedId ? `${req.user.id}:${blockedId}` : `${blockedId}:${req.user.id}`);
+      // Le bloqué verrouille son composer en direct (message neutre côté client).
+      io.to(`user:${blockedId}`).emit('block_status', { userId: req.user.id, blocked: true });
       res.status(201).json(block);
     } catch (error) {
       console.error(error);
@@ -4865,6 +4895,7 @@ export async function createServerInstance() {
   app.delete('/api/users/:id/block', requireAuth, async (req: any, res) => {
     await prisma.blockedUser.deleteMany({ where: { blockerId: req.user.id, blockedId: req.params.id } });
     blockPairCache.delete(req.user.id < req.params.id ? `${req.user.id}:${req.params.id}` : `${req.params.id}:${req.user.id}`);
+    io.to(`user:${req.params.id}`).emit('block_status', { userId: req.user.id, blocked: false });
     res.status(204).end();
   });
 
