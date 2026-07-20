@@ -15,6 +15,28 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChevronLeft, Check, Loader2, Bold, Italic, Underline, Minus, Undo2, Redo2, Maximize2, List, Trash2, Save, Sparkles, X, AlignLeft, Type, Tag, Wand2, Quote, Eye, EyeOff } from 'lucide-react';
 import { Story, Chapter } from '../types';
 import { useAndroidBack } from '../utils/backButton';
+import { authHeaders } from '../utils/auth';
+
+// Appel a l'assistant IA serveur (Gemini). Renvoie le texte genere, ou null si
+// l'IA est indisponible (aucune cle configuree, erreur reseau, quota) — l'appelant
+// bascule alors sur le moteur local. Erreurs de saisie (429/400) -> exception.
+async function requestAI(mode: string, text: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/ai/assist', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ mode, text }),
+    });
+    if (res.status === 503) return null; // IA non configuree -> repli local
+    if (res.status === 429) throw new Error('Patiente un instant avant une nouvelle requete IA.');
+    if (!res.ok) return null; // 4xx/5xx divers -> repli local silencieux
+    const data = await res.json();
+    return typeof data.result === 'string' && data.result.trim() ? data.result.trim() : null;
+  } catch (e: any) {
+    if (e?.message?.includes('Patiente')) throw e;
+    return null; // reseau injoignable -> repli local
+  }
+}
 
 interface ImmersiveEditorProps {
   story: Story;
@@ -496,16 +518,19 @@ export default function ImmersiveEditor({
   const [showSommaire, setShowSommaire] = useState(false);
   const [wordCount, setWordCount] = useState(() => plainTextOf(chapter?.content || '').split(/\s+/).filter(Boolean).length);
 
-  // Assistant d'ecriture LOCAL (hors-ligne) : decoupage, typographie, titres,
-  // analyse du texte et resume express.
+  // Assistant d'ecriture. Titres, resume, reecriture et suite passent par la
+  // vraie IA (Gemini via le serveur) quand une cle est configuree ; sinon repli
+  // automatique sur le moteur LOCAL hors-ligne (decoupage, typographie, titres,
+  // analyse, resume). Reecriture et « continuer » necessitent l'IA.
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'analyze' | 'summary'>('menu');
+  const [aiMode, setAiMode] = useState<'menu' | 'paragraphs' | 'typo' | 'title' | 'analyze' | 'summary' | 'rewrite' | 'continue'>('menu');
   const [aiParas, setAiParas] = useState<string[]>([]);
   const [aiNote, setAiNote] = useState<string>('');
   const [aiTypo, setAiTypo] = useState<string>('');
   const [aiTitles, setAiTitles] = useState<string[]>([]);
   const [aiResult, setAiResult] = useState<string>('');
   const [aiAnalysis, setAiAnalysis] = useState<TextAnalysis | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<any>(null);
@@ -751,15 +776,33 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Suggestions de titre de chapitre (analyse locale : theme + personnages).
-  const runAITitle = () => {
+  // Suggestions de titre : vraie IA (Gemini) si disponible, sinon moteur local.
+  const runAITitle = async () => {
     const text = currentEditorText();
-    const titles = suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1);
-    setAiTitles(titles);
-    setAiNote(text.trim().length < 20
-      ? "Ecris un peu plus de texte pour des suggestions plus fines."
-      : 'Touche une proposition pour l’adopter comme titre.');
     setAiMode('title');
+    if (text.trim().length < 20) {
+      setAiTitles(suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1));
+      setAiNote("Ecris un peu plus de texte pour des suggestions plus fines.");
+      return;
+    }
+    setAiBusy(true);
+    setAiNote('L’assistant IA réfléchit à des titres…');
+    try {
+      const ai = await requestAI('title', text);
+      if (ai) {
+        const titles = ai.split(/\n+/).map((l) => l.replace(/^[\d.\-•*"'\s]+/, '').replace(/["']$/, '').trim()).filter(Boolean).slice(0, 5);
+        setAiTitles(titles.length ? titles : suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1));
+        setAiNote('Titres proposés par l’IA. Touche-en un pour l’adopter.');
+      } else {
+        setAiTitles(suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1));
+        setAiNote('Suggestions générées localement. Touche-en une pour l’adopter.');
+      }
+    } catch (e: any) {
+      setAiTitles(suggestChapterTitles(text, story.chapters.length + (isNew ? 1 : 0) || 1));
+      setAiNote(e?.message || 'Suggestions locales.');
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   const applyAITitle = (t: string) => {
@@ -782,17 +825,99 @@ export default function ImmersiveEditor({
     setAiMode('analyze');
   };
 
-  // Resume EXPRESS (extractif, local).
-  const runSummary = () => {
+  // Resume : vraie IA (Gemini, resume redige) si disponible, sinon extractif local.
+  const runSummary = async () => {
     const text = currentEditorText();
+    setAiMode('summary');
     if (text.trim().split(/\s+/).filter(Boolean).length < 40) {
       setAiResult('');
       setAiNote("Ecris un peu plus de texte pour en extraire un resume.");
-    } else {
-      setAiResult(extractiveSummary(text, 3));
-      setAiNote('Resume construit a partir des phrases-cles de ton texte.');
+      return;
     }
-    setAiMode('summary');
+    setAiBusy(true);
+    setAiResult('');
+    setAiNote('L’assistant IA rédige un résumé…');
+    try {
+      const ai = await requestAI('summary', text);
+      setAiResult(ai || extractiveSummary(text, 3));
+      setAiNote(ai ? 'Résumé rédigé par l’IA.' : 'Résumé construit à partir des phrases-clés de ton texte.');
+    } catch (e: any) {
+      setAiResult(extractiveSummary(text, 3));
+      setAiNote(e?.message || 'Résumé local.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  // Reecriture / amelioration du style (IA uniquement — pas d'equivalent local).
+  const runRewrite = async () => {
+    const text = currentEditorText();
+    setAiMode('rewrite');
+    if (text.trim().split(/\s+/).filter(Boolean).length < 20) {
+      setAiResult('');
+      setAiNote("Ecris au moins une vingtaine de mots a reecrire.");
+      return;
+    }
+    setAiBusy(true);
+    setAiResult('');
+    setAiNote('L’assistant IA réécrit ton texte…');
+    try {
+      const ai = await requestAI('rewrite', text);
+      if (ai) { setAiResult(ai); setAiNote('Version réécrite par l’IA. Relis avant d’appliquer.'); }
+      else { setAiResult(''); setAiNote("Assistant IA indisponible : aucune clé n'est configurée sur le serveur."); }
+    } catch (e: any) {
+      setAiResult(''); setAiNote(e?.message || 'Assistant IA indisponible.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  // Suite du recit (IA uniquement).
+  const runContinue = async () => {
+    const text = currentEditorText();
+    setAiMode('continue');
+    if (text.trim().split(/\s+/).filter(Boolean).length < 20) {
+      setAiResult('');
+      setAiNote("Ecris au moins une vingtaine de mots pour que l'IA propose une suite.");
+      return;
+    }
+    setAiBusy(true);
+    setAiResult('');
+    setAiNote('L’assistant IA imagine la suite…');
+    try {
+      const ai = await requestAI('continue', text);
+      if (ai) { setAiResult(ai); setAiNote('Suite proposée par l’IA. Tu peux l’ajouter à la fin.'); }
+      else { setAiResult(''); setAiNote("Assistant IA indisponible : aucune clé n'est configurée sur le serveur."); }
+    } catch (e: any) {
+      setAiResult(''); setAiNote(e?.message || 'Assistant IA indisponible.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  // Applique la reecriture : remplace tout le contenu de l'editeur.
+  const applyRewrite = () => {
+    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
+    if (!window.confirm('Remplacer ton texte par la version réécrite ? (La mise en forme sera reformatée en paragraphes.)')) return;
+    const html = paragraphsToEditorHtml(aiResult.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
+    editorRef.current.innerHTML = html;
+    contentRef.current = html;
+    setWordCount(plainTextOf(html).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
+  };
+
+  // Ajoute la suite proposee a la FIN du texte.
+  const applyContinueAtEnd = () => {
+    if (!aiResult || !editorRef.current) { setAiOpen(false); return; }
+    const addition = paragraphsToEditorHtml(aiResult.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean));
+    editorRef.current.innerHTML = editorRef.current.innerHTML + '<div><br></div>' + addition;
+    contentRef.current = editorRef.current.innerHTML;
+    setWordCount(plainTextOf(contentRef.current).split(/\s+/).filter(Boolean).length);
+    setAiOpen(false);
+    scheduleSave();
+    wakeChrome();
   };
 
   const applySummaryAtTop = () => {
@@ -964,6 +1089,8 @@ export default function ImmersiveEditor({
                     : aiMode === 'typo' ? 'Typographie & ponctuation'
                     : aiMode === 'analyze' ? 'Analyse du texte'
                     : aiMode === 'summary' ? 'Résumé express'
+                    : aiMode === 'rewrite' ? 'Réécrire (IA)'
+                    : aiMode === 'continue' ? "Continuer l’histoire (IA)"
                     : 'Titre du chapitre'}
                 </h3>
                 {aiMode !== 'menu' && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{aiNote}</p>}
@@ -1006,7 +1133,21 @@ export default function ImmersiveEditor({
                   <span className="w-9 h-9 rounded-xl bg-purple-500/12 text-purple-600 flex items-center justify-center shrink-0"><Quote className="w-4.5 h-4.5" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-black text-gray-900 dark:text-white">Résumé express</span>
-                    <span className="block text-[10px] text-gray-400">Extrait les phrases-clés pour résumer ou faire une accroche.</span>
+                    <span className="block text-[10px] text-gray-400">Un résumé clair de ton chapitre (rédigé par l’IA si disponible).</span>
+                  </span>
+                </button>
+                <button onClick={runRewrite} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0"><Wand2 className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-[13px] font-black text-gray-900 dark:text-white">Réécrire le passage <span className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">IA</span></span>
+                    <span className="block text-[10px] text-gray-400">Améliore le style et la fluidité sans changer l’histoire.</span>
+                  </span>
+                </button>
+                <button onClick={runContinue} className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
+                  <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 text-white flex items-center justify-center shrink-0"><Sparkles className="w-4.5 h-4.5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-[13px] font-black text-gray-900 dark:text-white">Continuer l’histoire <span className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">IA</span></span>
+                    <span className="block text-[10px] text-gray-400">Propose la suite du récit dans ton style.</span>
                   </span>
                 </button>
               </div>
@@ -1058,7 +1199,13 @@ export default function ImmersiveEditor({
             {/* TITRE */}
             {aiMode === 'title' && (
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-                {aiTitles.map((t, i) => (
+                {aiBusy && (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-purple-600">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                  </div>
+                )}
+                {!aiBusy && aiTitles.map((t, i) => (
                   <button key={i} onClick={() => applyAITitle(t)} className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-zinc-900 hover:bg-purple-50 dark:hover:bg-zinc-850 text-left transition">
                     <span className="text-[13px] font-bold text-gray-900 dark:text-white break-words min-w-0">{t}</span>
                     <Check className="w-4 h-4 text-purple-600 shrink-0" />
@@ -1139,16 +1286,69 @@ export default function ImmersiveEditor({
             {aiMode === 'summary' && (
               <>
                 <div className="flex-1 overflow-y-auto px-4 py-3">
-                  {aiResult ? (
+                  {aiBusy ? (
+                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                    </div>
+                  ) : aiResult ? (
                     <p className="text-[13px] leading-relaxed text-gray-700 dark:text-gray-200 italic break-words">« {aiResult} »</p>
                   ) : (
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
                   )}
                 </div>
-                {aiResult && (
+                {!aiBusy && aiResult && (
                   <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
                     <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
                     <button onClick={applySummaryAtTop} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Insérer au début</button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* RÉÉCRITURE (IA) */}
+            {aiMode === 'rewrite' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {aiBusy ? (
+                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                    </div>
+                  ) : aiResult ? (
+                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiResult}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  )}
+                </div>
+                {!aiBusy && aiResult && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applyRewrite} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Remplacer</button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* CONTINUER L'HISTOIRE (IA) */}
+            {aiMode === 'continue' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {aiBusy ? (
+                    <div className="flex flex-col items-center justify-center py-10 gap-2 text-purple-600">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{aiNote}</p>
+                    </div>
+                  ) : aiResult ? (
+                    <p className="text-[12.5px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{aiResult}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed py-6 text-center">{aiNote}</p>
+                  )}
+                </div>
+                {!aiBusy && aiResult && (
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                    <button onClick={() => setAiMode('menu')} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase tracking-wider">Retour</button>
+                    <button onClick={applyContinueAtEnd} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5"><Check className="w-3.5 h-3.5" /> Ajouter à la fin</button>
                   </div>
                 )}
               </>

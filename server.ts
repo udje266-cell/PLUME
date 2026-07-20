@@ -410,6 +410,85 @@ async function blockExistsBetween(aId: string | undefined, bId: string | undefin
   return Boolean(found);
 }
 
+// Amis ? (relation Friendship ACCEPTED dans un sens ou l'autre). Sert au
+// systeme de demandes de message : entre amis, aucune limite d'envoi.
+async function areFriends(aId: string | undefined, bId: string | undefined): Promise<boolean> {
+  if (!aId || !bId || aId === bId) return false;
+  const found = await prisma.friendship.findFirst({
+    where: {
+      status: 'ACCEPTED',
+      OR: [
+        { requesterId: aId, receiverId: bId },
+        { requesterId: bId, receiverId: aId },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
+// Nombre de messages qu'un initiateur peut envoyer a une personne non amie
+// tant que celle-ci n'a pas accepte la conversation (facon TikTok).
+const MESSAGE_REQUEST_LIMIT = 3;
+
+// ------- Assistant d'ecriture IA (Google Gemini) -------
+// Actif UNIQUEMENT si GEMINI_API_KEY est definie (variable d'env Render).
+// Sinon l'endpoint renvoie 503 {unavailable:true} et le client bascule
+// automatiquement sur le moteur d'ecriture local (hors-ligne).
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+async function callGemini(systemPrompt: string, userText: string, maxTokens = 1024): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 22000);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userText }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens },
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      throw new Error(`Gemini ${r.status}: ${body.slice(0, 300)}`);
+    }
+    const data: any = await r.json();
+    const text: string = (data?.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('');
+    return text.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Consignes systeme par mode : le francais litteraire, sans meta-bavardage.
+const AI_PROMPTS: Record<string, { sys: string; max: number }> = {
+  title: {
+    sys: "Tu es un editeur litteraire francophone. A partir de l'extrait de chapitre fourni, propose EXACTEMENT 5 titres de chapitre en francais, evocateurs et fideles au contenu. Un titre par ligne, sans numerotation, sans guillemets, sans commentaire.",
+    max: 256,
+  },
+  rewrite: {
+    sys: "Tu es un correcteur-relecteur litteraire francophone. Reecris le texte fourni en ameliorant le style, la fluidite et la grammaire, SANS changer le sens, les evenements ni le point de vue, et en conservant la langue francaise. Ne rajoute aucun commentaire : renvoie UNIQUEMENT le texte reecrit.",
+    max: 2048,
+  },
+  summary: {
+    sys: "Tu es un assistant d'ecriture francophone. Redige un resume clair et concis (3 a 5 phrases) de l'extrait fourni, en francais, a la 3e personne. Renvoie uniquement le resume, sans titre ni commentaire.",
+    max: 512,
+  },
+  continue: {
+    sys: "Tu es un co-auteur francophone. Ecris la SUITE immediate du texte fourni : un a deux paragraphes en francais qui prolongent naturellement le recit, en respectant le ton, le style et le temps de narration. Renvoie uniquement la suite, sans commentaire ni introduction.",
+    max: 1024,
+  },
+  analyze: {
+    sys: "Tu es un professeur d'ecriture creative francophone. Analyse l'extrait fourni et donne un retour constructif en francais sous forme de 4 a 6 puces courtes (points forts, points faibles, repetitions, rythme, conseils concrets). Renvoie uniquement les puces (chaque ligne commence par '- ').",
+    max: 768,
+  },
+};
+
 // Détermine si `requesterId` a le droit de commenter une histoire selon le
 // réglage « Qui peut commenter » de l'auteur et l'état de blocage. L'auteur peut
 // toujours commenter ses propres histoires.
@@ -3129,9 +3208,24 @@ export async function createServerInstance() {
         return res.json(existingConversation);
       }
 
+      // Demande de message (1-a-1 uniquement) : si l'initiateur n'est PAS ami
+      // avec l'autre, la conversation demarre en PENDING et l'initiateur est
+      // soumis a la limite d'envoi tant que l'autre n'a pas accepte.
+      let requestStatus = 'NONE';
+      let requesterId: string | null = null;
+      if (targetIds.length === 2) {
+        const other = others[0];
+        if (other && !(await areFriends(req.user.id, other.id))) {
+          requestStatus = 'PENDING';
+          requesterId = req.user.id;
+        }
+      }
+
       // Create new conversation
       const conversation = await prisma.conversation.create({
         data: {
+          requestStatus,
+          requesterId,
           participants: {
             connect: targetIds.map(id => ({ id }))
           }
@@ -3151,6 +3245,32 @@ export async function createServerInstance() {
     } catch (error: any) {
       console.error(`[CONVERSATION] erreur création :`, error);
       res.status(500).json({ error: `Erreur lors de la création de la conversation : ${error.message || 'erreur serveur'}` });
+    }
+  });
+
+  // Accepter / decliner une DEMANDE de message. Seul le DESTINATAIRE (celui
+  // qui n'est pas l'initiateur) peut agir. Accepter -> echanges illimites.
+  app.post('/api/conversations/:id/request/:action', requireAuth, async (req: any, res) => {
+    try {
+      const action = req.params.action;
+      if (action !== 'accept' && action !== 'reject') return res.status(400).json({ error: 'Action invalide' });
+      const conv = await prisma.conversation.findUnique({
+        where: { id: req.params.id },
+        include: { participants: { select: { id: true } } },
+      });
+      if (!conv) return res.status(404).json({ error: 'Conversation introuvable' });
+      if (!conv.participants.some((p) => p.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
+      if (conv.requestStatus !== 'PENDING') return res.status(400).json({ error: 'Aucune demande en attente' });
+      if (conv.requesterId === req.user.id) return res.status(403).json({ error: "Vous ne pouvez pas repondre a votre propre demande" });
+
+      const newStatus = action === 'accept' ? 'ACCEPTED' : 'REJECTED';
+      await prisma.conversation.update({ where: { id: conv.id }, data: { requestStatus: newStatus } });
+      conv.participants.forEach((p) =>
+        io.to(`user:${p.id}`).emit('conversation_request_updated', { conversationId: conv.id, requestStatus: newStatus }));
+      res.json({ conversationId: conv.id, requestStatus: newStatus });
+    } catch (error) {
+      console.error('[REQUEST] ', error);
+      res.status(500).json({ error: 'Erreur lors du traitement de la demande' });
     }
   });
 
@@ -3193,10 +3313,18 @@ export async function createServerInstance() {
               isRead: false
             }
           });
+          // Demande de message : si JE suis l'initiateur d'une demande encore
+          // PENDING, on renvoie combien de messages il me reste.
+          let requestMessagesLeft: number | undefined;
+          if (conv.requestStatus === 'PENDING' && conv.requesterId === req.user.id) {
+            const sent = await prisma.message.count({ where: { conversationId: conv.id, senderId: req.user.id } });
+            requestMessagesLeft = Math.max(0, MESSAGE_REQUEST_LIMIT - sent);
+          }
           return {
             ...conv,
             unreadCount,
             blockedByPartner: conv.participants.some((p: any) => p.id !== req.user.id && blockerIds.has(p.id)),
+            requestMessagesLeft,
           };
         })
       );
@@ -3338,6 +3466,32 @@ export async function createServerInstance() {
       for (const p of conversation.participants) {
         if (p.id !== senderId && await blockExistsBetween(senderId, p.id)) {
           return res.status(403).json({ error: 'Action impossible : un blocage est actif.' });
+        }
+      }
+
+      // Demande de message (facon TikTok) : entre deux personnes NON amies,
+      // l'initiateur est limite tant que le destinataire n'a pas accepte.
+      if (conversation.participants.length === 2
+          && conversation.requestStatus !== 'NONE'
+          && conversation.requestStatus !== 'ACCEPTED') {
+        if (senderId === conversation.requesterId) {
+          // Initiateur soumis a la limite.
+          if (conversation.requestStatus === 'REJECTED') {
+            return res.status(403).json({ error: 'Votre demande de message a ete declinee.', code: 'MESSAGE_REQUEST_REJECTED' });
+          }
+          const sentCount = await prisma.message.count({ where: { conversationId, senderId } });
+          if (sentCount >= MESSAGE_REQUEST_LIMIT) {
+            return res.status(403).json({
+              error: `Vous avez atteint la limite de ${MESSAGE_REQUEST_LIMIT} messages. Attendez que la personne accepte votre demande pour continuer.`,
+              code: 'MESSAGE_REQUEST_LIMIT',
+            });
+          }
+        } else {
+          // Le destinataire repond : acceptation IMPLICITE (echanges illimites).
+          await prisma.conversation.update({ where: { id: conversationId }, data: { requestStatus: 'ACCEPTED' } });
+          conversation.requestStatus = 'ACCEPTED';
+          conversation.participants.forEach((p) =>
+            io.to(`user:${p.id}`).emit('conversation_request_updated', { conversationId, requestStatus: 'ACCEPTED' }));
         }
       }
 
@@ -4868,6 +5022,32 @@ export async function createServerInstance() {
     } catch (error) {
       console.error('[PROGRESS] liste :', error);
       res.status(500).json({ error: 'Erreur lors du chargement de la progression' });
+    }
+  });
+
+  // Assistant d'ecriture IA (Gemini). Renvoie 503 {unavailable:true} si aucune
+  // cle n'est configuree -> le client bascule sur le moteur local hors-ligne.
+  const lastAiTimes = new Map<string, number>();
+  app.post('/api/ai/assist', requireAuth, async (req: any, res) => {
+    if (!GEMINI_API_KEY) return res.status(503).json({ error: 'Assistant IA indisponible.', unavailable: true });
+    const mode = String(req.body?.mode || '');
+    const conf = AI_PROMPTS[mode];
+    if (!conf) return res.status(400).json({ error: 'Mode IA inconnu.' });
+    const text = String(req.body?.text || '').slice(0, 12000);
+    if (text.trim().length < 10) return res.status(400).json({ error: 'Texte trop court pour l’assistant.' });
+    // Anti-abus : 1 requete / 2 s / utilisateur.
+    const now = Date.now();
+    if (now - (lastAiTimes.get(req.user.id) || 0) < 2000) {
+      return res.status(429).json({ error: 'Patiente un instant avant une nouvelle requete IA.' });
+    }
+    lastAiTimes.set(req.user.id, now);
+    try {
+      const result = await callGemini(conf.sys, text, conf.max);
+      if (!result) return res.status(502).json({ error: 'Reponse vide de l’assistant IA.' });
+      res.json({ result });
+    } catch (e: any) {
+      console.error('[AI] ', e?.message || e);
+      res.status(502).json({ error: 'Echec de l’assistant IA.', detail: String(e?.message || '').slice(0, 200) });
     }
   });
 

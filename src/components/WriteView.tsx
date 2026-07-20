@@ -29,6 +29,7 @@ import {
   Heart,
   Users,
   MoreVertical,
+  Send,
   Image as ImageIcon
 } from 'lucide-react';
 import { Story, Chapter, User, Comment } from '../types';
@@ -840,14 +841,20 @@ export default function WriteView({
                     <FileText className="w-4 h-4" />
                     <span>{importState === 'parsing' ? 'Lecture…' : 'Importer'}</span>
                   </button>
-                  <button
-                    id="btn-add-chapter-directly"
-                    onClick={() => handleOpenChapterEditor(currentStoryToManage || managingStoryChapters, null)}
-                    className="h-9 px-4 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-bold flex items-center gap-1.5 transition duration-150"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Nouveau Chapitre</span>
-                  </button>
+                  {/* « Nouveau Chapitre » direct UNIQUEMENT en mode chapitres.
+                      En mode tomes, on ecrit via le bouton « Ecrire un chapitre »
+                      de chaque tome (pas de chapitre hors tome). L'import, lui,
+                      reste disponible dans les deux modes. */}
+                  {(currentStoryToManage || managingStoryChapters).structure !== 'tomes' && (
+                    <button
+                      id="btn-add-chapter-directly"
+                      onClick={() => handleOpenChapterEditor(currentStoryToManage || managingStoryChapters, null)}
+                      className="h-9 px-4 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-bold flex items-center gap-1.5 transition duration-150"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Nouveau Chapitre</span>
+                    </button>
+                  )}
 
                   <button
                     id="btn-back-to-books"
@@ -952,7 +959,9 @@ export default function WriteView({
                   ça n'apparaît — l'atelier reste une simple liste de chapitres. */}
               {(() => {
                 const story = currentStoryToManage || managingStoryChapters;
-                if (story.structure !== 'tomes' && (story.tomes?.length || 0) === 0) return null;
+                // STRICT : la gestion des tomes n'apparait QUE pour une oeuvre en
+                // mode tomes. En mode chapitres, aucune feature de tome.
+                if (story.structure !== 'tomes') return null;
                 const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
                 return (
                   <div className="rounded-xl border border-gray-150 dark:border-purple-900/15 bg-gray-55/60 dark:bg-black/40 p-4 space-y-3">
@@ -1025,8 +1034,9 @@ export default function WriteView({
               ) : (() => {
                 const story = currentStoryToManage || managingStoryChapters;
                 const tomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
-                // Mode tomes = structure choisie OU tomes déjà présents (compat).
-                const hasTomes = story.structure === 'tomes' || tomes.length > 0;
+                // STRICT : le mode d'affichage suit la structure choisie a la
+                // creation. Mode chapitres = liste plate ; mode tomes = volumes.
+                const hasTomes = story.structure === 'tomes';
 
                 // Une ligne de chapitre (numérotée globalement, comme le lecteur).
                 const chapterRow = (chapter: Chapter, idx: number) => (
@@ -1059,6 +1069,33 @@ export default function WriteView({
                           <option value="">Hors tome</option>
                           {tomes.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
                         </select>
+                      )}
+                      {/* Mettre en ligne un chapitre BROUILLON d'une œuvre déjà
+                          publiée : le rend visible aux lecteurs et notifie les
+                          abonnés. Publier / dépublier au besoin. */}
+                      {!chapter.isPublished ? (
+                        <button
+                          id={`btn-publish-chapter-${chapter.id}`}
+                          onClick={() => {
+                            if (window.confirm(story.status === 'Publié'
+                              ? 'Mettre ce chapitre en ligne ? Il deviendra visible des lecteurs et vos abonnes seront notifies.'
+                              : 'Publier ce chapitre ? (L\'oeuvre elle-meme n\'est pas encore publiee : publiez-la pour qu\'elle apparaisse.)')) {
+                              onUpdateChapter(story.id, chapter.id, { isPublished: true });
+                            }
+                          }}
+                          className="h-8 px-3 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[10.5px] font-bold transition flex items-center gap-1.5"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Mettre en ligne</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { if (window.confirm('Repasser ce chapitre en brouillon ? Il ne sera plus visible des lecteurs.')) onUpdateChapter(story.id, chapter.id, { isPublished: false }); }}
+                          title="Repasser en brouillon"
+                          className="h-8 px-2.5 rounded-lg border border-gray-200 dark:border-zinc-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition"
+                        >
+                          En ligne
+                        </button>
                       )}
                       <button
                         id={`btn-edit-chapter-${chapter.id}`}

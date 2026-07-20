@@ -812,6 +812,16 @@ export default function App() {
       });
     });
 
+    // Demande de message acceptee/declinee (facon TikTok) : on met a jour
+    // l'etat de la conversation pour ouvrir/fermer le composer en direct.
+    socket.on('conversation_request_updated', ({ conversationId, requestStatus }: { conversationId: string; requestStatus: any }) => {
+      setConversations((prev) => prev.map((c) =>
+        c.id === conversationId
+          ? { ...c, requestStatus, requestMessagesLeft: requestStatus === 'ACCEPTED' ? undefined : c.requestMessagesLeft }
+          : c
+      ));
+    });
+
     socket.on('new_message', (message: Message) => {
       if (message.senderId === (currentUser?.id || '')) return;
 
@@ -1063,6 +1073,7 @@ export default function App() {
       socket.off('connect');
       socket.off('new_notification');
       socket.off('conversation_created');
+      socket.off('conversation_request_updated');
       socket.off('new_message');
       socket.off('messages_read');
       socket.off('user_followed');
@@ -3027,11 +3038,16 @@ export default function App() {
     .then(async (res) => {
       if (res.ok) {
         const savedMsg = await res.json();
-        // Replace temporary message with final saved message
+        // Replace temporary message with final saved message. Si j'etais
+        // l'initiateur d'une demande PENDING, je decremente mon quota affiche.
         setConversations(prev => prev.map(c => {
           if (c.id === conversationId) {
+            const isPendingRequester = c.requestStatus === 'PENDING' && c.requesterId === currentUser.id;
             return {
               ...c,
+              requestMessagesLeft: isPendingRequester && typeof c.requestMessagesLeft === 'number'
+                ? Math.max(0, c.requestMessagesLeft - 1)
+                : c.requestMessagesLeft,
               messages: c.messages.map(m => m.id === tempMsgId ? { ...savedMsg, date: savedMsg.createdAt } : m)
             };
           }
@@ -3039,11 +3055,18 @@ export default function App() {
         }));
       } else {
         let errMsg = 'Erreur lors de l’envoi du message';
+        let errCode = '';
         try {
           const data = await res.json();
           errMsg = data.error || errMsg;
+          errCode = data.code || '';
         } catch (jsonErr) {
           // response is not JSON
+        }
+        // Limite de demande de message atteinte : on fige le quota a 0 pour
+        // verrouiller le composer (au lieu d'un simple message d'erreur).
+        if (errCode === 'MESSAGE_REQUEST_LIMIT' || errCode === 'MESSAGE_REQUEST_REJECTED') {
+          setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, requestMessagesLeft: 0 } : c));
         }
         alert(errMsg);
         // Revert optimistic update
@@ -3125,6 +3148,26 @@ export default function App() {
       }
     } catch {
       alert("Erreur de connexion : la conversation n’a pas pu être supprimée.");
+    }
+  };
+
+  // Repondre a une demande de message (facon TikTok) : accepter -> echanges
+  // illimites ; refuser -> l'initiateur ne peut plus ecrire.
+  const handleRespondToMessageRequest = async (conversationId: string, accept: boolean) => {
+    const newStatus = accept ? 'ACCEPTED' : 'REJECTED';
+    // Optimiste : on met a jour immediatement l'etat local.
+    setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, requestStatus: newStatus as any } : c));
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/request/${accept ? 'accept' : 'reject'}`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      if (!res.ok) {
+        let msg = 'La demande n’a pas pu être traitée.';
+        try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+        alert(msg);
+      }
+    } catch {
+      alert('Erreur de connexion : la demande n’a pas pu être traitée.');
     }
   };
 
@@ -3845,6 +3888,7 @@ export default function App() {
                       onEditMessage={handleEditMessage}
                       onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
                       onDeleteConversation={handleDeleteConversation}
+                      onRespondToMessageRequest={handleRespondToMessageRequest}
                       onStartConversation={handleStartConversation}
                       activeConversationId={activeConversationId}
                       setActiveConversationId={setActiveConversationId}

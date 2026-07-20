@@ -131,6 +131,7 @@ interface MessagesViewProps {
   onEditMessage?: (messageId: string, content: string) => void;
   onDeleteMessageForEveryone?: (messageId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
+  onRespondToMessageRequest?: (conversationId: string, accept: boolean) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
   setActiveConversationId: (id: string) => void;
@@ -255,6 +256,7 @@ export default function MessagesView({
   onEditMessage,
   onDeleteMessageForEveryone,
   onDeleteConversation,
+  onRespondToMessageRequest,
   onStartConversation,
   activeConversationId,
   setActiveConversationId,
@@ -669,12 +671,28 @@ export default function MessagesView({
   // block_status). Le second verrouille avec un message NEUTRE.
   const iBlockedInterlocutor = !activeGroupId && !!interlocutor && (currentUser.blockedUsers || []).includes(interlocutor.id);
   const blockedByPartner = !activeGroupId && !!activeConv?.blockedByPartner;
-  const composerLocked = (!!activeGroupId && !canPostInGroup) || iBlockedInterlocutor || blockedByPartner;
+
+  // Demande de message (facon TikTok). Deux points de vue :
+  // - JE suis l'initiateur (requesterId === moi) et c'est PENDING : quota limite ;
+  //   REJECTED : je ne peux plus ecrire.
+  // - JE suis le destinataire d'une demande PENDING : banniere accepter/refuser.
+  const reqStatus = !activeGroupId ? activeConv?.requestStatus : undefined;
+  const iAmRequester = !activeGroupId && activeConv?.requesterId === currentUser.id;
+  const requestPendingForMe = reqStatus === 'PENDING' && !activeGroupId && !!activeConv?.requesterId && !iAmRequester;
+  const requestQuotaBlocked = iAmRequester && reqStatus === 'PENDING' && activeConv?.requestMessagesLeft === 0;
+  const requestRejectedForMe = iAmRequester && reqStatus === 'REJECTED';
+
+  const composerLocked = (!!activeGroupId && !canPostInGroup) || iBlockedInterlocutor || blockedByPartner
+    || requestQuotaBlocked || requestRejectedForMe;
   const composerLockReason = iBlockedInterlocutor
     ? "Vous avez bloqué cette personne. Débloquez-la depuis son profil pour lui écrire."
     : blockedByPartner
       ? "Vous ne pouvez pas envoyer de messages dans cette conversation."
-      : "Mode annonce : seuls les administrateurs peuvent écrire dans ce groupe.";
+      : requestRejectedForMe
+        ? "Votre demande de message a été déclinée. Vous ne pouvez plus écrire à cette personne."
+        : requestQuotaBlocked
+          ? "Limite atteinte. Attendez que la personne accepte votre demande pour continuer à lui écrire."
+          : "Mode annonce : seuls les administrateurs peuvent écrire dans ce groupe.";
 
   // Indique « enregistre un audio… » à l'interlocuteur / au groupe.
   const emitRecording = (isRec: boolean) => {
@@ -1738,7 +1756,42 @@ export default function MessagesView({
 
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER (au-dessus du home indicator). */}
             <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
-            
+
+              {/* Demande de message — DESTINATAIRE : accepter / refuser. */}
+              {requestPendingForMe && (
+                <div className="mb-1 p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/25 border border-purple-500/25 animate-fade-in">
+                  <p className="text-[11px] font-bold text-purple-800 dark:text-purple-200 leading-snug">
+                    <span className="font-black">{interlocutor.username}</span> souhaite vous envoyer des messages.
+                  </p>
+                  <p className="text-[10px] text-purple-600/80 dark:text-purple-300/70 mt-0.5 leading-snug">
+                    Acceptez pour échanger librement, même sans être amis.
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => onRespondToMessageRequest?.(activeConv!.id, true)}
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold py-2 rounded-xl transition"
+                    >
+                      Accepter
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRespondToMessageRequest?.(activeConv!.id, false)}
+                      className="flex-1 bg-gray-100 dark:bg-zinc-850 hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 text-[11px] font-bold py-2 rounded-xl transition"
+                    >
+                      Refuser
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Demande de message — INITIATEUR : quota restant (façon TikTok). */}
+              {iAmRequester && reqStatus === 'PENDING' && typeof activeConv?.requestMessagesLeft === 'number' && activeConv.requestMessagesLeft > 0 && (
+                <p className="mb-1 text-center text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                  Demande de message : il vous reste {activeConv.requestMessagesLeft} message{activeConv.requestMessagesLeft > 1 ? 's' : ''} avant acceptation.
+                </p>
+              )}
+
               {/* Sélecteur d'émojis (rendus avec la police native du téléphone) */}
               {showEmojiPicker && !composerLocked && (
                 <div className="mb-2 p-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-lg grid grid-cols-8 gap-1 max-h-40 overflow-y-auto animate-fade-in">

@@ -170,6 +170,12 @@ export interface Conversation {
   // L'autre participant m'a bloqué : le composer est verrouillé (message
   // neutre) au lieu de laisser envoyer pour un rejet serveur garanti.
   blockedByPartner?: boolean;
+  // Demande de message (façon TikTok) entre personnes non amies.
+  // NONE = libre ; PENDING = en attente d'acceptation ; ACCEPTED = illimité ;
+  // REJECTED = déclinée.
+  requestStatus?: 'NONE' | 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  requesterId?: string | null; // l'initiateur soumis à la limite
+  requestMessagesLeft?: number; // messages restants pour l'initiateur (si PENDING)
 }
 
 export interface ReadingProgress {

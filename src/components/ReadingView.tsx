@@ -639,6 +639,18 @@ export default function ReadingView({
     return m;
   }, [story.tomes]);
   const activeTome = activeChapter.tomeId ? tomesById.get(activeChapter.tomeId) : null;
+  // Numéro du tome (1, 2…) et rang du chapitre DANS ce tome, pour afficher un
+  // libellé lecteur correct « Tome X · Chapitre Y » (au lieu de deux fois
+  // « Chapitre »). L'ordre des tomes est celui défini par l'auteur.
+  const tomeLabel = React.useMemo(() => {
+    if (!activeChapter.tomeId || tomesById.size === 0) return null;
+    const sortedTomes = [...(story.tomes || [])].sort((a, b) => a.order - b.order);
+    const tomeNumber = sortedTomes.findIndex((t) => t.id === activeChapter.tomeId) + 1;
+    const inTome = story.chapters.filter((c) => c.tomeId === activeChapter.tomeId);
+    const chapterInTome = inTome.findIndex((c) => c.id === activeChapter.id) + 1;
+    if (tomeNumber < 1) return null;
+    return { tomeNumber, chapterInTome, title: activeTome?.title || `Tome ${tomeNumber}` };
+  }, [activeChapter.id, activeChapter.tomeId, story.tomes, story.chapters, tomesById, activeTome]);
 
   useEffect(() => {
     if (!isOwnStory && !currentlyReading.includes(story.id) && !completedStories.includes(story.id)) {
@@ -1938,14 +1950,20 @@ export default function ReadingView({
 
           {/* Chapter headers */}
           <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
-            {activeTome && (
-              <span className="text-[10px] uppercase font-mono tracking-widest text-purple-500 font-black block mb-1 leading-none">
-                {activeTome.title}
+            {tomeLabel ? (
+              <>
+                <span className="text-[10px] uppercase font-mono tracking-widest text-purple-500 font-black block mb-1 leading-none">
+                  {tomeLabel.title}
+                </span>
+                <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
+                  Tome {tomeLabel.tomeNumber} • Chapitre {tomeLabel.chapterInTome}
+                </span>
+              </>
+            ) : (
+              <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
+                Récit {story.category} • Chapitre {activeChapterIndex + 1} de {story.chapters.length}
               </span>
             )}
-            <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
-              Récit {story.category} • Chapitre {activeChapterIndex + 1} de {story.chapters.length}
-            </span>
             <h2 className="text-2xl md:text-3xl font-serif font-black tracking-tight mb-4 leading-normal">
               {activeChapter.title}
             </h2>

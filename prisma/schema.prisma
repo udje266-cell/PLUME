@@ -233,6 +233,12 @@ model Conversation {
   id           String    @id @default(cuid())
   participants User[]    @relation("UserConversations")
   messages     Message[]
+  // Demande de message facon TikTok : entre deux personnes NON amies, l'initiateur
+  // ne peut envoyer que quelques messages tant que le destinataire n'a pas accepte.
+  // NONE = pas de restriction (amis, ou deja accepte) ; PENDING = en attente ;
+  // ACCEPTED = le destinataire a accepte (echanges illimites).
+  requestStatus String   @default("NONE")
+  requesterId   String?  // l'initiateur soumis a la limite tant que PENDING
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -396,7 +402,7 @@ model ChapterRead {
   storyId   String
   chapterId String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  / FK en cascade : sans elles, la suppression d'un chapitre ou d'une œuvre
+  // FK en cascade : sans elles, la suppression d'un chapitre ou d'une œuvre
   // laissait des lignes orphelines qui gonflaient les stats pour toujours.
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)

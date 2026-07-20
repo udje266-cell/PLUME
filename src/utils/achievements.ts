@@ -174,11 +174,11 @@ export function generateReaderAchievements(stats: UserStats, userId: string = 'c
       // 25 levels: 101 to 125
       const lvlIndex = i - 100; // 1 to 25
       if (lvlIndex <= 5) {
-        // Retourneur de Pages I à V (Index 101-105)
+        // Dévoreur de Pages I à V (Index 101-105)
         const levels = [10, 30, 50, 100, 200];
         const target = levels[lvlIndex - 1];
         isUnlocked = stats.chaptersRead >= target;
-        title = `Retourneur de Pages ${"I".repeat(lvlIndex)}`;
+        title = `Dévoreur de Pages ${"I".repeat(lvlIndex)}`;
         realDesc = `A dévoré ${target} chapitres de récits captivants.`;
         mysteryDesc = `Lisez de nombreux chapitres pour débloquer le niveau ${"I".repeat(lvlIndex)}.`;
         rarity = 'rare';
@@ -231,7 +231,7 @@ export function generateReaderAchievements(stats: UserStats, userId: string = 'c
         // 1-25: simple based on chaptersRead
         const target = i;
         isUnlocked = stats.chaptersRead >= target;
-        title = `Liseur Passionné Niv.${i}`;
+        title = `Lecteur Passionné Niv.${i}`;
         realDesc = `A dévoré au moins ${target} chapitres de récits captivants sur l'archipel.`;
       } else if (i <= 45) {
         // 26-45: comments
@@ -243,7 +243,7 @@ export function generateReaderAchievements(stats: UserStats, userId: string = 'c
         // 46-65: likes given
         const target = (i - 45) * 2;
         isUnlocked = stats.likesGiven >= target;
-        title = `Donateur des Astres Niv.${i - 45}`;
+        title = `Semeur d'Étoiles Niv.${i - 45}`;
         realDesc = `A attribué ${target} cœurs d'appréciation sur les œuvres de l'archipel.`;
       } else if (i <= 75) {
         // 66-75: favorites
