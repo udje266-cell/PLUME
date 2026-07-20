@@ -5029,6 +5029,25 @@ export async function createServerInstance() {
     }
   });
 
+  // Diagnostic public de l'assistant IA : indique si une cle Gemini est
+  // configuree ET si un vrai ping vers l'API reussit. N'expose JAMAIS la cle.
+  // Resultat mis en cache 60 s pour eviter tout abus (1 vrai appel/minute max).
+  let aiHealthCache: { at: number; body: any } | null = null;
+  app.get('/api/ai/health', async (_req, res) => {
+    if (!GEMINI_API_KEY) return res.json({ configured: false, ok: false, model: GEMINI_MODEL });
+    const now = Date.now();
+    if (aiHealthCache && now - aiHealthCache.at < 60000) return res.json(aiHealthCache.body);
+    let body: any;
+    try {
+      const sample = await callGemini('Reponds uniquement par le mot: PONG', 'ping', 16);
+      body = { configured: true, ok: !!sample, model: GEMINI_MODEL, sample: (sample || '').slice(0, 40) };
+    } catch (e: any) {
+      body = { configured: true, ok: false, model: GEMINI_MODEL, error: String(e?.message || '').slice(0, 200) };
+    }
+    aiHealthCache = { at: now, body };
+    res.json(body);
+  });
+
   // Assistant d'ecriture IA (Gemini). Renvoie 503 {unavailable:true} si aucune
   // cle n'est configuree -> le client bascule sur le moteur local hors-ligne.
   const lastAiTimes = new Map<string, number>();
