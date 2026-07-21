@@ -366,8 +366,9 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
       {/* Colonne du FORMULAIRE (centre) */}
       <div className="flex flex-col items-center justify-center min-h-[90vh] lg:min-h-screen py-8 px-6">
 
-      {/* Brand Launcher Block */}
-      <div className="text-center mb-8">
+      {/* Brand Launcher Block — masque sur desktop (le panneau de gauche marque
+          deja PLUME) pour un formulaire epure facon site web. */}
+      <div className="text-center mb-8 lg:hidden">
         <div className="flex justify-center items-center mb-2">
           <Logo size="2xl" showText={true} />
         </div>
@@ -376,8 +377,10 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         </p>
       </div>
 
-      {/* Main card panel */}
-      <div className="w-full max-w-sm bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-2xl p-6 shadow-xl relative overflow-hidden transition-all duration-300">
+      {/* Main card panel. Sur desktop : plus large, plus aere, champs et titres
+          agrandis (variantes lg: ciblant les input/h2/label descendants) pour un
+          vrai rendu web ; sur mobile, la carte compacte reste identique. */}
+      <div className="w-full max-w-sm lg:max-w-[440px] bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-2xl lg:rounded-3xl p-6 lg:p-10 shadow-xl lg:shadow-2xl relative overflow-hidden transition-all duration-300 lg:[&_input]:py-3.5 lg:[&_input]:text-sm lg:[&_h2]:text-2xl lg:[&_label]:text-[11px]">
         
         {/* Decorative Top Accent line */}
         <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-purple-600 to-violet-850" />
@@ -470,7 +473,7 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 transform hover:scale-[1.01] hover:shadow-lg hover:shadow-purple-500/10 flex items-center justify-center space-x-1.5 cursor-pointer"
+                className="w-full py-2.5 lg:py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs lg:text-sm font-black uppercase tracking-wider transition-all duration-300 transform hover:scale-[1.01] hover:shadow-lg hover:shadow-purple-500/10 flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 <span>S'authentifier</span>
                 <ArrowRight className="w-4 h-4" />
@@ -783,7 +786,7 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-60"
+                className="w-full py-2.5 lg:py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs lg:text-sm font-black uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-60"
               >
                 <span>{isLoading ? 'Réinitialisation...' : 'Réinitialiser le mot de passe'}</span>
                 <Check className="w-4 h-4" />
