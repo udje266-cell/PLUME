@@ -3006,13 +3006,13 @@ const user = freshViewedUser || freshCurrentUser;
                 // Get recently obtained trophies
                 const recentTrophies = [...unlockedList].reverse().slice(0, 3);
 
-                // apply filter search
+                // apply filter search. On MASQUE désormais TOUS les succès NON
+                // obtenus (compteur global toujours visible en tête via
+                // unlockedList.length / list.length). Seuls les débloqués
+                // s'affichent, avec ou sans recherche.
                 const query = achievementsSearch.toLowerCase().trim();
-                const filteredList = list.filter(ach => {
+                const filteredList = unlockedList.filter(ach => {
                   if (!query) return true;
-                  // If simple & locked, they are hidden/mysterious, so search matches only if unlocked as we can't reveal details.
-                  const showReal = ach.isUnlocked || ach.difficulty === 'difficile';
-                  if (!showReal) return false;
                   return ach.title.toLowerCase().includes(query) || ach.realDesc.toLowerCase().includes(query);
                 });
 

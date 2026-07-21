@@ -759,22 +759,52 @@ export default function ReadingView({
   const paraMetaRef = useRef(paraMeta);
   useEffect(() => { paraMetaRef.current = paraMeta; }, [paraMeta]);
 
-  // Index du paragraphe actuellement en tête de la zone de lecture (le dernier
-  // dont le haut est passé au-dessus d'une ligne d'ancrage sous l'en-tête).
-  const getCurrentParagraphIndex = (): number => {
-    const root = readerRootRef.current;
-    if (!root) return 0;
-    const nodes = root.querySelectorAll('[data-paragraph-index]');
-    if (!nodes.length) return 0;
-    const scroller = getScrollParent(readerRootRef.current);
-    const anchorY = (scroller ? scroller.getBoundingClientRect().top : 0) + 96;
-    let idx = 0;
-    for (let i = 0; i < nodes.length; i++) {
-      const top = (nodes[i] as HTMLElement).getBoundingClientRect().top;
-      if (top - anchorY <= 8) idx = i; else break;
-    }
-    return idx;
-  };
+  // Index du paragraphe actuellement en zone de lecture. Suivi robuste par
+  // IntersectionObserver (une bande horizontale ~25-40 % du viewport = zone
+  // « au niveau du regard »). Chaque paragraphe qui la traverse alimente un
+  // Set ; le paragraphe courant = le PLUS PETIT index dans le Set (celui dont
+  // le haut est le plus haut dans la zone). Robuste face aux en-têtes de
+  // taille variable, aux changements de police et à la mise en page mobile/PWA.
+  const currentParaRef = useRef(0);
+  const intersectingParasRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const chId = activeChapter?.id;
+    if (!chId) return;
+    let obs: IntersectionObserver | null = null;
+    const timers: any[] = [];
+    // Le DOM des paragraphes peut ne pas encore être présent au montage
+    // (rendu progressif). On tente plusieurs fois jusqu'à trouver les nodes.
+    const setup = (attempt = 0) => {
+      const article = document.getElementById(`chapter-content-${chId}`);
+      const paras = article ? Array.from(article.querySelectorAll('[data-paragraph-index]')) as HTMLElement[] : [];
+      if (!paras.length) {
+        if (attempt < 8) timers.push(setTimeout(() => setup(attempt + 1), 100 * (attempt + 1)));
+        return;
+      }
+      intersectingParasRef.current.clear();
+      currentParaRef.current = 0;
+      obs = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          const idx = Number((entry.target as HTMLElement).dataset.paragraphIndex);
+          if (Number.isNaN(idx)) continue;
+          if (entry.isIntersecting) intersectingParasRef.current.add(idx);
+          else intersectingParasRef.current.delete(idx);
+        }
+        if (intersectingParasRef.current.size > 0) {
+          currentParaRef.current = Math.min(...intersectingParasRef.current);
+        }
+      }, {
+        // Bande d'observation entre 25 % et 60 % du viewport (zone de lecture).
+        rootMargin: '-25% 0px -40% 0px',
+        threshold: 0,
+      });
+      paras.forEach((p) => obs!.observe(p));
+    };
+    setup();
+    return () => { obs?.disconnect(); timers.forEach(clearTimeout); };
+  }, [activeChapter?.id, activeChapter?.content]);
+
+  const getCurrentParagraphIndex = (): number => currentParaRef.current;
 
   // Replace le paragraphe d'index donné en tête de zone de lecture.
   const scrollToParagraph = (idx: number): boolean => {

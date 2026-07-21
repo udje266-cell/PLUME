@@ -20,6 +20,9 @@ model User {
   username          String   @unique
   email             String   @unique
   passwordHash      String?
+  // Identifiant Google (claim `sub` de l'ID token) pour la connexion « Continuer
+  // avec Google ». NULL pour les comptes classiques (e-mail + mot de passe).
+  googleId          String?  @unique
   role              String   @default("Lecteur")
   avatar            String?
   // Bannière de profil persistée côté serveur (visible par toute la communauté).

@@ -7,6 +7,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -389,6 +390,35 @@ function validateUsername(username: unknown): boolean {
   if (u.length < 3 || u.length > 30) return false;
   if (/[\u0000-\u001F\u007F]/.test(u)) return false;
   return true;
+}
+
+// ── Connexion « Continuer avec Google » (OAuth 2.0 / OpenID Connect) ──
+// On accepte les ID tokens dont l'audience est l'un des client IDs autorisés :
+// Web (principal), Android et iOS. Les plateformes natives présentent un token
+// dont l'`aud` peut être leur propre client id OU le Web Client ID (serverClientId).
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_CLIENT_IDS || GOOGLE_CLIENT_ID)
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const googleClient = new OAuth2Client();
+
+// Vérifie l'ID token Google (signature + audience + expiration) et renvoie le
+// payload OpenID (sub, email, name, picture…). Lève une erreur si invalide.
+async function verifyGoogleIdToken(idToken: string) {
+  const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_IDS });
+  return ticket.getPayload();
+}
+
+// Génère un nom d'utilisateur UNIQUE à partir du nom/e-mail Google (les comptes
+// Google n'ont pas de pseudo). 3–30 caractères, suffixe numérique si collision.
+async function uniqueUsernameFrom(base: string): Promise<string> {
+  let root = (base || 'Plume').normalize('NFKD').replace(/[^\p{L}\p{N} _-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24);
+  if (root.length < 3) root = 'Plume';
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = attempt === 0 ? root : `${root.slice(0, 20)} ${Math.floor(1000 + Math.random() * 9000)}`;
+    const exists = await prisma.user.findFirst({ where: { username: { equals: candidate, mode: 'insensitive' } }, select: { id: true } });
+    if (!exists) return candidate;
+  }
+  return `${root.slice(0, 18)} ${Date.now().toString().slice(-6)}`;
 }
 
 // Plafond des champs image transmis en texte (URL ou data URI base64) : évite
@@ -1700,6 +1730,83 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la connexion' });
+    }
+  });
+
+  // ── « Continuer avec Google » ──
+  // Reçoit un ID token Google (Web GIS ou plugin natif), le VÉRIFIE côté serveur
+  // (signature + audience), puis : lie/retrouve le compte par googleId, sinon
+  // par e-mail (anti-doublon), sinon crée un nouveau compte. Ouvre une session
+  // (même JWT + cookie httpOnly que la connexion classique).
+  app.post('/api/auth/google', authLimiter, async (req, res) => {
+    try {
+      if (!GOOGLE_CLIENT_IDS.length) {
+        return res.status(503).json({ error: 'La connexion Google n’est pas configurée sur le serveur.' });
+      }
+      const idToken = String(req.body?.idToken || req.body?.credential || '');
+      if (!idToken) return res.status(400).json({ error: 'Jeton Google manquant.' });
+
+      let payload: any;
+      try {
+        payload = await verifyGoogleIdToken(idToken);
+      } catch (e: any) {
+        console.warn('[GOOGLE] jeton invalide :', e?.message);
+        return res.status(401).json({ error: 'Jeton Google invalide ou expiré.' });
+      }
+      if (!payload || !payload.sub) return res.status(401).json({ error: 'Jeton Google invalide.' });
+      if (payload.email_verified === false) return res.status(403).json({ error: 'Adresse Google non vérifiée.' });
+
+      const googleId: string = payload.sub;
+      const email: string = String(payload.email || '').trim().toLowerCase();
+      const fullName: string = payload.name || (email ? email.split('@')[0] : 'Plume');
+      const picture: string | null = payload.picture || null;
+      if (!email) return res.status(400).json({ error: 'Adresse e-mail absente du compte Google.' });
+
+      const include = { followers: true, following: true, blockedUsers: true } as const;
+
+      // 1) Compte déjà lié à ce compte Google.
+      let user: any = await prisma.user.findUnique({ where: { googleId }, include });
+
+      // 2) Sinon, compte existant avec CET e-mail → on lie le googleId (anti-doublon).
+      if (!user) {
+        const byEmail = await prisma.user.findUnique({ where: { email }, include });
+        if (byEmail) {
+          user = await prisma.user.update({
+            where: { id: byEmail.id },
+            data: { googleId, emailVerified: true, avatar: byEmail.avatar || picture },
+            include,
+          });
+        }
+      }
+
+      // 3) Sinon, création automatique d'un nouveau compte à partir de Google.
+      if (!user) {
+        const username = await uniqueUsernameFrom(fullName);
+        user = await prisma.user.create({
+          data: {
+            username,
+            email,
+            googleId,
+            emailVerified: true,
+            role: 'Lecteur',
+            avatar: picture,
+            bio: '',
+            favoriteGenres: '[]',
+          },
+          include,
+        });
+        console.log(`[GOOGLE] nouveau compte cree - userId: ${user.id}, username: ${user.username}`);
+      }
+
+      if (user.isBanned) return res.status(403).json({ error: 'Votre compte a été suspendu par un administrateur.' });
+
+      const token = createToken(user.id, user.tokenVersion ?? 0);
+      setAuthCookie(res, token);
+      console.log(`[AUTH] connexion Google - userId: ${user.id}, username: ${user.username}`);
+      res.json({ token, user: serializeUser(user, true) });
+    } catch (error) {
+      console.error('[GOOGLE] ', error);
+      res.status(500).json({ error: 'Erreur lors de la connexion Google.' });
     }
   });
 

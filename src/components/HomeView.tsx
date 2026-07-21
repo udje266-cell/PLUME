@@ -37,6 +37,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
 import { storyShareUrl, shareStoryNative, openShareIntent, ShareNetwork } from '../utils/share';
+import { WhatsAppIcon, FacebookIcon, XTwitterIcon, TelegramIcon } from './BrandIcons';
 import { wordsOf, storyMinutes, formatMinutes } from '../utils/readingTime';
 import { generateCoverDataUri } from '../utils/coverImage';
 
@@ -272,11 +273,12 @@ export default function HomeView({
   };
 
   // Réseaux de partage : liens d'intention RÉELS (plus aucune simulation).
-  const shareServices: { name: string; network: ShareNetwork; color: string }[] = [
-    { name: 'WhatsApp', network: 'whatsapp', color: 'bg-[#25D366]' },
-    { name: 'Facebook', network: 'facebook', color: 'bg-[#1877F2]' },
-    { name: 'X / Twitter', network: 'twitter', color: 'bg-[#0F1419]' },
-    { name: 'Telegram', network: 'telegram', color: 'bg-[#0088cc]' },
+  // Chaque réseau porte son VRAI logo (SVG monochrome sur le rond de marque).
+  const shareServices: { name: string; network: ShareNetwork; color: string; Icon: React.FC<{ className?: string }> }[] = [
+    { name: 'WhatsApp', network: 'whatsapp', color: 'bg-[#25D366]', Icon: WhatsAppIcon },
+    { name: 'Facebook', network: 'facebook', color: 'bg-[#1877F2]', Icon: FacebookIcon },
+    { name: 'X / Twitter', network: 'twitter', color: 'bg-black', Icon: XTwitterIcon },
+    { name: 'Telegram', network: 'telegram', color: 'bg-[#26A5E4]', Icon: TelegramIcon },
   ];
 
   return (
@@ -692,10 +694,10 @@ export default function HomeView({
                   }}
                   className="flex flex-col items-center justify-center space-y-1.5 cursor-pointer"
                 >
-                  <div className={`w-10 h-10 rounded-full ${srv.color} text-white flex items-center justify-center shadow-xs hover:opacity-90`}>
-                    <Send className="w-4 h-4 rotate-[-35deg]" />
+                  <div className={`w-11 h-11 rounded-full ${srv.color} text-white flex items-center justify-center shadow-sm hover:opacity-90 transition`}>
+                    <srv.Icon className="w-5 h-5" />
                   </div>
-                  <span className="text-[9px] text-gray-400 font-bold uppercase">{srv.name.split(' ')[0]}</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase">{srv.name.split(' ')[0]}</span>
                 </button>
               ))}
             </div>

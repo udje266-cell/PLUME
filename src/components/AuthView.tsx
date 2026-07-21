@@ -9,6 +9,10 @@ import { User } from '../types';
 import { setAuthToken } from '../utils/auth';
 import { apiPost } from '../utils/api';
 import Logo from './Logo';
+import GoogleSignInButton from './GoogleSignInButton';
+
+// La connexion Google n'apparaît que si un Client ID est configuré au build.
+const GOOGLE_ENABLED = !!(import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined);
 
 interface AuthViewProps {
   onLoginSuccess: (user: User) => void;
@@ -479,6 +483,22 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
+
+            {GOOGLE_ENABLED && (
+              <>
+                <div className="flex items-center gap-3 py-0.5">
+                  <span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />
+                  <span className="text-[9px] uppercase tracking-widest text-gray-400 font-bold">ou</span>
+                  <span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />
+                </div>
+                <GoogleSignInButton
+                  text="signin_with"
+                  onLoadingChange={setIsLoading}
+                  onError={(m) => setErrorMsg(m)}
+                  onSuccess={(user, token) => { setAuthToken(token); onLoginSuccess(user); }}
+                />
+              </>
+            )}
 
             <div className="pt-2 text-center">
               <p className="text-[10px] text-gray-400">

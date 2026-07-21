@@ -81,6 +81,9 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
 
   const list = tab === 'reader' ? reader : author;
   const unlocked = list.filter((a) => a.isUnlocked).length;
+  // On affiche uniquement les succès OBTENUS : les succès verrouillés sont
+  // masqués (compteur global toujours visible en tête).
+  const visibleList = list.filter((a) => a.isUnlocked);
 
   return (
     <div className="px-4 py-4 space-y-5 animate-fade-in pb-28">
@@ -123,11 +126,13 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {list.map((a) => <AchievementCard key={a.id} a={a} onClick={() => setSelected(a)} />)}
+        {visibleList.map((a) => <AchievementCard key={a.id} a={a} onClick={() => setSelected(a)} />)}
       </div>
 
-      {list.length === 0 && (
-        <p className="text-center text-sm text-gray-400 py-12">Aucun succès pour le moment.</p>
+      {visibleList.length === 0 && (
+        <p className="text-center text-sm text-gray-400 py-12">
+          Aucun succès débloqué pour le moment. Lis et écris pour en obtenir !
+        </p>
       )}
 
       {/* Détail d'un succès (description si débloqué, indice sinon). */}
