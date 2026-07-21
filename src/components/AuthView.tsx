@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, Check, KeyRound, ArrowLeft, Feather, BookOpen, PenTool, Users } from 'lucide-react';
 import { User } from '../types';
 import { setAuthToken } from '../utils/auth';
 import { apiPost } from '../utils/api';
@@ -342,8 +342,30 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[90vh] py-8 px-6 animate-fade-in text-gray-900 dark:text-gray-100">
-      
+    <div className="min-h-screen lg:grid lg:grid-cols-2 animate-fade-in text-gray-900 dark:text-gray-100">
+
+      {/* Panneau de MARQUE (DESKTOP >= lg) — facon page de connexion de site web. */}
+      <div className="hidden lg:flex flex-col justify-center gap-8 px-16 py-12 bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 text-white relative overflow-hidden">
+        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute bottom-0 -left-20 w-72 h-72 rounded-full bg-fuchsia-400/20 blur-3xl" />
+        <div className="relative z-10 flex items-center gap-3">
+          <span className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center"><Feather className="w-6 h-6" /></span>
+          <span className="font-serif font-black text-3xl tracking-tight">PLUME</span>
+        </div>
+        <div className="relative z-10 space-y-3 max-w-md">
+          <h1 className="font-serif font-black text-4xl leading-tight">Venez pour l'histoire.<br/>Restez pour la communauté.</h1>
+          <p className="text-white/80 text-sm leading-relaxed">Des milliers de récits à lire, un atelier pour écrire les vôtres, et une communauté de lecteurs et d'auteurs.</p>
+        </div>
+        <ul className="relative z-10 space-y-3 text-sm text-white/90">
+          <li className="flex items-center gap-2.5"><BookOpen className="w-4 h-4 shrink-0" /> Lisez gratuitement, même hors ligne</li>
+          <li className="flex items-center gap-2.5"><PenTool className="w-4 h-4 shrink-0" /> Écrivez avec un atelier et un assistant IA</li>
+          <li className="flex items-center gap-2.5"><Users className="w-4 h-4 shrink-0" /> Échangez avec toute la communauté</li>
+        </ul>
+      </div>
+
+      {/* Colonne du FORMULAIRE (centre) */}
+      <div className="flex flex-col items-center justify-center min-h-[90vh] lg:min-h-screen py-8 px-6">
+
       {/* Brand Launcher Block */}
       <div className="text-center mb-8">
         <div className="flex justify-center items-center mb-2">
@@ -880,6 +902,7 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         {' '}et notre{' '}
         <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline hover:text-purple-600 dark:hover:text-purple-400">Politique de confidentialité</a>.
       </p>
+      </div>
     </div>
   );
 }
