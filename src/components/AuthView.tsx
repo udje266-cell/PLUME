@@ -679,6 +679,25 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
               </button>
             </form>
 
+            {GOOGLE_ENABLED && (
+              <>
+                <div className="flex items-center gap-3 py-0.5">
+                  <span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />
+                  <span className="text-[9px] uppercase tracking-widest text-gray-400 font-bold">ou</span>
+                  <span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />
+                </div>
+                <GoogleSignInButton
+                  text="signup_with"
+                  onLoadingChange={setIsLoading}
+                  onError={(m) => setErrorMsg(m)}
+                  onSuccess={(user, token) => { setAuthToken(token); onRegisterSuccess(user); }}
+                />
+                <p className="text-[9px] text-gray-400 text-center leading-snug">
+                  En un clic, sans mot de passe. Ton compte est créé automatiquement.
+                </p>
+              </>
+            )}
+
             <div className="pt-1 text-center">
               <button
                 onClick={() => {

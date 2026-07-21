@@ -42,7 +42,8 @@ import {
   FileText,
   Lock,
   KeyRound,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { levelProgress } from '../utils/leveling';
@@ -3919,6 +3920,26 @@ const user = freshViewedUser || freshCurrentUser;
                           <span className="text-[7px] text-zinc-500 block leading-tight mt-0.5">Complétion</span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Section: Déconnexion (garde la session sinon persistante) */}
+                    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-300 tracking-wider block">Session</span>
+                        <span className="text-[9px] text-zinc-450 block font-medium">Fermer votre session sur cet appareil.</span>
+                      </div>
+                      <button
+                        id="settings-logout-btn"
+                        onClick={() => {
+                          if (window.confirm('Se déconnecter de PLUME sur cet appareil ?')) {
+                            setIsSettingsOpen(false);
+                            onLogout?.();
+                          }
+                        }}
+                        className="py-2 px-3 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-100 rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <LogOut className="w-3.5 h-3.5" /> Déconnexion
+                      </button>
                     </div>
 
                     {/* Section: Supprimer le compte */}
