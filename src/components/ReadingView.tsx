@@ -745,6 +745,54 @@ export default function ReadingView({
   const chapterIdxRef = useRef(activeChapterIndex);
   useEffect(() => { chapterIdxRef.current = activeChapterIndex; }, [activeChapterIndex]);
 
+  // ── Progression basée sur les PARAGRAPHES ──
+  // Nombre de paragraphes par chapitre + cumul : le pourcentage reflète les
+  // paragraphes réellement lus (et non les pixels de défilement), et la reprise
+  // se fait au paragraphe exact où l'on s'était arrêté.
+  const paraMeta = React.useMemo(() => {
+    const counts = (story.chapters || []).map((ch) => Math.max(1, contentToParagraphs(ch.content || '').length));
+    const cumulative: number[] = [];
+    let acc = 0;
+    for (const c of counts) { cumulative.push(acc); acc += c; }
+    return { counts, cumulative, total: Math.max(1, acc) };
+  }, [story.id, story.chapters]);
+  const paraMetaRef = useRef(paraMeta);
+  useEffect(() => { paraMetaRef.current = paraMeta; }, [paraMeta]);
+
+  // Index du paragraphe actuellement en tête de la zone de lecture (le dernier
+  // dont le haut est passé au-dessus d'une ligne d'ancrage sous l'en-tête).
+  const getCurrentParagraphIndex = (): number => {
+    const root = readerRootRef.current;
+    if (!root) return 0;
+    const nodes = root.querySelectorAll('[data-paragraph-index]');
+    if (!nodes.length) return 0;
+    const scroller = getScrollParent(readerRootRef.current);
+    const anchorY = (scroller ? scroller.getBoundingClientRect().top : 0) + 96;
+    let idx = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      const top = (nodes[i] as HTMLElement).getBoundingClientRect().top;
+      if (top - anchorY <= 8) idx = i; else break;
+    }
+    return idx;
+  };
+
+  // Replace le paragraphe d'index donné en tête de zone de lecture.
+  const scrollToParagraph = (idx: number): boolean => {
+    if (idx <= 0) return false;
+    const node = document.getElementById(`p-idx-${idx}`);
+    if (!node) return false;
+    const scroller = getScrollParent(readerRootRef.current);
+    const offset = 90;
+    if (scroller) {
+      const top = scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    } else {
+      const top = window.scrollY + node.getBoundingClientRect().top - offset;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    }
+    return true;
+  };
+
   // ── Synchronisation SERVEUR de la position de reprise (multi-appareils) ──
   // Envoi débouncé (4 s) du chapitre courant + % de défilement vers
   // /api/chapters/:id/progress (table ReadingProgress, jusqu'ici jamais
@@ -840,17 +888,24 @@ export default function ReadingView({
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
-        const ratio = computeRatio();
-        const total = Math.max(1, story.chapters.length);
-        const percent = Math.round(((chapterIdxRef.current + ratio) / total) * 100);
+        const ratio = computeRatio(); // conservé pour la détection de fin de chapitre (>= 95 %)
+        // Pourcentage calculé sur les PARAGRAPHES : (paragraphes des chapitres
+        // précédents + paragraphe courant) / total des paragraphes du livre.
+        const curPara = getCurrentParagraphIndex();
+        const meta = paraMetaRef.current;
+        const chapParaCount = meta.counts[chapterIdxRef.current] || 1;
+        const readParas = (meta.cumulative[chapterIdxRef.current] || 0) + curPara;
+        const percent = Math.round((readParas / meta.total) * 100);
         setReadPercent(percent);
-        // On sauvegarde toujours la position de reprise (y compris pour l'auteur).
-        saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent });
-        // … et on programme l'envoi (débouncé) de cette position au serveur,
-        // pour reprendre à la ligne près sur n'importe quel appareil.
+        // On sauvegarde la position de reprise AU PARAGRAPHE (y compris auteur).
+        saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent, paragraphIndex: curPara });
+        // … et on programme l'envoi (débouncé) au serveur de la position DANS le
+        // chapitre (fraction de paragraphes) pour reprendre au paragraphe près
+        // sur n'importe quel appareil.
         const curCh = story.chapters[chapterIdxRef.current];
         if (curCh && curCh.id !== '__empty__') {
-          progressSyncRef.current = { chapterId: curCh.id, percent: Math.round(ratio * 100) };
+          const chapFraction = Math.round((curPara / Math.max(1, chapParaCount)) * 100);
+          progressSyncRef.current = { chapterId: curCh.id, percent: chapFraction };
           scheduleProgressSync();
         }
 
@@ -881,9 +936,12 @@ export default function ReadingView({
     if (!restoredScrollRef.current) {
       restoredScrollRef.current = true;
       const saved = getBookProgress(currentUser.id, story.id);
-      if (saved && saved.scrollRatio > 0.01) {
+      const hasPara = saved && typeof saved.paragraphIndex === 'number' && saved.paragraphIndex > 0;
+      if (saved && (hasPara || saved.scrollRatio > 0.01)) {
         restoring = true;
         const apply = () => {
+          // Reprise AU PARAGRAPHE si connu ; repli sur l'ancien ratio de pixels.
+          if (hasPara && scrollToParagraph(saved.paragraphIndex as number)) return;
           const el = getScroller();
           if (el) {
             const max = el.scrollHeight - el.clientHeight;
@@ -942,18 +1000,26 @@ export default function ReadingView({
         const idx = story.chapters.findIndex((c) => c.id === sp.chapterId);
         if (idx < 0) return;
         const ratio = Math.min(1, Math.max(0, (Number(sp.progressPercent) || 0) / 100));
-        const percent = Math.round(((idx + ratio) / Math.max(1, story.chapters.length)) * 100);
+        // Le serveur stocke une fraction de paragraphes DANS le chapitre : on la
+        // reconvertit en index de paragraphe pour reprendre au paragraphe près.
+        const meta = paraMetaRef.current;
+        const chapParaCount = meta.counts[idx] || 1;
+        const targetPara = Math.min(chapParaCount - 1, Math.round(ratio * chapParaCount));
+        const readParas = (meta.cumulative[idx] || 0) + targetPara;
+        const percent = Math.round((readParas / meta.total) * 100);
         // On écrit la position serveur dans le stockage local : les prochaines
         // ouvertures passeront par le chemin de reprise habituel.
-        saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent });
+        saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent, paragraphIndex: targetPara });
         setActiveChapterIndex(idx);
         setReadPercent(percent);
-        if (ratio > 0.01) {
+        if (targetPara > 0 || ratio > 0.01) {
           // Ré-application en plusieurs passes (rendu progressif du chapitre),
           // comme la restauration locale — timers NETTOYÉS au démontage pour ne
           // pas défiler un autre écran après fermeture du livre.
           const apply = () => {
             if (cancelled) return;
+            // Reprise AU PARAGRAPHE si possible ; repli sur l'ancien ratio pixels.
+            if (targetPara > 0 && scrollToParagraph(targetPara)) return;
             const el = getScrollParent(readerRootRef.current);
             if (el) {
               const max = el.scrollHeight - el.clientHeight;

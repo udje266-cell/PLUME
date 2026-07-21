@@ -10,8 +10,9 @@
 
 export interface BookProgress {
   chapterIndex: number;
-  scrollRatio: number; // 0..1 dans le chapitre courant
-  percent: number;     // 0..100 sur l'ensemble du livre
+  scrollRatio: number; // 0..1 dans le chapitre courant (repli historique)
+  paragraphIndex?: number; // index du paragraphe en cours -> reprise a la ligne
+  percent: number;     // 0..100 sur l'ensemble du livre (calcule sur les paragraphes)
   updatedAt: string;
 }
 
@@ -34,13 +35,14 @@ export function getBookProgress(userId: string | undefined, storyId: string): Bo
 export function saveBookProgress(
   userId: string | undefined,
   storyId: string,
-  p: { chapterIndex: number; scrollRatio: number; percent: number },
+  p: { chapterIndex: number; scrollRatio: number; percent: number; paragraphIndex?: number },
 ): void {
   try {
     const all = readAll(userId);
     all[storyId] = {
       chapterIndex: p.chapterIndex,
       scrollRatio: Math.max(0, Math.min(1, p.scrollRatio)),
+      paragraphIndex: typeof p.paragraphIndex === 'number' && p.paragraphIndex >= 0 ? Math.round(p.paragraphIndex) : undefined,
       percent: Math.max(0, Math.min(100, Math.round(p.percent))),
       updatedAt: new Date().toISOString(),
     };
