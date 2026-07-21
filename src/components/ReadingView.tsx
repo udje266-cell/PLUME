@@ -2399,13 +2399,13 @@ export default function ReadingView({
 
       {/* ==================== SCREEN 3: STANDARD COMMENT SHEET DRAWERS ==================== */}
       {isCommentsOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in text-left">
+        <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-stretch lg:justify-end animate-fade-in text-left">
           <div 
             className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
             onClick={() => setIsCommentsOpen(false)}
           />
           
-          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] shadow-2xl border-t border-gray-150 dark:border-purple-900/20 flex flex-col h-[82vh] transition-transform animate-slide-up overflow-hidden">
+          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] lg:rounded-t-none lg:rounded-l-2xl shadow-2xl border-t lg:border-t-0 lg:border-l border-gray-150 dark:border-purple-900/20 flex flex-col h-[82vh] lg:h-full lg:max-w-md transition-transform animate-slide-up overflow-hidden">
             <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
 
             <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between font-sans">
@@ -2570,13 +2570,13 @@ export default function ReadingView({
 
       {/* ==================== SCREEN 4: CHAPTERS SUMMARY INDEX ==================== */}
       {isChaptersOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in text-left">
+        <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-stretch lg:justify-end animate-fade-in text-left">
           <div 
             className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
             onClick={() => setIsChaptersOpen(false)}
           />
           
-          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] shadow-2xl border-t border-gray-150 dark:border-purple-900/20 flex flex-col h-[70vh] transition-transform animate-slide-up overflow-hidden">
+          <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] lg:rounded-t-none lg:rounded-l-2xl shadow-2xl border-t lg:border-t-0 lg:border-l border-gray-150 dark:border-purple-900/20 flex flex-col h-[70vh] lg:h-full lg:max-w-md transition-transform animate-slide-up overflow-hidden">
             <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
 
             <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between">

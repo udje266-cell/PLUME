@@ -253,6 +253,10 @@ export default function ExplorerView({
         </p>
       </div>
 
+      {/* Mise en page DESKTOP : filtres a gauche (colonne collante) + resultats
+          a droite. Sur mobile, tout reste empile (styles lg: uniquement). */}
+      <div className="lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-6 lg:items-start">
+      <aside className="space-y-6 lg:sticky lg:top-4">
       {/* 2. Saved filters row */}
       {savedFilters.length > 0 && (
         <div className="space-y-2">
@@ -392,6 +396,10 @@ export default function ExplorerView({
 
       </div>
 
+      </aside>
+
+      {/* Colonne de droite : profils correspondants + grille de resultats. */}
+      <div className="space-y-6 min-w-0">
       {/* 3.5 Matching profiles (only when a text search is active) */}
       {matchedUsers.length > 0 && (
         <div className="space-y-2">
@@ -550,6 +558,9 @@ export default function ExplorerView({
           ))}
         </div>
       )}
+
+      </div>
+      </div>
 
       {/* AUTHOR INFOS OVERLAY MODAL */}
       {viewedAuthor && (
