@@ -136,7 +136,7 @@ export default function MainNavigation({
   };
 
   return (
-    <div className="w-full flex flex-col z-30 select-none">
+    <div className="w-full flex flex-col z-30 select-none lg:hidden">
       
       {/* TOP ACTIONS APP HEADER — fond OPAQUE qui remonte jusqu'en haut de
           l'ecran (integre la barre systeme) : un seul bloc continu avec le corps,

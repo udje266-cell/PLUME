@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
 import MainNavigation from './components/MainNavigation';
-import SideNavigation from './components/SideNavigation';
+import TopNav from './components/TopNav';
+import SiteFooter from './components/SiteFooter';
 import LateralMenu from './components/LateralMenu';
 // NB : vues importées en STATIQUE (un seul bundle). Le code-splitting (React.lazy
 // + import dynamique) s'est révélé incompatible avec certaines WebView Android de
@@ -3732,11 +3733,11 @@ export default function App() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row flex-1 min-h-screen">
-            {/* Barre laterale DESKTOP (>= lg) — masquee pendant lecture / chat
-                plein ecran. Sur mobile elle est hidden (barre du bas active). */}
+          <div className="flex flex-col flex-1 min-h-screen">
+            {/* Barre de navigation SUPERIEURE (facon site web) — DESKTOP (>= lg).
+                Masquee pendant lecture / chat plein ecran. */}
             {!chatFullscreen && !selectedStoryForReading && (
-              <SideNavigation
+              <TopNav
                 activeTab={activeTab}
                 onChangeTab={(tab) => {
                   setViewedUser(null);
@@ -3749,15 +3750,14 @@ export default function App() {
                 darkMode={darkMode}
                 onToggleDarkMode={handleToggleDarkMode}
                 unreadMessagesCount={unreadMessagesTotal}
-                onLogout={handleLogout}
+                notifications={notifications.filter((notification) => notification.targetUserId === currentUser?.id)}
+                onMarkNotificationsRead={handleMarkNotificationsRead}
+                onOpenNotification={handleOpenNotification}
               />
             )}
 
-            {/* Colonne de contenu (occupe tout l'espace restant a droite de la
-                barre laterale sur desktop ; pleine largeur sur mobile). */}
-            <div className="flex flex-col flex-1 min-w-0 min-h-screen">
-            {/* Top Header + barre d'onglets — masques quand une discussion est
-                ouverte en plein ecran OU pendant la LECTURE d'un livre (mode
+            {/* Top Header + barre d'onglets MOBILE — masques quand une discussion
+                est ouverte en plein ecran OU pendant la LECTURE d'un livre (mode
                 immersif facon WhatsApp : la liseuse a sa propre barre « Quitter »). */}
             {!chatFullscreen && !selectedStoryForReading && (
             <MainNavigation
@@ -3989,8 +3989,21 @@ export default function App() {
               )}
 
               </Suspense>
+
+              {/* Pied de page « site web » — DESKTOP uniquement, hors lecture. */}
+              {!chatFullscreen && !selectedStoryForReading && (
+                <SiteFooter
+                  onChangeTab={(tab) => {
+                    setViewedUser(null);
+                    if (tab === 'admin' && currentUser?.role !== 'Administrateur') setActiveTab('home');
+                    else if (tab === 'write' && currentUser?.role === 'Lecteur') setActiveTab('home');
+                    else setActiveTab(tab);
+                    setSelectedStoryForReading(null);
+                  }}
+                  canWrite={currentUser?.role === 'Auteur' || currentUser?.role === 'Administrateur'}
+                />
+              )}
             </PullToRefresh>
-            </div>
           </div>
         )}
 
