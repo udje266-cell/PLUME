@@ -6,16 +6,17 @@
  * Sur mobile, l'app garde son ergonomie plein ecran (pas de footer).
  */
 
-import { Feather } from 'lucide-react';
+import { Feather, LogOut } from 'lucide-react';
 
 type Tab = 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
 
 interface SiteFooterProps {
   onChangeTab: (tab: Tab) => void;
   canWrite?: boolean;
+  onLogout?: () => void;
 }
 
-export default function SiteFooter({ onChangeTab, canWrite }: SiteFooterProps) {
+export default function SiteFooter({ onChangeTab, canWrite, onLogout }: SiteFooterProps) {
   const year = 2026;
   return (
     <footer className="hidden lg:block border-t border-gray-150 dark:border-purple-900/15 bg-gray-50 dark:bg-[#0B0B10] mt-8">
@@ -60,6 +61,17 @@ export default function SiteFooter({ onChangeTab, canWrite }: SiteFooterProps) {
             <li><span className="text-gray-400">Règles de la communauté</span></li>
             <li><span className="text-gray-400">Confidentialité</span></li>
             <li><span className="text-gray-400">Conditions d'utilisation</span></li>
+            {onLogout && (
+              <li className="pt-1.5">
+                <button
+                  id="footer-logout"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-bold transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Déconnexion
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>

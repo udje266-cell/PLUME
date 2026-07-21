@@ -4001,6 +4001,7 @@ export default function App() {
                     setSelectedStoryForReading(null);
                   }}
                   canWrite={currentUser?.role === 'Auteur' || currentUser?.role === 'Administrateur'}
+                  onLogout={handleLogout}
                 />
               )}
             </PullToRefresh>
