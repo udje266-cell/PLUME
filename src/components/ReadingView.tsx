@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
-import { getBookProgress, saveBookProgress, getScrollParent } from '../utils/readingProgress';
+import { getBookProgress, saveBookProgress, getScrollParent, buildParaMeta, bookPercentFromParagraph, chapterParaFraction, paragraphFromChapterFraction } from '../utils/readingProgress';
 import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
@@ -749,13 +749,10 @@ export default function ReadingView({
   // Nombre de paragraphes par chapitre + cumul : le pourcentage reflète les
   // paragraphes réellement lus (et non les pixels de défilement), et la reprise
   // se fait au paragraphe exact où l'on s'était arrêté.
-  const paraMeta = React.useMemo(() => {
-    const counts = (story.chapters || []).map((ch) => Math.max(1, contentToParagraphs(ch.content || '').length));
-    const cumulative: number[] = [];
-    let acc = 0;
-    for (const c of counts) { cumulative.push(acc); acc += c; }
-    return { counts, cumulative, total: Math.max(1, acc) };
-  }, [story.id, story.chapters]);
+  const paraMeta = React.useMemo(
+    () => buildParaMeta((story.chapters || []).map((ch) => contentToParagraphs(ch.content || '').length)),
+    [story.id, story.chapters],
+  );
   const paraMetaRef = useRef(paraMeta);
   useEffect(() => { paraMetaRef.current = paraMeta; }, [paraMeta]);
 
@@ -924,8 +921,7 @@ export default function ReadingView({
         const curPara = getCurrentParagraphIndex();
         const meta = paraMetaRef.current;
         const chapParaCount = meta.counts[chapterIdxRef.current] || 1;
-        const readParas = (meta.cumulative[chapterIdxRef.current] || 0) + curPara;
-        const percent = Math.round((readParas / meta.total) * 100);
+        const percent = bookPercentFromParagraph(meta, chapterIdxRef.current, curPara);
         setReadPercent(percent);
         // On sauvegarde la position de reprise AU PARAGRAPHE (y compris auteur).
         saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent, paragraphIndex: curPara });
@@ -934,8 +930,7 @@ export default function ReadingView({
         // sur n'importe quel appareil.
         const curCh = story.chapters[chapterIdxRef.current];
         if (curCh && curCh.id !== '__empty__') {
-          const chapFraction = Math.round((curPara / Math.max(1, chapParaCount)) * 100);
-          progressSyncRef.current = { chapterId: curCh.id, percent: chapFraction };
+          progressSyncRef.current = { chapterId: curCh.id, percent: chapterParaFraction(curPara, chapParaCount) };
           scheduleProgressSync();
         }
 
@@ -1034,9 +1029,8 @@ export default function ReadingView({
         // reconvertit en index de paragraphe pour reprendre au paragraphe près.
         const meta = paraMetaRef.current;
         const chapParaCount = meta.counts[idx] || 1;
-        const targetPara = Math.min(chapParaCount - 1, Math.round(ratio * chapParaCount));
-        const readParas = (meta.cumulative[idx] || 0) + targetPara;
-        const percent = Math.round((readParas / meta.total) * 100);
+        const targetPara = paragraphFromChapterFraction(ratio, chapParaCount);
+        const percent = bookPercentFromParagraph(meta, idx, targetPara);
         // On écrit la position serveur dans le stockage local : les prochaines
         // ouvertures passeront par le chemin de reprise habituel.
         saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent, paragraphIndex: targetPara });

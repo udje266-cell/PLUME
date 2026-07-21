@@ -52,6 +52,49 @@ export function saveBookProgress(
   }
 }
 
+// ── Progression basée sur les PARAGRAPHES (helpers PURS, testables) ──
+
+export interface ParaMeta {
+  counts: number[];      // nombre de paragraphes par chapitre (>= 1)
+  cumulative: number[];  // paragraphes cumulés AVANT chaque chapitre
+  total: number;         // total des paragraphes du livre (>= 1)
+}
+
+/** Construit les métriques de paragraphes à partir du compte par chapitre. */
+export function buildParaMeta(paragraphCounts: number[]): ParaMeta {
+  const counts = (paragraphCounts || []).map((c) => Math.max(1, Math.floor(c) || 1));
+  const cumulative: number[] = [];
+  let acc = 0;
+  for (const c of counts) { cumulative.push(acc); acc += c; }
+  return { counts, cumulative, total: Math.max(1, acc) };
+}
+
+/**
+ * Pourcentage de lecture du LIVRE (0..100) calculé sur les paragraphes :
+ * (paragraphes des chapitres précédents + paragraphe courant) / total.
+ */
+export function bookPercentFromParagraph(meta: ParaMeta, chapterIndex: number, paraIndex: number): number {
+  if (!meta || !meta.counts.length) return 0;
+  const ci = Math.max(0, Math.min(chapterIndex, meta.counts.length - 1));
+  const chapCount = meta.counts[ci] || 1;
+  const p = Math.max(0, Math.min(paraIndex, chapCount));
+  const readParas = (meta.cumulative[ci] || 0) + p;
+  return Math.max(0, Math.min(100, Math.round((readParas / meta.total) * 100)));
+}
+
+/** Fraction (0..100) de paragraphes lus DANS le chapitre courant (pour le serveur). */
+export function chapterParaFraction(paraIndex: number, chapterParaCount: number): number {
+  const count = Math.max(1, chapterParaCount);
+  return Math.max(0, Math.min(100, Math.round((Math.max(0, paraIndex) / count) * 100)));
+}
+
+/** Reconvertit une fraction serveur (0..1) en index de paragraphe cible. */
+export function paragraphFromChapterFraction(fraction: number, chapterParaCount: number): number {
+  const count = Math.max(1, chapterParaCount);
+  const f = Math.max(0, Math.min(1, fraction));
+  return Math.min(count - 1, Math.max(0, Math.round(f * count)));
+}
+
 /** Trouve l'ancêtre défilable d'un élément (sinon null → window). */
 export function getScrollParent(el: HTMLElement | null): HTMLElement | null {
   let p = el?.parentElement || null;
