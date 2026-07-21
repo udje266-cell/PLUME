@@ -1072,7 +1072,7 @@ export default function MessagesView({
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
       <div
         ref={messagingCardRef}
-        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] md:shadow-2xl relative z-10">
+        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] lg:h-[calc(100dvh-150px)] lg:max-h-[920px] md:shadow-2xl relative z-10">
 
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
         <div className={`md:col-span-4 bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
