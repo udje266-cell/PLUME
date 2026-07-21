@@ -1168,7 +1168,7 @@ const user = freshViewedUser || freshCurrentUser;
     } else {
       // Standard layout when there are <= 7 books under management
       return (
-        <div className="grid grid-cols-3 gap-x-4 gap-y-10 relative z-10">
+        <div className="grid grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10 relative z-10">
           {filteredStories.map((story, globalIndex) => renderSingleBook(story, globalIndex, isDraft))}
         </div>
       );
@@ -1324,7 +1324,7 @@ const user = freshViewedUser || freshCurrentUser;
   };
 
   return (
-    <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 pt-2 pb-32 space-y-8 animate-fade-in text-left relative min-h-screen">
+    <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 lg:px-8 pt-2 pb-32 space-y-8 animate-fade-in text-left relative min-h-screen">
       
       {avatarImageSrc && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
@@ -2229,7 +2229,7 @@ const user = freshViewedUser || freshCurrentUser;
 
                 {/* PHYSICAL BOOKS DISPLAY GRID */}
                 <div className="relative pt-6 pb-2 px-6 bg-zinc-50/50 dark:bg-zinc-950/10 border border-purple-500/15 dark:border-zinc-900 rounded-3xl shadow-sm">
-                  <div className="grid grid-cols-3 gap-x-4 gap-y-12 relative z-10">
+                  <div className="grid grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-12 relative z-10">
                     {libraryStories.map((story) => {
                       const isInProgress = currentlyReading.includes(story.id);
                       const isCompleted = completedStories.includes(story.id);
