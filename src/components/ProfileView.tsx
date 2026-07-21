@@ -1324,7 +1324,7 @@ const user = freshViewedUser || freshCurrentUser;
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-2 pb-32 space-y-8 animate-fade-in text-left relative min-h-screen">
+    <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 pt-2 pb-32 space-y-8 animate-fade-in text-left relative min-h-screen">
       
       {avatarImageSrc && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">

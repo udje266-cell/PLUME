@@ -240,7 +240,7 @@ export default function ExplorerView({
     : [];
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
+    <div className="max-w-xl lg:max-w-6xl mx-auto px-4 lg:px-8 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
       
       {/* 1. Header Banner */}
       <div className="pb-4 border-b border-gray-100 dark:border-purple-900/15">
@@ -457,7 +457,7 @@ export default function ExplorerView({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 pb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 lg:gap-4 pb-8">
           {sortedStories.map((story) => (
             <div
               key={story.id}

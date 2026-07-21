@@ -280,7 +280,7 @@ export default function HomeView({
   ];
 
   return (
-    <div className="px-4 pt-2 space-y-6 animate-fade-in text-left select-none pb-28">
+    <div className="px-4 pt-2 space-y-6 animate-fade-in text-left select-none pb-28 lg:max-w-6xl lg:mx-auto lg:px-8 lg:pb-10">
       
       {/* En-tête : recherche DIRECTE (livres + comptes) sur l'accueil. */}
       <header className="pb-1">
@@ -416,9 +416,9 @@ export default function HomeView({
             </div>
 
             {featuredStories.length > 0 && (
-              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none lg:grid lg:grid-cols-5 lg:gap-4 lg:space-x-0 lg:overflow-visible">
                 {featuredStories.map((story) => (
-                  <div key={story.id} className="w-40 flex-shrink-0">
+                  <div key={story.id} className="w-40 flex-shrink-0 lg:w-auto">
                     <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer ring-2 ring-amber-400/40">
                       <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       <span className="absolute top-1 left-1 text-[8px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded uppercase shadow flex items-center gap-0.5"><Sparkles className="w-2.5 h-2.5" />À la une</span>
@@ -431,9 +431,9 @@ export default function HomeView({
             )}
 
             {featuredUsers.length > 0 && (
-              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none lg:grid lg:grid-cols-5 lg:gap-4 lg:space-x-0 lg:overflow-visible">
                 {featuredUsers.map((u) => (
-                  <div key={u.id} onClick={() => onViewProfile?.(u.id)} className="w-24 flex-shrink-0 flex flex-col items-center text-center cursor-pointer">
+                  <div key={u.id} onClick={() => onViewProfile?.(u.id)} className="w-24 flex-shrink-0 lg:w-auto flex flex-col items-center text-center cursor-pointer">
                     <div className="relative">
                       <img src={optimizedImage(u.avatar, 64, { square: true }) || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))} alt={u.username} className="w-16 h-16 rounded-full object-cover ring-2 ring-amber-400/50" referrerPolicy="no-referrer" />
                       <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase shadow">À la une</span>
@@ -454,9 +454,9 @@ export default function HomeView({
             <Download className="w-3.5 h-3.5" />
             <span>Disponibles hors ligne ({offlineBooks.length})</span>
           </h3>
-          <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+          <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none lg:grid lg:grid-cols-5 lg:gap-4 lg:space-x-0 lg:overflow-visible">
             {offlineBooks.map((book) => (
-              <div key={book.id} className="w-32 flex-shrink-0 relative">
+              <div key={book.id} className="w-32 flex-shrink-0 lg:w-auto relative">
                 <div
                   onClick={() => onSelectStory(book)}
                   className="aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer bg-gray-100 dark:bg-zinc-900 border border-emerald-500/20 relative group"
@@ -527,13 +527,13 @@ export default function HomeView({
           </h3>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 lg:grid lg:grid-cols-5 lg:gap-4 lg:overflow-visible lg:mx-0 lg:px-0">
           {displayOngoing.slice(0, 6).map((story) => {
             const { percent } = getStoryProgressInfo(story);
             const readCh = story.chapters.filter((ch) => readChapters.includes(ch.id)).length;
             const started = readCh > 0 || lastReadProgress?.storyId === story.id;
             return (
-              <div key={story.id} className="w-36 flex-shrink-0 bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
+              <div key={story.id} className="w-36 flex-shrink-0 lg:w-auto bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
                 <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
                   <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   {started && (
@@ -620,9 +620,9 @@ export default function HomeView({
               // assidu cela peut être vide → repli honnête sur les tendances.
               : (forYou.length > 0 ? forYou : trendingStories);
           return (
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 lg:grid lg:grid-cols-5 lg:gap-4 lg:overflow-visible lg:mx-0 lg:px-0">
               {list.slice(0, 12).map((story, i) => (
-                <div key={story.id} className="w-28 flex-shrink-0">
+                <div key={story.id} className="w-28 flex-shrink-0 lg:w-auto">
                   <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden">
                     <img onClick={() => onSelectStory(story)} src={optimizedImage(story.cover, 180)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
                     <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>

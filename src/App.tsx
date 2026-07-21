@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, ReadingGroup, GroupMessage, Conversation } from './types';
 import MainNavigation from './components/MainNavigation';
+import SideNavigation from './components/SideNavigation';
 import LateralMenu from './components/LateralMenu';
 // NB : vues importées en STATIQUE (un seul bundle). Le code-splitting (React.lazy
 // + import dynamique) s'est révélé incompatible avec certaines WebView Android de
@@ -3661,7 +3662,7 @@ export default function App() {
       {/* Main Responsive Mobile-First Centered Container. La marge de securite
           HAUTE est portee par l'en-tete lui-meme (un seul bloc continu, pas de
           bande separee). Les ecrans sans en-tete (auth) gerent leur propre marge. */}
-      <div className="relative w-full max-w-xl min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 justify-center">
+      <div className="relative w-full max-w-xl lg:max-w-none min-h-screen mx-auto flex flex-col overflow-hidden bg-white dark:bg-black text-gray-900 dark:text-white shadow-xl md:border-x md:border-gray-200 md:dark:border-purple-900/10 lg:border-x-0 justify-center">
         {!isAuthenticated ? (
           <AuthView
             onLoginSuccess={(user) => {
@@ -3731,7 +3732,30 @@ export default function App() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col flex-1 min-h-screen">
+          <div className="flex flex-col lg:flex-row flex-1 min-h-screen">
+            {/* Barre laterale DESKTOP (>= lg) — masquee pendant lecture / chat
+                plein ecran. Sur mobile elle est hidden (barre du bas active). */}
+            {!chatFullscreen && !selectedStoryForReading && (
+              <SideNavigation
+                activeTab={activeTab}
+                onChangeTab={(tab) => {
+                  setViewedUser(null);
+                  if (tab === 'admin' && currentUser?.role !== 'Administrateur') setActiveTab('home');
+                  else if (tab === 'write' && currentUser?.role === 'Lecteur') setActiveTab('home');
+                  else setActiveTab(tab);
+                  setSelectedStoryForReading(null);
+                }}
+                currentUser={currentUser!}
+                darkMode={darkMode}
+                onToggleDarkMode={handleToggleDarkMode}
+                unreadMessagesCount={unreadMessagesTotal}
+                onLogout={handleLogout}
+              />
+            )}
+
+            {/* Colonne de contenu (occupe tout l'espace restant a droite de la
+                barre laterale sur desktop ; pleine largeur sur mobile). */}
+            <div className="flex flex-col flex-1 min-w-0 min-h-screen">
             {/* Top Header + barre d'onglets — masques quand une discussion est
                 ouverte en plein ecran OU pendant la LECTURE d'un livre (mode
                 immersif facon WhatsApp : la liseuse a sa propre barre « Quitter »). */}
@@ -3770,7 +3794,7 @@ export default function App() {
             />
 
             {/* Main scrollable body container */}
-            <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 pt-0 scrollbar-none scroll-smooth">
+            <PullToRefresh onRefresh={handleGlobalRefresh} className="flex-1 overflow-y-auto pb-28 lg:pb-10 pt-0 scrollbar-none scroll-smooth">
 
               {/* Frontière de chargement pour les vues découpées (lazy). */}
               <Suspense fallback={(
@@ -3966,6 +3990,7 @@ export default function App() {
 
               </Suspense>
             </PullToRefresh>
+            </div>
           </div>
         )}
 
