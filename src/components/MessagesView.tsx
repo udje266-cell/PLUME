@@ -11,6 +11,7 @@ import {
   Plus, 
   Search, 
   ArrowLeft,
+  Info,
   CheckCheck,
   MoreVertical,
   Phone,
@@ -349,6 +350,8 @@ export default function MessagesView({
   const trimPreviewRef = useRef<HTMLVideoElement>(null);
   // Réglages de groupe (façon WhatsApp) — gérés par GroupSettingsView.
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  // Volet « infos » (profil du contact / membres du groupe) — DESKTOP xl only.
+  const [infoPaneOpen, setInfoPaneOpen] = useState(false);
 
   // Envoi d'un sticker (emoji de base ou URL d'image personnalisée).
   // Même verrou que le champ texte : composer bloqué = pas d'envoi (le panneau
@@ -1075,7 +1078,7 @@ export default function MessagesView({
         className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] lg:h-[calc(100dvh-150px)] lg:max-h-[920px] md:shadow-2xl relative z-10">
 
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
-        <div className={`md:col-span-4 bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
+        <div className={`md:col-span-4 ${infoPaneOpen ? 'xl:col-span-3' : ''} bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
           mobileShowThread ? 'hidden md:flex' : 'flex'
         }`}>
           {/* Header with simply 'Messagerie' + sleek Action buttons */}
@@ -1308,7 +1311,7 @@ export default function MessagesView({
           const __thread = (
         <div
           style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2147483000 } : undefined}
-          className={`md:col-span-8 flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+          className={`md:col-span-8 ${infoPaneOpen ? 'xl:col-span-6' : ''} flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
@@ -1395,6 +1398,15 @@ export default function MessagesView({
 
             {/* Quick action tools - NO VIDEO: ONLY AUDIO per user's requests! */}
             <div className="flex items-center space-x-1 text-zinc-400 shrink-0">
+              {/* Volet infos — DESKTOP xl uniquement (masque en dessous). */}
+              <button
+                type="button"
+                onClick={() => setInfoPaneOpen((v) => !v)}
+                className={`hidden xl:inline-flex p-2 rounded-full transition ${infoPaneOpen ? 'bg-purple-500/15 text-purple-600 dark:text-purple-300' : 'hover:bg-purple-50 dark:hover:bg-zinc-900 text-[#7C3AED] dark:text-purple-400'}`}
+                title={infoPaneOpen ? 'Masquer les infos' : (activeGroupId ? 'Infos du groupe' : 'Infos du contact')}
+              >
+                <Info className="w-4 h-4" />
+              </button>
               <button
                 type="button"
                 className="p-2 hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full transition text-[#7C3AED] dark:text-purple-400"
@@ -1998,6 +2010,79 @@ export default function MessagesView({
           );
           return fullscreen ? createPortal(__thread, document.body) : __thread;
         })()}
+
+        {/* THIRD COMPARTMENT: INFO PANE (profil du contact / membres du groupe).
+            DESKTOP xl UNIQUEMENT — jamais rendu/visible sous xl (zero impact
+            mobile & tablette). */}
+        {infoPaneOpen && (activeGroupId || activeConversationId) && (
+          <aside className="hidden xl:flex xl:col-span-3 flex-col bg-white dark:bg-black border-l border-gray-100 dark:border-zinc-900 overflow-y-auto">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-zinc-900 flex items-center justify-between shrink-0">
+              <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Informations</span>
+              <button onClick={() => setInfoPaneOpen(false)} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Fermer"><X className="w-4 h-4" /></button>
+            </div>
+
+            {activeGroupId ? (
+              <div className="p-5 space-y-4 text-center">
+                <div className="w-20 h-20 rounded-full bg-purple-950/40 flex items-center justify-center text-purple-400 mx-auto overflow-hidden">
+                  {activeGroup?.avatar
+                    ? <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    : <BookOpen className="w-8 h-8" />}
+                </div>
+                <div>
+                  <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white">{activeGroup?.name}</h3>
+                  {activeGroup?.description && <p className="text-[11px] text-gray-400 mt-1 leading-snug">{activeGroup.description}</p>}
+                </div>
+                <button
+                  onClick={() => setShowGroupSettings(true)}
+                  className="w-full py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[11px] font-black uppercase tracking-wider transition"
+                >
+                  Réglages du groupe
+                </button>
+                <div className="text-left pt-2 border-t border-gray-100 dark:border-zinc-900">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">Membres ({activeGroup?.members.length || 0})</h4>
+                  <div className="space-y-1.5">
+                    {(activeGroup?.members || []).map((mid) => {
+                      const m = mid === currentUser.id ? currentUser : allUsers.find((u) => u.id === mid);
+                      if (!m) return null;
+                      return (
+                        <button key={mid} onClick={() => onViewProfile?.(m.id)} className="w-full flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-900 text-left transition">
+                          <img src={m.avatar} alt={m.username} className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-gray-900 dark:text-white truncate">
+                              {m.username}{m.isVerified && <VerifiedBadge size="xs" />}
+                            </span>
+                            {activeGroup?.creatorId === m.id && <span className="text-[9px] text-purple-500 font-bold">Créateur</span>}
+                          </span>
+                          {onlineUserIds.has(m.id) && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 space-y-4 text-center">
+                <div className="relative w-24 h-24 mx-auto">
+                  <img src={interlocutor.avatar} alt={interlocutor.username} className="w-24 h-24 rounded-full object-cover ring-4 ring-purple-500/10" referrerPolicy="no-referrer" />
+                  {onlineUserIds.has(interlocutor.id) && <span className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 border-2 border-white dark:border-black rounded-full" />}
+                </div>
+                <div>
+                  <h3 className="font-serif font-black text-base text-gray-900 dark:text-white flex items-center justify-center gap-1">
+                    {interlocutor.username}{interlocutor.isVerified && <VerifiedBadge size="sm" />}
+                  </h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{onlineUserIds.has(interlocutor.id) ? 'En ligne' : 'Hors ligne'}</p>
+                </div>
+                {interlocutor.bio && <p className="text-[11px] text-gray-500 dark:text-gray-300 leading-relaxed italic">« {interlocutor.bio} »</p>}
+                <button
+                  onClick={() => onViewProfile?.(interlocutor.id)}
+                  className="w-full py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[11px] font-black uppercase tracking-wider transition"
+                >
+                  Voir le profil
+                </button>
+              </div>
+            )}
+          </aside>
+        )}
 
       </div>
 
