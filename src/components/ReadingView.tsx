@@ -2271,8 +2271,10 @@ export default function ReadingView({
               <span>Précédent</span>
             </button>
 
+            {/* Repère de position dans l'œuvre : chapitre courant (le pourcentage
+                de lecture a été retiré). */}
             <span className="text-xs font-sans font-black uppercase tracking-widest px-4 py-1.5 bg-[#7C3AED]/10 text-[#7C3AED] dark:text-purple-400 rounded-full">
-              {Math.min(100, Math.max(0, readPercent))}% de l'œuvre
+              Chapitre {activeChapterIndex + 1} / {story.chapters.length}
             </span>
 
             <button
