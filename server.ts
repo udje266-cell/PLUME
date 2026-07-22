@@ -421,6 +421,40 @@ async function uniqueUsernameFrom(base: string): Promise<string> {
   return `${root.slice(0, 18)} ${Date.now().toString().slice(-6)}`;
 }
 
+// Suppression EXHAUSTIVE d'un compte, indépendante de l'état des cascades en
+// base : on efface explicitement toutes les données rattachées à l'utilisateur
+// dans une transaction, puis l'utilisateur. Utilisé en repli si le delete
+// direct échoue sur une contrainte de clé étrangère (cascade manquante côté DB).
+async function deleteUserEverything(uid: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.commentLike.deleteMany({ where: { userId: uid } }),
+    prisma.commentReply.deleteMany({ where: { userId: uid } }),
+    prisma.comment.deleteMany({ where: { userId: uid } }),
+    prisma.storyLike.deleteMany({ where: { userId: uid } }),
+    prisma.storyRating.deleteMany({ where: { userId: uid } }),
+    prisma.favorite.deleteMany({ where: { userId: uid } }),
+    prisma.readingProgress.deleteMany({ where: { userId: uid } }),
+    prisma.readingListEntry.deleteMany({ where: { userId: uid } }),
+    prisma.chapterRead.deleteMany({ where: { userId: uid } }),
+    prisma.savedQuote.deleteMany({ where: { userId: uid } }),
+    prisma.readingHistory.deleteMany({ where: { userId: uid } }),
+    prisma.notification.deleteMany({ where: { userId: uid } }),
+    prisma.groupMessageReaction.deleteMany({ where: { userId: uid } }),
+    prisma.groupRead.deleteMany({ where: { userId: uid } }),
+    prisma.groupMember.deleteMany({ where: { userId: uid } }),
+    prisma.groupMessage.deleteMany({ where: { senderId: uid } }),
+    prisma.message.deleteMany({ where: { senderId: uid } }),
+    prisma.report.deleteMany({ where: { OR: [{ reporterId: uid }, { reportedId: uid }] } }),
+    prisma.blockedUser.deleteMany({ where: { OR: [{ blockerId: uid }, { blockedId: uid }] } }),
+    prisma.friendship.deleteMany({ where: { OR: [{ requesterId: uid }, { receiverId: uid }] } }),
+    prisma.follow.deleteMany({ where: { OR: [{ followerId: uid }, { followingId: uid }] } }),
+    // Groupes ENCORE possédés (vides, non transférés) et leurs œuvres.
+    prisma.readingGroup.deleteMany({ where: { creatorId: uid } }),
+    prisma.story.deleteMany({ where: { authorId: uid } }),
+    prisma.user.delete({ where: { id: uid } }),
+  ]);
+}
+
 // Plafond des champs image transmis en texte (URL ou data URI base64) : évite
 // de stocker des dizaines de Mo en base et de les resservir à tous les clients.
 const IMAGE_FIELD_MAX = 2_000_000; // ~2 Mo
@@ -2359,13 +2393,31 @@ export async function createServerInstance() {
         // Pas d'heritier (groupe vide) : on laisse le cascade le supprimer.
       }
 
-      await prisma.user.delete({ where: { id: req.params.id } });
+      try {
+        // Voie rapide : la cascade en base fait le reste.
+        await prisma.user.delete({ where: { id: req.params.id } });
+      } catch (delErr: any) {
+        // Contrainte de clé étrangère (cascade absente pour une relation) :
+        // on nettoie explicitement TOUTES les données rattachées, puis on
+        // supprime l'utilisateur. La suppression aboutit dans tous les cas.
+        const isFk = delErr?.code === 'P2003' || /foreign key|constraint/i.test(String(delErr?.message || ''));
+        console.warn(`[DELETE-USER] delete direct echoue (${delErr?.code || '?'}) -> nettoyage explicite`, delErr?.message);
+        if (!isFk) throw delErr;
+        await deleteUserEverything(req.params.id);
+      }
+
+      // Vérification : l'utilisateur ne doit plus exister.
+      const stillThere = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (stillThere) {
+        console.error(`[DELETE-USER] ECHEC : ${req.params.id} existe encore apres suppression.`);
+        return res.status(500).json({ error: 'La suppression n’a pas abouti. Réessaie.' });
+      }
 
       // L'utilisateur qui supprime SON compte voit aussi sa session révoquée.
       if (isSelf) res.clearCookie(AUTH_COOKIE, { path: '/' });
       res.status(204).end();
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error('[DELETE-USER]', error?.code, error?.message, error);
       res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
     }
   });
