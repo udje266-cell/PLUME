@@ -65,13 +65,12 @@ interface Props {
   mode: 'owner' | 'public';
   /** Requis en mode `public` : l'utilisateur dont on affiche les legendes. */
   userId?: string;
-  /** Titre de section (defaut « Légendes »). */
+  /** Grille plus dense (3 colonnes) — utilisé sur le profil. */
   compact?: boolean;
 }
 
 export default function LegendaryTrophies({ mode, userId, compact }: Props) {
   const [items, setItems] = useState<LegendaryTrophy[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<LegendaryTrophy | null>(null);
   const [celebrate, setCelebrate] = useState<LegendaryTrophy[]>([]);
 
@@ -93,17 +92,15 @@ export default function LegendaryTrophies({ mode, userId, compact }: Props) {
           if (fresh.length) setCelebrate(fresh);
         }
       } catch { /* hors-ligne : la section reste simplement vide */ }
-      finally { if (!cancelled) setLoaded(true); }
     })();
     return () => { cancelled = true; };
   }, [mode, userId]);
 
   const unlockedCount = useMemo(() => items.filter((t) => t.unlocked !== false).length, [items]);
 
-  // En mode public, si rien n'est debloque, on n'affiche pas la section du tout.
-  if (loaded && mode === 'public' && items.length === 0) return null;
-  // En mode owner sans aucune legende (cas theorique), on garde une invite.
-  if (!loaded && items.length === 0) return null;
+  // Rien à montrer (aucune légende renvoyée, hors-ligne, ou pas encore chargé) :
+  // on masque entièrement la section plutôt que d'afficher un cartouche vide.
+  if (items.length === 0) return null;
 
   return (
     <div className="space-y-3">

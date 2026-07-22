@@ -424,7 +424,11 @@ export async function evaluateAndMerge(
 
   for (const def of LEGENDARY_DEFS) {
     if (unlocks[def.id]) continue; // deja acquis (definitif)
-    let ok = isAdmin;
+    // Un administrateur debloque d'office les legendaires VISIBLES (statut plein),
+    // mais JAMAIS les SECRETS : ceux-ci exigent leur vraie condition, meme pour un
+    // admin. Sinon l'octroi admin persisterait les Divins et publicProjection
+    // exposerait leur nom/icone sur le profil (d'apparence normale) de l'admin.
+    let ok = isAdmin && !def.secret;
     if (!ok) {
       try { ok = await def.evaluate(ctx); } catch { ok = false; }
     }

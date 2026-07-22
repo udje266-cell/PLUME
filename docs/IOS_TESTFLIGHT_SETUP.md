@@ -58,7 +58,10 @@ openssl req -new -key ios_dist.key -out ios_dist.csr -subj "/emailAddress=TON_EM
 - c) Reconstitue le `.p12` :
 ```bash
 openssl x509 -in distribution.cer -inform DER -out ios_dist.pem -outform PEM
-openssl pkcs12 -export -inkey ios_dist.key -in ios_dist.pem -out ios_dist.p12
+# Le flag -legacy est IMPORTANT : sans lui, OpenSSL 3.x produit un .p12 en
+# chiffrement récent que `security import` (macOS) peut refuser (« MAC
+# verification failed ») lors du build CI.
+openssl pkcs12 -export -legacy -inkey ios_dist.key -in ios_dist.pem -out ios_dist.p12
 #   → choisis un mot de passe : ce sera IOS_DIST_CERT_PASSWORD
 base64 -w0 ios_dist.p12 > ios_dist.p12.b64   # (macOS: base64 -i ios_dist.p12 | tr -d '\n')
 ```

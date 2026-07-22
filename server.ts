@@ -202,6 +202,11 @@ function serializeUser(user: any, includePrivate = false) {
     delete result.usernameChangedAt;
     delete result.emailChangedAt;
     delete result.hasChangedRole;
+    // Sexe masqué aux tiers si l'utilisateur l'a demandé (showGender=false). La
+    // préférence doit être une VRAIE frontière serveur : sans ça, le champ
+    // `gender` reste lisible via GET /api/users/:id malgré le masquage UI. Pour
+    // soi-même / un admin (includePrivate), le sexe reste visible.
+    if (user.showGender === false) result.gender = undefined;
   }
   if (!includePrivate && result.role === 'Administrateur') {
     // Statut administrateur masqué aux tiers : exposé comme « Auteur ». Le rôle
@@ -4313,8 +4318,16 @@ export async function createServerInstance() {
       const { group, role, error } = await loadGroupForActor(req.params.id, req.user.id);
       if (error) return res.status(404).json({ error: 'Groupe introuvable' });
       if (groupRoleRank(role || '') < GROUP_ROLE_RANK.admin) return res.status(403).json({ error: 'Seuls les administrateurs peuvent ajouter des membres.' });
-      const ids: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
-      if (!ids.length) return res.status(400).json({ error: 'Aucun membre à ajouter.' });
+      const requestedAdd: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
+      if (!requestedAdd.length) return res.status(400).json({ error: 'Aucun membre à ajouter.' });
+      // Même invariant qu'à la création du groupe : on ne peut ajouter que ses
+      // AMIS (abonnement mutuel ∪ amitiés acceptées), pas n'importe qui sur la
+      // plateforme. Sans ce filtre, cette route contournait la restriction de
+      // POST /api/groups. Un administrateur PLATEFORME en est exempté.
+      const isPlatformAdmin = roleFromPrisma(req.user.role) === 'Administrateur';
+      const addFriendSet = isPlatformAdmin ? null : await friendIdSetOf(req.user.id);
+      const ids: string[] = addFriendSet ? requestedAdd.filter((id) => addFriendSet.has(id)) : requestedAdd;
+      if (!ids.length) return res.status(400).json({ error: "Vous ne pouvez ajouter que des amis au groupe." });
       const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
       const validIds = users.map((u) => u.id);
       await prisma.readingGroup.update({

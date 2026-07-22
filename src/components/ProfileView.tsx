@@ -1219,7 +1219,6 @@ const user = freshViewedUser || freshCurrentUser;
   const totalLikes = writtenStories.reduce((acc, curr) => acc + curr.likes, 0);
   const totalViews = writtenStories.reduce((acc, curr) => acc + curr.views, 0);
   const totalReads = writtenStories.reduce((acc, curr) => acc + curr.reads, 0);
-  const totalFavoritesReceived = writtenStories.reduce((acc, curr) => acc + (curr.favoritesCount || 0), 0);
 
   // POPULARITE PLUME — reservee aux AUTEURS. Calee sur les LECTURES, les
   // MENTIONS (j'aime recus) et les ABONNES ; le niveau (0 a 7) exige les trois

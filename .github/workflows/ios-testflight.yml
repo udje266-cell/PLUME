@@ -130,6 +130,17 @@ jobs:
           </plist>
           PLIST
 
+      - name: Vérifier que le scheme « App » est présent
+        run: |
+          set -euo pipefail
+          # Échoue tôt avec un message clair si le scheme partagé manque
+          # (sinon xcodebuild archive échouerait plus loin, moins lisiblement).
+          xcodebuild -list -project "$XCPROJECT"
+          xcodebuild -list -project "$XCPROJECT" | grep -qE '^\s*App\s*$' || {
+            echo "::error::Le scheme partagé « App » est introuvable dans $XCPROJECT."
+            exit 1
+          }
+
       - name: Archiver l'application
         env:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
