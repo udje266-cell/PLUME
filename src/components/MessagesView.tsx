@@ -2241,9 +2241,23 @@ export default function MessagesView({
 
               <div className="space-y-1.5 flex-1 flex flex-col">
                 <label className="text-[10px] font-mono font-bold uppercase text-gray-400">Membres fondateurs à inviter</label>
-                <div className="bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 max-h-[170px] overflow-y-auto space-y-1.5">
-                  {allUsers
+                {(() => {
+                  // On ne peut inviter que ses AMIS (comme pour démarrer une
+                  // discussion) — sauf un administrateur, qui peut inviter tout
+                  // le monde. « Ami » = abonnement MUTUEL ∪ amitiés acceptées.
+                  const isAdminGrp = currentUser.role === 'Administrateur';
+                  const grpFollowers = currentUser.followers || [];
+                  const grpFollowing = currentUser.following || [];
+                  const grpMutual = grpFollowing.filter((id) => grpFollowers.includes(id));
+                  const grpFriendSet = new Set<string>([...grpMutual, ...(friendIds || [])]);
+                  const grpEligible = allUsers
                     .filter(u => u.id !== currentUser.id)
+                    .filter(u => isAdminGrp || grpFriendSet.has(u.id));
+                  return (
+                <div className="bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 max-h-[170px] overflow-y-auto space-y-1.5">
+                  {grpEligible.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 text-center py-6 px-3 leading-relaxed">Vous n'avez pas encore d'amis à inviter. Abonnez-vous mutuellement (ou ajoutez-vous en amis) depuis les profils pour pouvoir les inviter dans un groupe.</p>
+                  ) : grpEligible
                     .map((memberUser) => {
                       const isSelected = groupSelectedMembers.includes(memberUser.id);
                       return (
@@ -2272,6 +2286,8 @@ export default function MessagesView({
                     })
                   }
                 </div>
+                  );
+                })()}
               </div>
 
               <button

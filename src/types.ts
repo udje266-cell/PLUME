@@ -33,6 +33,8 @@ export interface User {
   showPalmares?: boolean;
   // Afficher sa popularité Plume (badge de niveau auteur) sur son profil public.
   showPlumePopularity?: boolean;
+  // Afficher son sexe sur son profil public (masquable dans les paramètres).
+  showGender?: boolean;
   showFollowers?: boolean;
   showFollowing?: boolean;
   showFriends?: boolean;

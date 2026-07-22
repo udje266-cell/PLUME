@@ -530,6 +530,26 @@ async function areFriends(aId: string | undefined, bId: string | undefined): Pro
   return Boolean(found);
 }
 
+// Ensemble des AMIS d'un utilisateur = MEME definition que le client :
+// abonnement MUTUEL ∪ amitiés ACCEPTED. Sert a n'autoriser l'invitation dans un
+// groupe de lecture qu'a ses amis (et pas a n'importe qui sur la plateforme).
+async function friendIdSetOf(userId: string): Promise<Set<string>> {
+  const [outFollows, inFollows, friendships] = await Promise.all([
+    prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
+    prisma.follow.findMany({ where: { followingId: userId }, select: { followerId: true } }),
+    prisma.friendship.findMany({
+      where: { status: 'ACCEPTED', OR: [{ requesterId: userId }, { receiverId: userId }] },
+      select: { requesterId: true, receiverId: true },
+    }),
+  ]);
+  const following = new Set(outFollows.map((f) => f.followingId));
+  const mutual = inFollows.map((f) => f.followerId).filter((id) => following.has(id));
+  const set = new Set<string>(mutual);
+  for (const f of friendships) set.add(f.requesterId === userId ? f.receiverId : f.requesterId);
+  set.delete(userId);
+  return set;
+}
+
 // Nombre de messages qu'un initiateur peut envoyer a une personne non amie
 // tant que celle-ci n'a pas accepte la conversation (facon TikTok).
 const MESSAGE_REQUEST_LIMIT = 3;
@@ -2358,6 +2378,7 @@ export async function createServerInstance() {
         showBooksWritten: user.showBooksWritten,
         showPalmares: user.showPalmares,
         showPlumePopularity: user.showPlumePopularity,
+        showGender: user.showGender,
         allowMessages: user.allowMessages,
         whoCanFollow: user.whoCanFollow,
         whoCanComment: user.whoCanComment,
@@ -3967,7 +3988,12 @@ export async function createServerInstance() {
         return res.status(400).json({ error: 'Le nom du groupe est requis.' });
       }
       const requested = Array.isArray(memberIds) ? memberIds : [];
-      const ids = Array.from(new Set([req.user.id, ...requested]));
+      // On ne peut inviter que ses AMIS (abonnement mutuel ∪ amitiés acceptées) —
+      // pas n'importe qui sur la plateforme. Un administrateur en est exempté.
+      const isAdmin = roleFromPrisma(req.user.role) === 'Administrateur';
+      const friendSet = isAdmin ? null : await friendIdSetOf(req.user.id);
+      const allowedRequested = friendSet ? requested.filter((id: string) => friendSet.has(id)) : requested;
+      const ids = Array.from(new Set([req.user.id, ...allowedRequested]));
       // On ne connecte que des membres réels.
       const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
       const validIds = users.map((u) => u.id);

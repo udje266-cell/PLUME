@@ -65,6 +65,8 @@ model User {
   showPalmares      Boolean  @default(true)
   // Afficher sa POPULARITE PLUME (badge de niveau auteur) sur son profil public.
   showPlumePopularity Boolean @default(true)
+  // Afficher son SEXE sur son profil public (masquable si l'utilisateur le souhaite).
+  showGender        Boolean  @default(true)
   allowMessages     Boolean  @default(true)
   whoCanFollow      String   @default("everyone")
   whoCanComment     String   @default("everyone")

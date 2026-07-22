@@ -1636,7 +1636,7 @@ const user = freshViewedUser || freshCurrentUser;
                 )}
               </>
             )}
-            {user.gender && (
+            {user.gender && (isOwnProfile || (user.showGender ?? true)) && (
               <span className="font-sans font-bold text-zinc-650 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-850 px-2 py-0.5 rounded-md inline-block uppercase text-[8px]">{user.gender}</span>
             )}
           </p>
@@ -4230,6 +4230,24 @@ const user = freshViewedUser || freshCurrentUser;
                           onChange={(e) => {
                             onUpdateProfile({ showPalmares: e.target.checked });
                             setShowStatusToast(e.target.checked ? "Palmarès rendu public !" : "Palmarès masqué !");
+                            setTimeout(() => setShowStatusToast(null), 2550);
+                          }}
+                          className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Afficher mon sexe */}
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
+                        <div className="space-y-0.5 pr-4">
+                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Afficher mon sexe</label>
+                          <span className="text-[9px] text-zinc-455 block">Rendre visible votre sexe sur votre profil public. (Visible par défaut)</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={currentUser.showGender ?? true}
+                          onChange={(e) => {
+                            onUpdateProfile({ showGender: e.target.checked });
+                            setShowStatusToast(e.target.checked ? "Sexe rendu public !" : "Sexe masqué !");
                             setTimeout(() => setShowStatusToast(null), 2550);
                           }}
                           className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"

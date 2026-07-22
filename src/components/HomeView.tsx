@@ -547,7 +547,7 @@ export default function HomeView({
                 <h4 className="mt-2 font-serif font-black text-[11px] text-gray-900 dark:text-white line-clamp-1">{story.title}</h4>
                 <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
                 <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">
-                  {started ? `Chapitre ${Math.max(1, readCh)} · ${percent}%` : `${story.chapters.length} chapitre${story.chapters.length > 1 ? 's' : ''}`}
+                  {started ? `Chapitre ${Math.max(1, readCh)}` : `${story.chapters.length} chapitre${story.chapters.length > 1 ? 's' : ''}`}
                 </p>
                 <button
                   onClick={() => onSelectStory(story)}
