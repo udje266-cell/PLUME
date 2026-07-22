@@ -23,6 +23,7 @@ import { User, Story, Comment, Message, UserRole, Chapter, AppNotification, Read
 import MainNavigation from './components/MainNavigation';
 import TopNav from './components/TopNav';
 import SiteFooter from './components/SiteFooter';
+import WelcomeBirthdateModal from './components/WelcomeBirthdateModal';
 import LateralMenu from './components/LateralMenu';
 // NB : vues importées en STATIQUE (un seul bundle). Le code-splitting (React.lazy
 // + import dynamique) s'est révélé incompatible avec certaines WebView Android de
@@ -4006,6 +4007,18 @@ export default function App() {
               )}
             </PullToRefresh>
           </div>
+        )}
+
+        {/* BIENVENUE : compte sans date de naissance (typiquement inscription
+            Google). On collecte l'age -> debloque l'affichage des oeuvres selon
+            l'age, et on informe du mode Lecteur. Non affiche pendant lecture /
+            chat plein ecran pour ne pas gener. */}
+        {isAuthenticated && currentUser && !currentUser.birthDate && !chatFullscreen && !selectedStoryForReading && (
+          <WelcomeBirthdateModal
+            username={currentUser.username}
+            isReader={currentUser.role === 'Lecteur'}
+            onSubmit={async (birthDate) => { await handleUpdateProfile({ birthDate } as any); }}
+          />
         )}
 
         {/* APPEL AUDIO — surcouche globale (entrant / sortant / en cours) */}

@@ -1821,6 +1821,18 @@ export async function createServerInstance() {
       if (!email || !username) {
         return res.status(400).json({ error: 'Email et nom d’utilisateur requis' });
       }
+      // Age minimum 13 ans (cohérent avec l'inscription) quand une date de
+      // naissance est fournie : les comptes Google la renseignent après coup.
+      if (birthDate) {
+        const b = new Date(birthDate);
+        if (isNaN(b.getTime()) || b >= new Date()) {
+          return res.status(400).json({ error: 'Date de naissance invalide.' });
+        }
+        const years = (Date.now() - b.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+        if (years < 13) {
+          return res.status(400).json({ error: 'Vous devez avoir au moins 13 ans.' });
+        }
+      }
 
       const normalizedEmail = email.toLowerCase();
       let user = await prisma.user.findUnique({
