@@ -48,6 +48,7 @@ import {
 import { VerifiedBadge } from './VerifiedBadge';
 import { levelProgress } from '../utils/leveling';
 import { User, UserRole, Story, Chapter } from '../types';
+import LegendaryTrophies from './LegendaryTrophies';
 import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
@@ -1988,6 +1989,19 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         );
       })()}
+
+      {/* LÉGENDES : trophées légendaires/secrets débloqués. En mode `owner` (mon
+          profil) l'évaluation serveur se déclenche et célèbre les nouveautés ;
+          en mode `public` on n'affiche que les légendes déjà obtenues. */}
+      {canSeePalmares && (
+        <div className="text-left">
+          <LegendaryTrophies
+            mode={isOwnProfile ? 'owner' : 'public'}
+            userId={isOwnProfile ? undefined : user.id}
+            compact
+          />
+        </div>
+      )}
 
       {/* ÉTAGÈRE À TROPHÉES : 3 succès mis en avant, choisis par l'utilisateur. */}
       {isOwnProfile && showcaseEnabled && (() => {

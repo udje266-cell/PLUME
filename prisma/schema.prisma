@@ -78,6 +78,12 @@ model User {
   // survivre au changement d'appareil / vidage de cache, et etre visibles par
   // les autres (au lieu d'etre coincees en localStorage).
   stats             Json?
+  // Trophees LEGENDAIRES/SECRETS debloques : map { trophyId: dateISO }. Les
+  // CONDITIONS d'obtention ne vivent JAMAIS ici (ni ailleurs cote client) —
+  // uniquement dans le module serveur src/server/legendary.ts. Ce champ ne
+  // stocke QUE le fait qu'un trophee est acquis et sa date. Une fois acquis, un
+  // trophee legendaire reste acquis definitivement.
+  legendaryUnlocks  Json?
 
   stories           Story[]
   comments          Comment[]

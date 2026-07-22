@@ -34,6 +34,15 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
 import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
 import { levelFromXp } from './src/utils/leveling';
 import { sendPushToUser } from './src/server/push';
+// Trophees LEGENDAIRES & SECRETS : logique 100 % serveur (conditions jamais
+// exposees au client). Voir src/server/legendary.ts.
+import {
+  evaluateAndMerge,
+  ownerProjection,
+  publicProjection,
+  adminProjection,
+  type UnlockMap,
+} from './src/server/legendary';
 
 // Garde-fou : une promesse rejetée non gérée (ex. erreur Prisma dans un handler
 // sans try/catch) ne doit jamais faire planter le process en production.
@@ -159,7 +168,9 @@ function serializeUser(user: any, includePrivate = false) {
   // (révocation de sessions) ne sort JAMAIS du serveur.
   // googleId (sujet OpenID Google) ne doit JAMAIS sortir — identifiant opaque
   // par-utilisateur sans usage client. Retiré comme passwordHash/tokenVersion.
-  const { passwordHash, email, birthDate, flagReason, xpMeta, tokenVersion, googleId, ...safeUser } = user;
+  // legendaryUnlocks n'est jamais expose via l'objet user generique : l'affichage
+  // des legendes passe par les endpoints /api/*/legendary (projections filtrees).
+  const { passwordHash, email, birthDate, flagReason, xpMeta, tokenVersion, googleId, legendaryUnlocks, ...safeUser } = user;
   const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
@@ -5079,6 +5090,85 @@ export async function createServerInstance() {
     } catch (error) {
       console.error('[AUTHOR-STATS]', error);
       res.status(500).json({ error: "Erreur lors du calcul des statistiques d'auteur" });
+    }
+  });
+
+  // ── TROPHEES LEGENDAIRES & SECRETS ──────────────────────────────────────────
+  // Toute la logique d'obtention vit dans src/server/legendary.ts (jamais dans le
+  // bundle client). Ces endpoints n'exposent JAMAIS une condition ni un seuil ;
+  // un secret verrouille est totalement absent des reponses.
+  function readUnlockMap(raw: any): UnlockMap {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const out: UnlockMap = {};
+      for (const [k, v] of Object.entries(raw)) if (typeof v === 'string') out[k] = v;
+      return out;
+    }
+    return {};
+  }
+
+  // Evalue les trophees du membre courant, persiste les nouveaux deblocages, et
+  // renvoie SA liste (secrets caches tant que non obtenus). `newlyUnlocked` sert
+  // a la celebration cote client.
+  app.get('/api/me/legendary', requireAuth, async (req: any, res) => {
+    try {
+      const me = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { role: true, legendaryUnlocks: true },
+      });
+      if (!me) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+      const existing = readUnlockMap(me.legendaryUnlocks);
+      const isAdmin = roleFromPrisma(me.role) === 'Administrateur';
+      const nowIso = new Date().toISOString();
+      const { unlocks, newlyUnlocked } = await evaluateAndMerge(req.user.id, existing, nowIso, isAdmin);
+      if (newlyUnlocked.length) {
+        await prisma.user.update({ where: { id: req.user.id }, data: { legendaryUnlocks: unlocks as any } });
+      }
+      res.json({
+        legendaries: ownerProjection(unlocks),
+        newlyUnlocked, // ids seulement — le client affiche nom/icone depuis la liste
+      });
+    } catch (error) {
+      console.error('[LEGENDARY:me]', error);
+      res.status(500).json({ error: 'Erreur lors du calcul des legendes.' });
+    }
+  });
+
+  // Trophees legendaires DEBLOQUES d'un utilisateur (profil public). Ne renvoie
+  // que l'acquis, sans aucune condition ; les secrets non obtenus restent
+  // invisibles. N'evalue rien (affichage seul de ce qui est deja gagne).
+  app.get('/api/users/:id/legendary', requireAuth, async (req: any, res) => {
+    try {
+      const u = await prisma.user.findUnique({
+        where: { id: req.params.id },
+        select: { legendaryUnlocks: true },
+      });
+      if (!u) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+      res.json({ legendaries: publicProjection(readUnlockMap(u.legendaryUnlocks)) });
+    } catch (error) {
+      console.error('[LEGENDARY:public]', error);
+      res.status(500).json({ error: 'Erreur lors de la lecture des legendes.' });
+    }
+  });
+
+  // ADMIN uniquement : definitions completes AVEC les conditions exactes. Seul
+  // endroit ou les criteres secrets sont revele, et seulement a un administrateur.
+  app.get('/api/admin/legendary', requireAuth, async (req: any, res) => {
+    try {
+      if (roleFromPrisma(req.user.role) !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action reservee aux administrateurs.' });
+      }
+      let unlocks: UnlockMap | undefined;
+      if (typeof req.query.userId === 'string' && req.query.userId) {
+        const u = await prisma.user.findUnique({
+          where: { id: req.query.userId },
+          select: { legendaryUnlocks: true },
+        });
+        unlocks = readUnlockMap(u?.legendaryUnlocks);
+      }
+      res.json({ definitions: adminProjection(unlocks) });
+    } catch (error) {
+      console.error('[LEGENDARY:admin]', error);
+      res.status(500).json({ error: 'Erreur lors de la lecture des definitions.' });
     }
   });
 

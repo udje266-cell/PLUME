@@ -181,6 +181,22 @@ export interface Conversation {
   requestMessagesLeft?: number; // messages restants pour l'initiateur (si PENDING)
 }
 
+// Trophee LEGENDAIRE / SECRET. Les CONDITIONS d'obtention ne transitent JAMAIS
+// par le client : ce type ne contient que ce que le serveur accepte d'afficher
+// (nom, icone, rarete, date). Un trophee secret non debloque n'apparait jamais
+// dans les reponses API, donc jamais dans cette liste.
+export interface LegendaryTrophy {
+  id: string;
+  name: string;
+  icon: string;
+  rarity: 'legendaire' | 'divin';
+  category: 'reader' | 'author';
+  secret: boolean;
+  unlocked?: boolean; // present en vue proprietaire (les visibles verrouilles aussi)
+  unlockedDate: string | null;
+  description: string; // vague si verrouille, poetique si debloque — jamais la condition
+}
+
 export interface ReadingProgress {
   storyId: string;
   chapterId: string;

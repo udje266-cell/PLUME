@@ -16,6 +16,7 @@ import {
   generateAuthorAchievements,
   type Achievement,
 } from '../utils/achievements';
+import LegendaryTrophies from './LegendaryTrophies';
 
 const RARITY_STYLE: Record<Achievement['rarity'], string> = {
   commun: 'from-zinc-400/15 to-zinc-500/5 border-zinc-300/40 dark:border-zinc-700',
@@ -96,6 +97,10 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
           <p className="text-[11px] text-gray-400 -mt-0.5">Tes accomplissements de lecture et d'écriture</p>
         </div>
       </header>
+
+      {/* LEGENDES : trophees legendaires (condition cachee) + secrets debloques.
+          Section a part, jamais melangee au compteur des succes classiques. */}
+      <LegendaryTrophies mode="owner" />
 
       {/* Sélecteur Lecteur / Auteur */}
       <div className="grid grid-cols-2 gap-2 bg-gray-100 dark:bg-zinc-900 p-1 rounded-2xl">
