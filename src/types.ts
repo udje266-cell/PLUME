@@ -55,6 +55,9 @@ export interface User {
   showcase?: { id: string; title: string }[];
   // Statistiques de progression des succes (UserStats), persistees serveur.
   stats?: Record<string, number>;
+  // Le compte possède-t-il un mot de passe ? (faux pour les comptes Google tant
+  // qu'ils n'en ont pas créé un). Sert à proposer « Créer un mot de passe ».
+  hasPassword?: boolean;
 }
 
 export interface Chapter {

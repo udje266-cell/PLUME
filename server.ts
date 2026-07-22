@@ -156,6 +156,9 @@ function serializeUser(user: any, includePrivate = false) {
     result.email = email;
     result.birthDate = birthDate ? new Date(birthDate).toISOString().split('T')[0] : undefined;
     result.flagReason = flagReason ?? null;
+    // Indique si le compte possède déjà un mot de passe (les comptes créés via
+    // Google n'en ont pas) → le client propose alors « Créer un mot de passe ».
+    result.hasPassword = !!passwordHash;
   } else {
     // Profil vu par un TIERS : on ne révèle ni qui il a bloqué, ni son état de
     // modération/vérification d'e-mail, ni l'historique de ses changements
@@ -1951,6 +1954,32 @@ export async function createServerInstance() {
     } catch (error) {
       console.error('[PLUME] reset password error:', error);
       res.status(500).json({ error: 'Erreur lors de la réinitialisation du mot de passe.' });
+    }
+  });
+
+  // CRÉATION d'un mot de passe par un utilisateur connecté qui n'en a PAS encore
+  // (compte créé via Google). Aucun mot de passe actuel à vérifier — la session
+  // authentifiée suffit. Refusé si un mot de passe existe déjà (utiliser alors
+  // « changer le mot de passe »). Permet ensuite la connexion par e-mail + MDP.
+  app.post('/api/auth/create-password', authLimiter, requireAuth, async (req: any, res) => {
+    try {
+      const { password } = req.body || {};
+      if (!validatePassword(password)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.' });
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true, passwordHash: true } });
+      if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+      if (user.passwordHash) {
+        return res.status(400).json({ error: 'Un mot de passe existe déjà. Utilisez « Changer le mot de passe ».' });
+      }
+      const passwordHash = await bcrypt.hash(password, 12);
+      // Pas de tokenVersion++ : on ne déconnecte pas l'utilisateur qui vient de
+      // définir son mot de passe (il reste sur sa session Google en cours).
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+      res.json({ message: 'Mot de passe créé avec succès.' });
+    } catch (error) {
+      console.error('[PLUME] create password error:', error);
+      res.status(500).json({ error: 'Erreur lors de la création du mot de passe.' });
     }
   });
 

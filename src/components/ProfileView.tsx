@@ -689,6 +689,40 @@ const user = freshViewedUser || freshCurrentUser;
 
   // Settings Panel States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Création d'un mot de passe (comptes créés via Google, sans mot de passe).
+  const [newPwd, setNewPwd] = useState('');
+  const [newPwdConfirm, setNewPwdConfirm] = useState('');
+  const [pwdMsg, setPwdMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const handleCreatePassword = async () => {
+    setPwdMsg(null);
+    if (newPwd.length < 8 || !/[a-zA-Z]/.test(newPwd) || !/\d/.test(newPwd)) {
+      setPwdMsg({ type: 'err', text: 'Au moins 8 caractères, dont une lettre et un chiffre.' });
+      return;
+    }
+    if (newPwd !== newPwdConfirm) {
+      setPwdMsg({ type: 'err', text: 'Les deux mots de passe ne correspondent pas.' });
+      return;
+    }
+    setPwdBusy(true);
+    try {
+      const res = await fetch('/api/auth/create-password', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ password: newPwd }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Création impossible.');
+      setPwdMsg({ type: 'ok', text: 'Mot de passe créé ! Tu peux désormais te connecter par e-mail.' });
+      setNewPwd(''); setNewPwdConfirm('');
+      // Le compte a maintenant un mot de passe : on masque la section.
+      onUpdateProfile({ hasPassword: true } as any);
+    } catch (e: any) {
+      setPwdMsg({ type: 'err', text: e?.message || 'Création impossible.' });
+    } finally {
+      setPwdBusy(false);
+    }
+  };
   const [selectedRoleType, setSelectedRoleType] = useState<UserRole>(currentUser.role);
   const [showRoleChangeConfirm, setShowRoleChangeConfirm] = useState(false);
   
@@ -3921,6 +3955,49 @@ const user = freshViewedUser || freshCurrentUser;
                         </div>
                       </div>
                     </div>
+
+                    {/* Section: Créer un mot de passe (comptes Google sans MDP).
+                        Permet ensuite la connexion par e-mail + mot de passe. */}
+                    {isOwnProfile && currentUser.hasPassword === false && (
+                      <div className="p-4 bg-purple-500/5 border border-purple-500/15 rounded-2xl space-y-2.5">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5" /> Créer un mot de passe
+                          </span>
+                          <span className="text-[9px] text-zinc-450 block font-medium leading-snug">
+                            Ton compte a été créé avec Google. Ajoute un mot de passe pour aussi te connecter par e-mail.
+                          </span>
+                        </div>
+                        <input
+                          type="password"
+                          value={newPwd}
+                          onChange={(e) => setNewPwd(e.target.value)}
+                          placeholder="Nouveau mot de passe"
+                          autoComplete="new-password"
+                          className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 dark:text-white"
+                        />
+                        <input
+                          type="password"
+                          value={newPwdConfirm}
+                          onChange={(e) => setNewPwdConfirm(e.target.value)}
+                          placeholder="Confirmer le mot de passe"
+                          autoComplete="new-password"
+                          className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 dark:text-white"
+                        />
+                        {pwdMsg && (
+                          <p className={`text-[10px] font-bold ${pwdMsg.type === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {pwdMsg.type === 'ok' ? '✓ ' : '⚠️ '}{pwdMsg.text}
+                          </p>
+                        )}
+                        <button
+                          onClick={handleCreatePassword}
+                          disabled={pwdBusy}
+                          className="w-full py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition cursor-pointer"
+                        >
+                          {pwdBusy ? 'Création…' : 'Créer le mot de passe'}
+                        </button>
+                      </div>
+                    )}
 
                     {/* Section: Déconnexion (garde la session sinon persistante) */}
                     <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl flex items-center justify-between">

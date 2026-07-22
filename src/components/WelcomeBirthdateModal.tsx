@@ -43,13 +43,19 @@ export default function WelcomeBirthdateModal({ username, isReader, onSubmit }: 
   const maxDate = new Date().toISOString().split('T')[0];
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 font-sans animate-fade-in">
-      <div className="w-full max-w-sm bg-white dark:bg-[#0E0E14] rounded-3xl border border-purple-500/20 shadow-2xl overflow-hidden">
-        <div className="bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 px-6 py-6 text-white text-center">
-          <span className="inline-flex w-12 h-12 rounded-2xl bg-white/15 items-center justify-center mb-2">
-            <Feather className="w-6 h-6" />
+    <div className="fixed inset-0 z-[200] bg-black/75 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-fade-in">
+      <div className="w-full max-w-sm bg-white dark:bg-[#0E0E14] rounded-[1.75rem] border border-purple-500/20 shadow-2xl overflow-hidden">
+        {/* En-tête de MARQUE, façon écran de connexion PLUME (dégradé violet,
+            plume dans un médaillon, accroche). */}
+        <div className="relative bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 px-6 pt-7 pb-6 text-white text-center overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-12 -left-8 w-32 h-32 rounded-full bg-fuchsia-300/20 blur-2xl pointer-events-none" />
+          <span className="relative inline-flex w-14 h-14 rounded-2xl bg-white/15 backdrop-blur items-center justify-center mb-2.5 ring-1 ring-white/20">
+            <Feather className="w-7 h-7" />
           </span>
-          <h2 className="font-serif font-black text-lg">Bienvenue sur PLUME, {username} !</h2>
+          <h2 className="relative font-serif font-black text-xl leading-tight">Bienvenue sur PLUME</h2>
+          <p className="relative text-[11px] text-white/85 mt-1">Ravi de te compter parmi nous, <span className="font-bold">{username}</span> 🪶</p>
+          <p className="relative text-[10px] text-white/70 mt-1 italic">Lisez, écrivez, partagez — votre imaginaire prend vie.</p>
         </div>
 
         <div className="p-6 space-y-4">
@@ -93,6 +99,10 @@ export default function WelcomeBirthdateModal({ username, isReader, onSubmit }: 
           >
             {busy ? 'Enregistrement…' : 'Commencer à lire'}
           </button>
+
+          <p className="text-[9px] text-gray-400 text-center leading-snug pt-0.5">
+            Astuce : tu pourras aussi créer un mot de passe depuis <span className="font-bold">Profil → Réglages</span> pour te connecter par e-mail.
+          </p>
         </div>
       </div>
     </div>
