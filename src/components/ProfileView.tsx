@@ -715,8 +715,11 @@ const user = freshViewedUser || freshCurrentUser;
       if (!res.ok) throw new Error(data.error || 'Création impossible.');
       setPwdMsg({ type: 'ok', text: 'Mot de passe créé ! Tu peux désormais te connecter par e-mail.' });
       setNewPwd(''); setNewPwdConfirm('');
-      // Le compte a maintenant un mot de passe : on masque la section.
-      onUpdateProfile({ hasPassword: true } as any);
+      // Le compte a maintenant un mot de passe : on masque la section — mais on
+      // DIFFERE le passage `hasPassword:true` de ~2,2 s, sinon la section (gatée
+      // sur `hasPassword === false`) se démonte instantanément et le message de
+      // succès n'est jamais visible par l'utilisateur.
+      setTimeout(() => onUpdateProfile({ hasPassword: true } as any), 2200);
     } catch (e: any) {
       setPwdMsg({ type: 'err', text: e?.message || 'Création impossible.' });
     } finally {

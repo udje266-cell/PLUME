@@ -431,7 +431,6 @@ export default function ReadingView({
   // Suivi de la progression de lecture réelle (défilement) pour CE récit.
   const readerRootRef = useRef<HTMLDivElement>(null);
   const restoredScrollRef = useRef(false);
-  const [readPercent, setReadPercent] = useState<number>(() => getBookProgress(currentUser.id, story.id)?.percent ?? 0);
 
   // Téléchargement hors-ligne de ce récit.
   const [downloaded, setDownloaded] = useState<boolean>(() => isDownloaded(story.id));
@@ -858,6 +857,25 @@ export default function ReadingView({
     fullyReadRef.current.add(chId);
     onChapterFullyRead(story.id, chId);
   };
+  // Récit « terminé » : marqué UNE seule fois. Garde partagée (ref) entre le
+  // suivi au défilement (95 % du dernier chapitre) ET le repli des chapitres
+  // courts non défilables — sinon un livre tenant entièrement à l'écran (récit
+  // d'un seul chapitre, ou dernier chapitre court) n'atteignait jamais 95 % et
+  // restait indéfiniment « en cours de lecture ». `currentlyReading` lu via ref
+  // pour éviter une valeur figée dans les effets à dépendance [story.id].
+  const completionMarkedRef = useRef(false);
+  const currentlyReadingRef = useRef(currentlyReading);
+  currentlyReadingRef.current = currentlyReading;
+  useEffect(() => {
+    completionMarkedRef.current = completedStories.includes(story.id);
+  }, [story.id, completedStories]);
+  const markStoryCompletedIfLast = (chapterIdx: number) => {
+    if (isOwnStory || completionMarkedRef.current) return;
+    if (chapterIdx !== story.chapters.length - 1) return;
+    completionMarkedRef.current = true;
+    onToggleCompletedStories(story.id);
+    if (currentlyReadingRef.current.includes(story.id)) onToggleCurrentlyReading(story.id);
+  };
   useEffect(() => {
     // Le conteneur réellement défilé pour la lecture (sinon la fenêtre/page).
     const getScroller = (): HTMLElement | null => getScrollParent(readerRootRef.current);
@@ -876,9 +894,11 @@ export default function ReadingView({
 
     let restoring = false;
     let timer: any = null;
-    // Le recit n'est marque « termine » qu'une fois, quand on a VRAIMENT atteint
-    // la fin du dernier chapitre (et pas a l'ouverture).
-    let completionMarked = completedStories.includes(story.id);
+    // Timers de restauration LOCALE : collectés pour être annulés au démontage.
+    // Sans cela, fermer le livre en moins de ~700 ms laissait un `apply()`
+    // s'exécuter APRÈS démontage et défiler l'écran suivant (accueil/biblio)
+    // vers une position arbitraire (saut visible et déroutant).
+    const restoreTimers: any[] = [];
     // On accepte TOUS les evenements de defilement : le pourcentage et la
     // position sont mesures a partir des positions des paragraphes du lecteur
     // (relatives au viewport), donc un defilement d'un autre element ne les
@@ -902,7 +922,6 @@ export default function ReadingView({
         // Pourcentage sur les PARAGRAPHES : (paragraphes des chapitres précédents
         // + paragraphe courant) / total des paragraphes du livre.
         const percent = bookPercentFromParagraph(meta, chapterIdxRef.current, curPara);
-        setReadPercent(percent);
         // On sauvegarde la position de reprise AU PARAGRAPHE (y compris auteur).
         saveBookProgress(currentUser.id, story.id, { chapterIndex: chapterIdxRef.current, scrollRatio: ratio, percent, paragraphIndex: curPara });
         // … et on programme l'envoi (débouncé) au serveur de la position DANS le
@@ -920,14 +939,8 @@ export default function ReadingView({
         if (ratio >= 0.95) {
           const ch = story.chapters[chapterIdxRef.current];
           if (ch) markChapterFullyRead(ch.id);
-        }
-
-        // Completion REELLE : dernier chapitre lu jusqu'a la fin (>= 95 %).
-        const isLastChapter = chapterIdxRef.current === story.chapters.length - 1;
-        if (!isOwnStory && isLastChapter && ratio >= 0.95 && !completionMarked) {
-          completionMarked = true;
-          onToggleCompletedStories(story.id);
-          if (currentlyReading.includes(story.id)) onToggleCurrentlyReading(story.id);
+          // Completion REELLE : dernier chapitre lu jusqu'a la fin (>= 95 %).
+          markStoryCompletedIfLast(chapterIdxRef.current);
         }
       }, 250);
     };
@@ -956,12 +969,16 @@ export default function ReadingView({
             if (wmax > 0) window.scrollTo({ top: wmax * saved.scrollRatio, behavior: 'auto' });
           }
         };
-        [120, 350, 700].forEach((d) => setTimeout(apply, d));
+        [120, 350, 700].forEach((d) => restoreTimers.push(setTimeout(apply, d)));
         // Fin de la fenêtre de restauration : on rend la main au suivi réel.
-        setTimeout(() => { restoring = false; }, 850);
+        restoreTimers.push(setTimeout(() => { restoring = false; }, 850));
       }
     }
-    return () => { document.removeEventListener('scroll', onScroll, true); if (timer) clearTimeout(timer); };
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      if (timer) clearTimeout(timer);
+      restoreTimers.forEach((t) => clearTimeout(t));
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story.id]);
 
@@ -977,7 +994,13 @@ export default function ReadingView({
       const scrollable = el
         ? el.scrollHeight - el.clientHeight > 24
         : document.documentElement.scrollHeight - window.innerHeight > 24;
-      if (!scrollable) markChapterFullyRead(chId);
+      if (!scrollable) {
+        markChapterFullyRead(chId);
+        // Livre tenant entierement a l'ecran : le seuil 95 % ne se declenche
+        // jamais. Si c'est le DERNIER chapitre, on marque quand meme le recit
+        // termine (sinon il reste bloque « en cours de lecture »).
+        markStoryCompletedIfLast(activeChapterIndex);
+      }
     }, 8000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1015,7 +1038,6 @@ export default function ReadingView({
         // ouvertures passeront par le chemin de reprise habituel.
         saveBookProgress(currentUser.id, story.id, { chapterIndex: idx, scrollRatio: ratio, percent, paragraphIndex: targetPara });
         setActiveChapterIndex(idx);
-        setReadPercent(percent);
         if (targetPara > 0 || ratio > 0.01) {
           // Ré-application en plusieurs passes (rendu progressif du chapitre),
           // comme la restauration locale — timers NETTOYÉS au démontage pour ne

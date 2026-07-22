@@ -115,6 +115,25 @@ function validatePassword(password: string): boolean {
   return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
 }
 
+// Validation d'une date de naissance : format valide, non future, et 13 ans
+// minimum (classification de contenu). Renvoie un message d'erreur si invalide,
+// sinon null. Centralisé pour appliquer la MEME règle à l'inscription ET aux
+// mises à jour de profil (PUT), qui l'omettait auparavant.
+function validateBirthDate(birthDate: unknown): string | null {
+  if (typeof birthDate !== 'string' || !birthDate) {
+    return 'La date de naissance est requise.';
+  }
+  const birth = new Date(birthDate);
+  if (isNaN(birth.getTime()) || birth >= new Date()) {
+    return 'Date de naissance invalide.';
+  }
+  const ageYears = (Date.now() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+  if (ageYears < 13) {
+    return 'Vous devez avoir au moins 13 ans pour utiliser PLUME.';
+  }
+  return null;
+}
+
 // SECURITE : projection sûre d'un utilisateur embarqué (expéditeur de message,
 // participant de conversation…). N'expose JAMAIS passwordHash / email / birthDate
 // / flagReason / xpMeta. À utiliser dans les `include` Prisma renvoyés/émis au
@@ -138,7 +157,9 @@ function serializeUser(user: any, includePrivate = false) {
   // flagReason est un motif de modération : on ne l'expose qu'en mode privé
   // (soi-même / administrateur), jamais sur les profils publics. tokenVersion
   // (révocation de sessions) ne sort JAMAIS du serveur.
-  const { passwordHash, email, birthDate, flagReason, xpMeta, tokenVersion, ...safeUser } = user;
+  // googleId (sujet OpenID Google) ne doit JAMAIS sortir — identifiant opaque
+  // par-utilisateur sans usage client. Retiré comme passwordHash/tokenVersion.
+  const { passwordHash, email, birthDate, flagReason, xpMeta, tokenVersion, googleId, ...safeUser } = user;
   const result: any = {
     ...safeUser,
     role: roleFromPrisma(user.role),
@@ -166,6 +187,7 @@ function serializeUser(user: any, includePrivate = false) {
     result.blockedUsers = [];
     delete result.emailVerified;
     delete result.isFlagged;
+    delete result.isBanned;
     delete result.usernameChangedAt;
     delete result.emailChangedAt;
     delete result.hasChangedRole;
@@ -442,6 +464,9 @@ async function deleteUserEverything(uid: string): Promise<void> {
     prisma.savedQuote.deleteMany({ where: { userId: uid } }),
     prisma.readingHistory.deleteMany({ where: { userId: uid } }),
     prisma.notification.deleteMany({ where: { userId: uid } }),
+    // Jetons push (donnée personnelle liée à l'appareil) : colonne userId sans
+    // relation FK, donc jamais supprimée par la cascade — à nettoyer ici (RGPD).
+    prisma.deviceToken.deleteMany({ where: { userId: uid } }),
     prisma.groupMessageReaction.deleteMany({ where: { userId: uid } }),
     prisma.groupRead.deleteMany({ where: { userId: uid } }),
     prisma.groupMember.deleteMany({ where: { userId: uid } }),
@@ -991,11 +1016,15 @@ export async function createServerInstance() {
   // avec les credentials (cookie/Authorization).
   const NATIVE_ORIGINS = ['capacitor://localhost', 'ionic://localhost', 'http://localhost', 'https://localhost'];
   const httpAllowedOrigins = new Set([...allowedOrigins, ...NATIVE_ORIGINS]);
+  // Hors production, on tolère les origines de développement local (localhost /
+  // 127.0.0.1 sur n'importe quel port) EN PLUS de la whitelist — mais on ne
+  // réfléchit JAMAIS une origine arbitraire avec `Allow-Credentials: true`
+  // (vol de session cross-origin si NODE_ENV est mal positionné).
+  const isLocalDevOrigin = (o: string) =>
+    process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
   app.use((req, res, next) => {
     const origin = req.headers.origin as string | undefined;
-    const allow =
-      origin &&
-      (httpAllowedOrigins.has(origin) || process.env.NODE_ENV !== 'production');
+    const allow = origin && (httpAllowedOrigins.has(origin) || isLocalDevOrigin(origin));
     if (allow && origin) {
       res.header('Access-Control-Allow-Origin', origin);
       res.header('Vary', 'Origin');
@@ -1849,9 +1878,12 @@ export async function createServerInstance() {
 
   app.post('/api/auth/demo-login', authLimiter, async (req, res) => {
     try {
-      // Cette route délivre un token sans mot de passe : réservée au
-      // développement/démo, jamais exposée en production (account takeover).
-      if (process.env.NODE_ENV === 'production') {
+      // Cette route délivre un token sans mot de passe (prise de contrôle de
+      // n'importe quel compte existant, admin compris) : elle exige un opt-in
+      // EXPLICITE `ALLOW_DEMO_LOGIN=1` ET un environnement non-production. Ainsi
+      // une simple méprise sur NODE_ENV (non défini, "staging"…) ne suffit plus
+      // à l'ouvrir — il faut l'activer volontairement.
+      if (process.env.ALLOW_DEMO_LOGIN !== '1' || process.env.NODE_ENV === 'production') {
         return res.status(404).json({ error: 'Route introuvable.' });
       }
       const { email, username, role, avatar, bio, birthDate, gender, favoriteGenres } = req.body;
@@ -1918,19 +1950,19 @@ export async function createServerInstance() {
 
       const normalizedEmail = email.trim().toLowerCase();
 
-      // Un utilisateur déjà connecté peut changer son mot de passe sans OTP ;
-      // sinon le code de validation est obligatoire.
-      const authUser = await getUserFromAuthorizationHeader(req);
-      const isAuthenticated = authUser && authUser.email.toLowerCase() === normalizedEmail;
-
-      if (!isAuthenticated) {
-        if (!code) {
-          return res.status(400).json({ error: 'Code OTP requis.' });
-        }
-        const otpCheck = await checkOtp(normalizedEmail, code, true);
-        if (!otpCheck.ok) {
-          return res.status(otpCheck.status).json({ error: otpCheck.error });
-        }
+      // La réinitialisation exige TOUJOURS un code OTP prouvant la possession de
+      // la boîte mail — même pour une session déjà authentifiée. Sans cela, le
+      // porteur d'un JWT encore valide (appareil partagé, token exfiltré)
+      // pourrait fixer un nouveau mot de passe sans connaître l'ancien et
+      // verrouiller le compte (contournement de la ré-authentification exigée
+      // par « changer le mot de passe »). Un utilisateur connecté qui veut
+      // changer son mot de passe passe par /api/auth/change-password.
+      if (!code) {
+        return res.status(400).json({ error: 'Code OTP requis.' });
+      }
+      const otpCheck = await checkOtp(normalizedEmail, code, true);
+      if (!otpCheck.ok) {
+        return res.status(otpCheck.status).json({ error: otpCheck.error });
       }
 
       const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
@@ -2288,6 +2320,13 @@ export async function createServerInstance() {
       if (typeof user.banner === 'string' && user.banner.length > IMAGE_FIELD_MAX) {
         return res.status(400).json({ error: 'Bannière trop lourde (2 Mo maximum).' });
       }
+      // Date de naissance : si fournie, revalider (13+, non future, valide) —
+      // même règle qu'à l'inscription. Empêche une date invalide/mineure d'être
+      // persistée (et un `new Date(invalide)` de faire échouer l'update en 500).
+      if (user.birthDate !== undefined && user.birthDate !== null && user.birthDate !== '') {
+        const birthErr = validateBirthDate(user.birthDate);
+        if (birthErr) return res.status(400).json({ error: birthErr, field: 'birthDate' });
+      }
 
       // Champs librement modifiables par le propriétaire du compte.
       // (pseudo/e-mail ajoutés conditionnellement plus bas, avec horodatage.)
@@ -2400,16 +2439,29 @@ export async function createServerInstance() {
       const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
       if (!existing) return res.status(404).json({ error: 'Utilisateur introuvable' });
 
+      // Jetons push (FCM) : colonne userId sans relation FK -> non couverte par
+      // la cascade en base. On la nettoie explicitement quel que soit le chemin
+      // de suppression (RGPD : la donnée d'appareil ne doit pas survivre).
+      await prisma.deviceToken.deleteMany({ where: { userId: req.params.id } });
+
       // Sauvegarde des groupes : si l'utilisateur supprime est PROPRIETAIRE d'un
       // groupe qui compte d'autres membres actifs, on transfere la propriete au
-      // membre le plus ancien (sinon le `onDelete: Cascade` sur creatorId
-      // detruirait le groupe et les messages des autres membres).
+      // membre qui a REJOINT le groupe le plus tot (GroupMember.joinedAt), sinon
+      // le `onDelete: Cascade` sur creatorId detruirait le groupe et les messages
+      // des autres membres.
       const ownedGroups = await prisma.readingGroup.findMany({
         where: { creatorId: req.params.id },
-        include: { members: { where: { id: { not: req.params.id } }, select: { id: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
+        select: { id: true },
       });
       for (const g of ownedGroups) {
-        const heir = g.members[0]?.id;
+        // Heritier = membre ACTIF le plus ancien par date d'adhesion reelle
+        // (et non par date de creation de compte, qui n'a aucun rapport).
+        const heirMember = await prisma.groupMember.findFirst({
+          where: { groupId: g.id, status: 'active', userId: { not: req.params.id } },
+          orderBy: { joinedAt: 'asc' },
+          select: { userId: true },
+        });
+        const heir = heirMember?.userId;
         if (heir) {
           await prisma.readingGroup.update({ where: { id: g.id }, data: { creatorId: heir } });
           await prisma.groupMember.upsert({

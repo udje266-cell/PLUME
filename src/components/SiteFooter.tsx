@@ -48,7 +48,7 @@ export default function SiteFooter({ onChangeTab, canWrite, onLogout }: SiteFoot
         <div>
           <h4 className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Créer</h4>
           <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-300">
-            <li><button onClick={() => onChangeTab('write')} className="hover:text-purple-600 dark:hover:text-purple-400 transition">{canWrite ? 'Écrire une œuvre' : 'Devenir auteur'}</button></li>
+            <li><button onClick={() => onChangeTab(canWrite ? 'write' : 'profile')} className="hover:text-purple-600 dark:hover:text-purple-400 transition">{canWrite ? 'Écrire une œuvre' : 'Devenir auteur'}</button></li>
             <li><button onClick={() => onChangeTab('messages')} className="hover:text-purple-600 dark:hover:text-purple-400 transition">Messagerie</button></li>
             <li><button onClick={() => onChangeTab('profile')} className="hover:text-purple-600 dark:hover:text-purple-400 transition">Mon profil</button></li>
           </ul>

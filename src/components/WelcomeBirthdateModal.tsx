@@ -36,6 +36,13 @@ export default function WelcomeBirthdateModal({ username, isReader, onSubmit }: 
       await onSubmit(birthDate);
     } catch (e: any) {
       setError(e?.message || 'Enregistrement impossible. Réessaie.');
+    } finally {
+      // TOUJOURS relâcher `busy`, même en cas de succès : le parent
+      // (handleUpdateProfile) NE lève PAS d'exception en cas d'échec réseau —
+      // il affiche son alerte et laisse la modale montée. Sans ce finally, un
+      // échec transitoire (Render à froid, 401 de course juste après un signup
+      // Google) figeait le bouton sur « Enregistrement… » et verrouillait
+      // l'utilisateur hors de l'app derrière une modale plein écran non fermable.
       setBusy(false);
     }
   };

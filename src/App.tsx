@@ -3225,7 +3225,7 @@ export default function App() {
         }).catch(e => console.error('[PLUME] Erreur de certification Admin backend :', e));
 
         // Update also currentUser to keep synchronous
-        if (currentUser.id === userId) {
+        if (currentUser?.id === userId) {
           setCurrentUser(nextUserObj);
         }
         return nextUserObj;
