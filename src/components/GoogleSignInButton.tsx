@@ -88,7 +88,11 @@ export default function GoogleSignInButton({ onSuccess, onError, onLoadingChange
     try {
       const { SocialLogin } = await import('@capgo/capacitor-social-login');
       await SocialLogin.initialize({ google: { webClientId: CLIENT_ID } });
-      const res: any = await SocialLogin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
+      // PAS de `scopes` ici : e-mail + profil sont déjà fournis via l'ID token.
+      // Passer des scopes déclenche le flux « online » du plugin qui exige une
+      // modification de la MainActivity (« You CANNOT use scopes without
+      // modifying the main activity »). On veut juste l'ID token (mode offline).
+      const res: any = await SocialLogin.login({ provider: 'google', options: {} });
       const idToken: string | undefined = res?.result?.idToken || res?.idToken;
       if (!idToken) throw new Error('Aucun jeton renvoyé par Google.');
       return await exchangeGoogleToken(idToken);
