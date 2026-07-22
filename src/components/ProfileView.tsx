@@ -49,6 +49,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { levelProgress } from '../utils/leveling';
 import { User, UserRole, Story, Chapter } from '../types';
 import LegendaryTrophies from './LegendaryTrophies';
+import { computePlumePopularity } from '../utils/plumePopularity';
 import { displayRole } from '../utils/role';
 import { GENRES } from '../data';
 import { uploadImageToCloudinary } from '../utils/uploadImage';
@@ -1220,24 +1221,15 @@ const user = freshViewedUser || freshCurrentUser;
   const totalReads = writtenStories.reduce((acc, curr) => acc + curr.reads, 0);
   const totalFavoritesReceived = writtenStories.reduce((acc, curr) => acc + (curr.favoritesCount || 0), 0);
 
-  // Score de POPULARITÉ réel. Avant : basé UNIQUEMENT sur les vues des œuvres,
-  // donc figé sur « Nouvelle Plume » pour tout lecteur et tout auteur < 500 vues.
-  // Désormais il combine l'AUDIENCE (abonnés — compte aussi pour les lecteurs)
-  // et l'ENGAGEMENT reçu (likes, favoris, lectures), avec les vues en signal
-  // faible. La mention reflète enfin l'activité réelle du profil.
-  const popularityScore = Math.round(
-    (user.followers?.length || 0) * 8 +
-    totalLikes * 3 +
-    totalFavoritesReceived * 4 +
-    totalReads * 1 +
-    totalViews * 0.05
-  );
-  const popularityLabel =
-    popularityScore >= 500 ? 'Popularité : Légendaire ✨' :
-    popularityScore >= 200 ? 'Popularité : Très apprécié 🌟' :
-    popularityScore >= 60 ? 'Popularité : En plein essor 📈' :
-    popularityScore >= 15 ? 'Popularité : Plume montante 🔥' :
-    'Popularité : Nouvelle Plume 🌱';
+  // POPULARITE PLUME — reservee aux AUTEURS. Calee sur les LECTURES, les
+  // MENTIONS (j'aime recus) et les ABONNES ; le niveau (0 a 7) exige les trois
+  // seuils, la barre de progression est ponderee (40/25/35). Les comptes
+  // lecteurs n'ont pas de popularite Plume.
+  const isAuthorProfile = user.role === 'Auteur' || user.role === 'Administrateur';
+  const plumePopularity = computePlumePopularity(totalReads, totalLikes, user.followers?.length || 0);
+  // Visible pour un auteur : toujours sur son propre profil, sinon seulement si
+  // l'auteur ne l'a pas masquee (showPlumePopularity, activee par defaut).
+  const canSeePlumePopularity = isAuthorProfile && (isOwnProfile || (user.showPlumePopularity ?? true));
 
   // Amis = abonnement MUTUEL (cohérent quel que soit le point de vue). Sur son
   // propre profil, on y ajoute aussi les amitiés explicites (demandes acceptées)
@@ -1649,15 +1641,26 @@ const user = freshViewedUser || freshCurrentUser;
             )}
           </p>
 
-          {/* Mention de popularité globale (score réel : abonnés + engagement reçu) */}
-          <div className="mt-2.5 flex items-center justify-center">
-            <span
-              title={`Score de popularité : ${popularityScore} — basé sur les abonnés, likes, favoris et lectures reçus.`}
-              className="px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/15 flex items-center gap-1"
-            >
-              {popularityLabel}
-            </span>
-          </div>
+          {/* POPULARITE PLUME (auteurs uniquement) : niveau + barre de progression
+              ponderee vers le palier suivant. Masquable via la confidentialite. */}
+          {canSeePlumePopularity && (
+            <div className="mt-2.5 flex flex-col items-center gap-1.5">
+              <span
+                title={`Popularité Plume — basée sur les lectures (40%), les mentions j'aime reçues (25%) et les abonnés (35%).`}
+                className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/20 flex items-center gap-1.5"
+              >
+                <span className="text-sm leading-none">{plumePopularity.icon}</span>
+                Niv.{plumePopularity.level} · {plumePopularity.name}
+              </span>
+              {plumePopularity.next && (
+                <div className="w-40 max-w-full" title={`${plumePopularity.percentToNext}% vers ${plumePopularity.next.name}`}>
+                  <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500 transition-all" style={{ width: `${plumePopularity.percentToNext}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* INTERACTION ACTIONS FOR OTHER PROFILES */}
@@ -4232,6 +4235,26 @@ const user = freshViewedUser || freshCurrentUser;
                           className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
                         />
                       </div>
+
+                      {/* Afficher ma popularité Plume (auteurs uniquement) */}
+                      {(currentUser.role === 'Auteur' || currentUser.role === 'Administrateur') && (
+                        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
+                          <div className="space-y-0.5 pr-4">
+                            <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Afficher ma popularité Plume</label>
+                            <span className="text-[9px] text-zinc-455 block">Rendre visible sur votre profil public votre niveau de popularité (lectures, mentions, abonnés). (Visible par défaut)</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={currentUser.showPlumePopularity ?? true}
+                            onChange={(e) => {
+                              onUpdateProfile({ showPlumePopularity: e.target.checked });
+                              setShowStatusToast(e.target.checked ? "Popularité Plume rendue publique !" : "Popularité Plume masquée !");
+                              setTimeout(() => setShowStatusToast(null), 2550);
+                            }}
+                            className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
+                          />
+                        </div>
+                      )}
 
                       {/* Vitrine des succès (étagère à trophées) */}
                       <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">

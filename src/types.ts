@@ -31,6 +31,8 @@ export interface User {
   readerXp?: number;
   authorXp?: number;
   showPalmares?: boolean;
+  // Afficher sa popularité Plume (badge de niveau auteur) sur son profil public.
+  showPlumePopularity?: boolean;
   showFollowers?: boolean;
   showFollowing?: boolean;
   showFriends?: boolean;

@@ -2357,6 +2357,7 @@ export async function createServerInstance() {
         showBooksRead: user.showBooksRead,
         showBooksWritten: user.showBooksWritten,
         showPalmares: user.showPalmares,
+        showPlumePopularity: user.showPlumePopularity,
         allowMessages: user.allowMessages,
         whoCanFollow: user.whoCanFollow,
         whoCanComment: user.whoCanComment,
