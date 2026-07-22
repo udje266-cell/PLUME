@@ -756,67 +756,43 @@ export default function ReadingView({
   const paraMetaRef = useRef(paraMeta);
   useEffect(() => { paraMetaRef.current = paraMeta; }, [paraMeta]);
 
-  // Index du paragraphe actuellement en zone de lecture. Suivi robuste par
-  // IntersectionObserver (une bande horizontale ~25-40 % du viewport = zone
-  // « au niveau du regard »). Chaque paragraphe qui la traverse alimente un
-  // Set ; le paragraphe courant = le PLUS PETIT index dans le Set (celui dont
-  // le haut est le plus haut dans la zone). Robuste face aux en-têtes de
-  // taille variable, aux changements de police et à la mise en page mobile/PWA.
-  const currentParaRef = useRef(0);
-  const intersectingParasRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
+  // Index du paragraphe actuellement en tête de la zone de lecture. MESURE
+  // DIRECTE et synchrone : le dernier paragraphe dont le haut est passé
+  // au-dessus d'une ligne d'ancrage à ~33 % de la hauteur visible.
+  // getBoundingClientRect() est relatif au VIEWPORT → fonctionne que le
+  // défilement se fasse sur la fenêtre OU sur un conteneur interne (c'était la
+  // faille : selon le cas, l'ancienne détection s'attachait au mauvais élément
+  // et l'index restait bloqué à 0). Insensible aux en-têtes de taille variable.
+  const lastParaRef = useRef(0);
+  const getCurrentParagraphIndex = (): number => {
     const chId = activeChapter?.id;
-    if (!chId) return;
-    let obs: IntersectionObserver | null = null;
-    const timers: any[] = [];
-    // Le DOM des paragraphes peut ne pas encore être présent au montage
-    // (rendu progressif). On tente plusieurs fois jusqu'à trouver les nodes.
-    const setup = (attempt = 0) => {
-      const article = document.getElementById(`chapter-content-${chId}`);
-      const paras = article ? Array.from(article.querySelectorAll('[data-paragraph-index]')) as HTMLElement[] : [];
-      if (!paras.length) {
-        if (attempt < 8) timers.push(setTimeout(() => setup(attempt + 1), 100 * (attempt + 1)));
-        return;
-      }
-      intersectingParasRef.current.clear();
-      currentParaRef.current = 0;
-      obs = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          const idx = Number((entry.target as HTMLElement).dataset.paragraphIndex);
-          if (Number.isNaN(idx)) continue;
-          if (entry.isIntersecting) intersectingParasRef.current.add(idx);
-          else intersectingParasRef.current.delete(idx);
-        }
-        if (intersectingParasRef.current.size > 0) {
-          currentParaRef.current = Math.min(...intersectingParasRef.current);
-        }
-      }, {
-        // Bande d'observation entre 25 % et 60 % du viewport (zone de lecture).
-        rootMargin: '-25% 0px -40% 0px',
-        threshold: 0,
-      });
-      paras.forEach((p) => obs!.observe(p));
-    };
-    setup();
-    return () => { obs?.disconnect(); timers.forEach(clearTimeout); };
-  }, [activeChapter?.id, activeChapter?.content]);
+    if (!chId) return lastParaRef.current;
+    const article = document.getElementById(`chapter-content-${chId}`);
+    if (!article) return lastParaRef.current;
+    const nodes = article.querySelectorAll('[data-paragraph-index]');
+    if (!nodes.length) return lastParaRef.current;
+    const anchorY = Math.max(70, window.innerHeight * 0.33);
+    let idx = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i] as HTMLElement;
+      if (el.getBoundingClientRect().top <= anchorY) idx = Number(el.dataset.paragraphIndex) || i;
+      else break;
+    }
+    lastParaRef.current = idx;
+    return idx;
+  };
 
-  const getCurrentParagraphIndex = (): number => currentParaRef.current;
-
-  // Replace le paragraphe d'index donné en tête de zone de lecture.
+  // Replace le paragraphe d'index donné près du haut de la zone de lecture.
+  // scrollIntoView cible automatiquement le bon conteneur défilable (fenêtre
+  // OU div interne), puis on compense l'en-tête pour ne pas le masquer.
   const scrollToParagraph = (idx: number): boolean => {
     if (idx <= 0) return false;
     const node = document.getElementById(`p-idx-${idx}`);
     if (!node) return false;
+    node.scrollIntoView({ block: 'start', behavior: 'auto' });
     const scroller = getScrollParent(readerRootRef.current);
-    const offset = 90;
-    if (scroller) {
-      const top = scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
-      scroller.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
-    } else {
-      const top = window.scrollY + node.getBoundingClientRect().top - offset;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
-    }
+    if (scroller) scroller.scrollBy(0, -80); else window.scrollBy(0, -80);
+    lastParaRef.current = idx;
     return true;
   };
 
@@ -895,23 +871,17 @@ export default function ReadingView({
       return docMax > 0 ? Math.min(1, Math.max(0, window.scrollY / docMax)) : 0;
     };
 
-    // On n'accepte QUE le défilement du conteneur de lecture (ou de la page).
-    // Un défilement d'un autre élément (liste de chapitres, menu, carrousel…)
-    // ne doit PAS fausser le pourcentage — c'était la cause du « 100 % » subit.
-    const isReaderScrollEvent = (t: EventTarget | null): boolean => {
-      const el = getScroller();
-      if (el) return t === el;
-      return t === document || t === window || t === document.documentElement || t === document.body;
-    };
-
     let restoring = false;
     let timer: any = null;
     // Le recit n'est marque « termine » qu'une fois, quand on a VRAIMENT atteint
     // la fin du dernier chapitre (et pas a l'ouverture).
     let completionMarked = completedStories.includes(story.id);
-    const onScroll = (e: Event) => {
+    // On accepte TOUS les evenements de defilement : le pourcentage et la
+    // position sont mesures a partir des positions des paragraphes du lecteur
+    // (relatives au viewport), donc un defilement d'un autre element ne les
+    // fausse pas — inutile de deviner « le bon » conteneur (source de bugs).
+    const onScroll = () => {
       if (restoring) return;
-      if (!isReaderScrollEvent(e.target)) return;
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
