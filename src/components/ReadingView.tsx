@@ -765,21 +765,24 @@ export default function ReadingView({
   // et l'index restait bloqué à 0). Insensible aux en-têtes de taille variable.
   const lastParaRef = useRef(0);
   const getCurrentParagraphIndex = (): number => {
-    const chId = activeChapter?.id;
-    if (!chId) return lastParaRef.current;
-    const article = document.getElementById(`chapter-content-${chId}`);
-    if (!article) return lastParaRef.current;
-    const nodes = article.querySelectorAll('[data-paragraph-index]');
-    if (!nodes.length) return lastParaRef.current;
-    const anchorY = Math.max(70, window.innerHeight * 0.33);
+    // On cible l'article du chapitre AFFICHE directement dans le DOM (pas via une
+    // closure sur activeChapter, qui pouvait être périmée dans le gestionnaire de
+    // défilement). -1 = mesure impossible (l'appelant utilisera un repli).
+    const article = document.querySelector('[id^="chapter-content-"]');
+    const nodes = article ? article.querySelectorAll('[data-paragraph-index]') : null;
+    if (!nodes || !nodes.length) return -1;
+    const anchorY = Math.max(70, (window.innerHeight || 800) * 0.33);
     let idx = 0;
+    let anyAbove = false;
     for (let i = 0; i < nodes.length; i++) {
       const el = nodes[i] as HTMLElement;
-      if (el.getBoundingClientRect().top <= anchorY) idx = Number(el.dataset.paragraphIndex) || i;
+      if (el.getBoundingClientRect().top <= anchorY) { idx = i; anyAbove = true; }
       else break;
     }
     lastParaRef.current = idx;
-    return idx;
+    // Si AUCUN paragraphe n'est encore au-dessus de l'ancre alors qu'on a défilé,
+    // c'est qu'on est tout en haut → 0 est correct ; sinon on renvoie l'index.
+    return anyAbove ? idx : 0;
   };
 
   // Replace le paragraphe d'index donné près du haut de la zone de lecture.
@@ -885,12 +888,19 @@ export default function ReadingView({
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
-        const ratio = computeRatio(); // conservé pour la détection de fin de chapitre (>= 95 %)
-        // Pourcentage calculé sur les PARAGRAPHES : (paragraphes des chapitres
-        // précédents + paragraphe courant) / total des paragraphes du livre.
-        const curPara = getCurrentParagraphIndex();
+        const ratio = computeRatio(); // ratio de défilement du chapitre (fiable)
         const meta = paraMetaRef.current;
         const chapParaCount = meta.counts[chapterIdxRef.current] || 1;
+        // Paragraphe courant : mesure DIRECTE par position (précise). Si elle
+        // n'aboutit pas (-1) OU renvoie 0 alors qu'on a nettement défilé
+        // (ratio > 2 %), REPLI sur une estimation depuis le ratio de défilement
+        // du chapitre — le pourcentage bouge alors TOUJOURS, quel que soit
+        // l'environnement (c'est le ratio qui pilotait déjà la reprise).
+        const posPara = getCurrentParagraphIndex();
+        const ratioPara = Math.min(chapParaCount - 1, Math.floor(ratio * chapParaCount));
+        const curPara = posPara > 0 ? posPara : (ratio > 0.02 ? ratioPara : 0);
+        // Pourcentage sur les PARAGRAPHES : (paragraphes des chapitres précédents
+        // + paragraphe courant) / total des paragraphes du livre.
         const percent = bookPercentFromParagraph(meta, chapterIdxRef.current, curPara);
         setReadPercent(percent);
         // On sauvegarde la position de reprise AU PARAGRAPHE (y compris auteur).
