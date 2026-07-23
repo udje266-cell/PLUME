@@ -391,12 +391,21 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
           </div>
         </div>
 
-        {/* Bandeau « avantage » facon coupon du modele. */}
+        {/* Bandeau « avantage » facon coupon du modele : CLIQUABLE -> ouvre le
+            formulaire de creation de compte. */}
         <div className="relative z-10 flex items-center gap-3">
           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70">Nouveau ?</span>
-          <span className="inline-flex items-center gap-2 bg-white text-purple-700 font-black text-sm px-4 py-2 rounded-xl shadow-lg tracking-wide">
-            <Feather className="w-4 h-4" /> INSCRIPTION OFFERTE
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setErrorMsg('');
+              setSuccessMsg('');
+              setMode('register');
+            }}
+            className="inline-flex items-center gap-2 bg-white text-purple-700 font-black text-sm px-4 py-2 rounded-xl shadow-lg tracking-wide hover:bg-purple-50 active:scale-[0.98] transition"
+          >
+            <Feather className="w-4 h-4" /> Inscrivez-vous maintenant
+          </button>
         </div>
       </div>
 
