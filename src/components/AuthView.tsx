@@ -358,8 +358,8 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
 
         {/* Zone LOGO : le VRAI logo PLUME (plume + wordmark), variante claire. */}
-        <div className="relative z-10">
-          <Logo onDark size="sm" />
+        <div className="relative z-10 -ml-2">
+          <Logo onDark size="xl" />
         </div>
 
         {/* Accroche promotionnelle (facon « 50% OFF »), adaptee a PLUME. */}
