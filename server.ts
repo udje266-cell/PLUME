@@ -5269,6 +5269,68 @@ export async function createServerInstance() {
 
   // ADMIN uniquement : definitions completes AVEC les conditions exactes. Seul
   // endroit ou les criteres secrets sont revele, et seulement a un administrateur.
+  // DIAGNOSTIC de PRODUCTION (ADMIN uniquement) : verifie d'un coup d'œil si les
+  // services critiques sont bien configures avant publication. Ne renvoie JAMAIS
+  // la valeur d'un secret — uniquement sa PRESENCE/validite. `readyToPublish`
+  // est vrai si tous les points CRITIQUES sont au vert.
+  app.get('/api/admin/diagnostic', requireAuth, async (req: any, res) => {
+    try {
+      if (roleFromPrisma(req.user.role) !== 'Administrateur') {
+        return res.status(403).json({ error: 'Action reservee aux administrateurs.' });
+      }
+      const env = process.env;
+      const has = (v?: string) => typeof v === 'string' && v.trim().length > 0;
+
+      // Base de donnees : ping reel.
+      let dbOk = false;
+      try { await prisma.$queryRaw`SELECT 1`; dbOk = true; } catch { dbOk = false; }
+
+      const jwtSet = has(env.JWT_SECRET);
+      const jwtStrong = jwtSet && (env.JWT_SECRET as string).length >= 16
+        && env.JWT_SECRET !== 'plume_secret_dev_change_later';
+      const smtpFromDefault = !has(env.SMTP_FROM) || /udje266@gmail\.com/i.test(env.SMTP_FROM || '');
+
+      const checks = [
+        { key: 'nodeEnv', severity: 'critical', ok: env.NODE_ENV === 'production',
+          detail: `NODE_ENV=${env.NODE_ENV || '(non defini)'}` },
+        { key: 'database', severity: 'critical', ok: dbOk,
+          detail: dbOk ? 'connexion OK' : 'echec de connexion' },
+        { key: 'jwtSecret', severity: 'critical', ok: jwtStrong,
+          detail: !jwtSet ? 'JWT_SECRET absent' : (!jwtStrong ? 'faible ou valeur par defaut' : 'defini et robuste') },
+        { key: 'email', severity: 'critical', ok: has(env.BREVO_API_KEY),
+          detail: has(env.BREVO_API_KEY) ? 'BREVO_API_KEY defini (OTP fonctionnels)' : 'BREVO_API_KEY absent -> AUCUN e-mail OTP envoye' },
+        { key: 'googleOAuth', severity: 'important', ok: has(env.GOOGLE_CLIENT_ID) || has(env.GOOGLE_CLIENT_IDS),
+          detail: (has(env.GOOGLE_CLIENT_ID) || has(env.GOOGLE_CLIENT_IDS)) ? 'configure' : 'connexion Google desactivee' },
+        { key: 'cloudinary', severity: 'important',
+          ok: (has(env.CLOUDINARY_CLOUD_NAME) || has(env.VITE_CLOUDINARY_CLOUD_NAME)) && (has(env.CLOUDINARY_UPLOAD_PRESET) || has(env.VITE_CLOUDINARY_UPLOAD_PRESET)),
+          detail: 'upload d\'images (avatars/couvertures)' },
+        { key: 'adminAccount', severity: 'important', ok: has(env.ADMIN_PASSWORD),
+          detail: has(env.ADMIN_PASSWORD) ? 'compte admin provisionne' : 'ADMIN_PASSWORD absent' },
+        { key: 'smtpFrom', severity: 'optional', ok: !smtpFromDefault,
+          detail: smtpFromDefault ? 'expediteur = gmail par defaut (SPF/DKIM douteux)' : 'domaine expediteur personnalise' },
+        { key: 'redis', severity: 'optional', ok: has(env.REDIS_URL),
+          detail: has(env.REDIS_URL) ? 'multi-instances coherent' : 'compteurs en memoire (mono-instance)' },
+        { key: 'push', severity: 'optional', ok: has(env.FIREBASE_SERVICE_ACCOUNT) || has(env.VAPID_PUBLIC_KEY),
+          detail: 'notifications push (FCM/Web Push)' },
+        { key: 'webrtcTurn', severity: 'optional', ok: has(env.TURN_URLS),
+          detail: has(env.TURN_URLS) ? 'serveur TURN configure' : 'appels possiblement KO en reseau restreint' },
+        { key: 'gemini', severity: 'optional', ok: has(env.GEMINI_API_KEY),
+          detail: has(env.GEMINI_API_KEY) ? 'assistant IA configure' : 'fonction IA desactivee' },
+      ];
+
+      const readyToPublish = checks.filter((c) => c.severity === 'critical').every((c) => c.ok);
+      res.json({
+        nodeEnv: env.NODE_ENV || null,
+        readyToPublish,
+        checks,
+        legend: { critical: 'obligatoire pour publier', important: 'fortement recommande', optional: 'facultatif' },
+      });
+    } catch (error) {
+      console.error('[DIAGNOSTIC]', error);
+      res.status(500).json({ error: 'Erreur lors du diagnostic.' });
+    }
+  });
+
   app.get('/api/admin/legendary', requireAuth, async (req: any, res) => {
     try {
       if (roleFromPrisma(req.user.role) !== 'Administrateur') {
