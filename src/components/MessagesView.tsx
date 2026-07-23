@@ -1070,7 +1070,7 @@ export default function MessagesView({
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-0 sm:px-6 lg:px-8 pt-0 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
+    <div className="lg:max-w-none mx-auto px-0 sm:px-6 lg:px-10 xl:px-16 pt-0 pb-0 md:py-6 lg:py-8 animate-fade-in text-left relative">
 
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
       <div

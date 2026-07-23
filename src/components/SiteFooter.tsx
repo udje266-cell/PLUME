@@ -20,7 +20,7 @@ export default function SiteFooter({ onChangeTab, canWrite, onLogout }: SiteFoot
   const year = 2026;
   return (
     <footer className="hidden lg:block border-t border-gray-150 dark:border-purple-900/15 bg-gray-50 dark:bg-[#0B0B10] mt-8">
-      <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
+      <div className="max-w-none mx-auto px-6 lg:px-10 xl:px-16 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
         {/* Marque */}
         <div className="col-span-2 md:col-span-1">
           <div className="flex items-center gap-2 mb-3">
@@ -76,7 +76,7 @@ export default function SiteFooter({ onChangeTab, canWrite, onLogout }: SiteFoot
         </div>
       </div>
       <div className="border-t border-gray-150 dark:border-zinc-900">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-none mx-auto px-6 lg:px-10 xl:px-16 py-4 flex items-center justify-between">
           <span className="text-[11px] text-gray-400">© {year} PLUME — Tous droits réservés.</span>
           <span className="text-[11px] text-gray-400 flex items-center gap-1">Fait avec <span className="text-purple-500">🪶</span></span>
         </div>

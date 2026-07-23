@@ -240,7 +240,7 @@ export default function ExplorerView({
     : [];
 
   return (
-    <div className="max-w-xl lg:max-w-6xl mx-auto px-4 lg:px-8 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
+    <div className="max-w-xl lg:max-w-none mx-auto px-4 lg:px-10 xl:px-16 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
       
       {/* 1. Header Banner */}
       <div className="pb-4 border-b border-gray-100 dark:border-purple-900/15">

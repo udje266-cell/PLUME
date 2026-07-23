@@ -348,23 +348,56 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-2 animate-fade-in text-gray-900 dark:text-gray-100">
 
-      {/* Panneau de MARQUE (DESKTOP >= lg) — facon page de connexion de site web. */}
-      <div className="hidden lg:flex flex-col justify-center gap-8 px-16 py-12 bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 text-white relative overflow-hidden">
-        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute bottom-0 -left-20 w-72 h-72 rounded-full bg-fuchsia-400/20 blur-3xl" />
+      {/* Panneau de MARQUE (DESKTOP >= lg) — facon page de connexion de site web,
+          inspire du modele fourni (visuel + accroche + badge), aux couleurs de
+          PLUME (degrade violet -> fuchsia sur fond sombre de l'appli). */}
+      <div className="hidden lg:flex flex-col justify-between gap-8 px-14 py-12 bg-gradient-to-br from-[#0E0E14] via-purple-800 to-fuchsia-600 text-white relative overflow-hidden">
+        {/* Halos lumineux */}
+        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-fuchsia-400/20 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 -left-24 w-80 h-80 rounded-full bg-purple-400/20 blur-3xl pointer-events-none" />
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+
+        {/* Zone LOGO : le VRAI logo PLUME (plume + wordmark), variante claire. */}
+        <div className="relative z-10">
+          <Logo onDark size="sm" />
+        </div>
+
+        {/* Accroche promotionnelle (facon « 50% OFF »), adaptee a PLUME. */}
+        <div className="relative z-10 space-y-4 max-w-md">
+          <div>
+            <p className="font-serif font-black text-5xl leading-none tracking-tight drop-shadow-sm">100% gratuit</p>
+            <p className="font-serif font-black text-3xl leading-tight text-white/90 mt-1">pour lire &amp; écrire</p>
+          </div>
+          <p className="text-white/80 text-sm leading-relaxed">
+            Des milliers de récits à dévorer, un atelier pour écrire les vôtres, et une communauté de lecteurs et d'auteurs. Votre imaginaire prend vie.
+          </p>
+
+          {/* Illustration on-brand : livre ouvert + plume + étoiles (trait clair,
+              esprit du visuel du modèle). */}
+          <div className="py-2">
+            <svg viewBox="0 0 320 170" className="w-full max-w-sm h-auto text-white/85" fill="none" aria-hidden="true">
+              <path d="M40 118c40-16 80-16 120 0 40-16 80-16 120 0V64c-40-16-80-16-120 0-40-16-80-16-120 0v54Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round"/>
+              <path d="M160 64v54" stroke="currentColor" strokeWidth="2.5"/>
+              <path d="M64 78c22-7 44-7 72 4M64 92c22-7 44-7 72 4M184 82c22-11 44-11 72-4M184 96c22-11 44-11 72-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.7"/>
+              {/* Plume qui écrit */}
+              <path d="M232 40c-26 6-44 22-52 44 14-2 30-8 42-22 8-9 11-16 10-22Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round"/>
+              <path d="M180 92l16-16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              {/* Étoiles */}
+              <path d="M96 40l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z" fill="currentColor" opacity="0.9"/>
+              <path d="M280 112l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" fill="currentColor" opacity="0.8"/>
+              <circle cx="52" cy="150" r="2.5" fill="currentColor" opacity="0.6"/>
+              <circle cx="268" cy="52" r="2.5" fill="currentColor" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Bandeau « avantage » facon coupon du modele. */}
         <div className="relative z-10 flex items-center gap-3">
-          <span className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center"><Feather className="w-6 h-6" /></span>
-          <span className="font-serif font-black text-3xl tracking-tight">PLUME</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70">Nouveau ?</span>
+          <span className="inline-flex items-center gap-2 bg-white text-purple-700 font-black text-sm px-4 py-2 rounded-xl shadow-lg tracking-wide">
+            <Feather className="w-4 h-4" /> INSCRIPTION OFFERTE
+          </span>
         </div>
-        <div className="relative z-10 space-y-3 max-w-md">
-          <h1 className="font-serif font-black text-4xl leading-tight">Venez pour l'histoire.<br/>Restez pour la communauté.</h1>
-          <p className="text-white/80 text-sm leading-relaxed">Des milliers de récits à lire, un atelier pour écrire les vôtres, et une communauté de lecteurs et d'auteurs.</p>
-        </div>
-        <ul className="relative z-10 space-y-3 text-sm text-white/90">
-          <li className="flex items-center gap-2.5"><BookOpen className="w-4 h-4 shrink-0" /> Lisez gratuitement, même hors ligne</li>
-          <li className="flex items-center gap-2.5"><PenTool className="w-4 h-4 shrink-0" /> Écrivez avec un atelier et un assistant IA</li>
-          <li className="flex items-center gap-2.5"><Users className="w-4 h-4 shrink-0" /> Échangez avec toute la communauté</li>
-        </ul>
       </div>
 
       {/* Colonne du FORMULAIRE (centre) */}

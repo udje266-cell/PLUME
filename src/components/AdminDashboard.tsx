@@ -67,7 +67,7 @@ export default function AdminDashboard({
   const aggregateVols = stories.reduce((sum, s) => sum + s.views, 0);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in text-left">
+    <div className="lg:max-w-none mx-auto px-4 sm:px-6 lg:px-10 xl:px-16 py-8 space-y-8 animate-fade-in text-left">
       
       {/* Intro banner */}
       <div>

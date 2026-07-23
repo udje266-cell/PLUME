@@ -471,7 +471,7 @@ export default function WriteView({
   const currentStoryToManage = userStories.find(s => s.id === managingStoryChapters?.id);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="lg:max-w-none mx-auto px-4 sm:px-6 lg:px-10 xl:px-16 py-8">
       {coverImageSrc && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
           <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl border border-purple-500/20 shadow-2xl overflow-hidden animate-scale-up">

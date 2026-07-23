@@ -87,7 +87,7 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
   const visibleList = list.filter((a) => a.isUnlocked);
 
   return (
-    <div className="px-4 py-4 space-y-5 animate-fade-in pb-28">
+    <div className="px-4 lg:px-10 xl:px-16 py-4 space-y-5 animate-fade-in pb-28">
       <header className="flex items-center gap-2">
         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md">
           <Trophy className="w-5 h-5 text-white" />
