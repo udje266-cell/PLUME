@@ -425,8 +425,10 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         </div>
 
         {/* Bandeau « avantage » facon coupon du modele : CLIQUABLE -> ouvre le
-            formulaire de creation de compte. */}
-        <div className="relative z-10 flex items-center gap-3">
+            formulaire de creation de compte. DISPARAIT une fois qu'on est deja
+            sur l'inscription (on garde sa place via `invisible` pour ne pas
+            deranger la mise en page du panneau). */}
+        <div className={`relative z-10 flex items-center gap-3 ${mode === 'register' ? 'invisible' : ''}`}>
           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70">Nouveau ?</span>
           <button
             type="button"
