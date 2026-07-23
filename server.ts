@@ -33,6 +33,9 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
 }
 import { countAndEvaluateCertification, type UserStats } from './src/utils/achievements';
 import { levelFromXp } from './src/utils/leveling';
+// Assainissement du HTML STOCKE (corps des chapitres) a l'ecriture — defense en
+// profondeur cote serveur, pour ne pas dependre du seul rendu client.
+import { sanitizeStoredHtml } from './src/utils/htmlSanitize';
 import { sendPushToUser } from './src/server/push';
 // Trophees LEGENDAIRES & SECRETS : logique 100 % serveur (conditions jamais
 // exposees au client). Voir src/server/legendary.ts.
@@ -1170,6 +1173,14 @@ export async function createServerInstance() {
     max: 40,
     message: 'Trop de recherches. Patiente quelques secondes.',
   });
+  // Creation de CONTENU (recits, chapitres, commentaires, tomes) : borne le debit
+  // pour eviter le spam de creation et l'amplification de notifications. Genereux
+  // pour ne pas gener un usage normal, mais coupe les rafales automatisees.
+  const contentLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 40,
+    message: 'Trop de créations en peu de temps. Patiente un moment.',
+  });
 
   // Le JWT embarque la version de session (tv) : si l'utilisateur réinitialise
   // son mot de passe ou est banni, tokenVersion est incrémenté en base et tous
@@ -1689,6 +1700,13 @@ export async function createServerInstance() {
         if (sent.ok && emailConfigured) {
           return res.json({ message: 'Code OTP envoyé avec succès.', email });
         }
+        // En PRODUCTION, on ne renvoie JAMAIS le code au client : un echec
+        // d'envoi (Brevo indisponible/quota) ne doit pas permettre de creer un
+        // compte lie a un e-mail qu'on ne controle pas (usurpation). On renvoie
+        // une vraie erreur. Le fallback `devCode` reste uniquement hors prod.
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(502).json({ error: "L'envoi de l'e-mail de vérification a échoué. Réessaie dans un moment." });
+        }
         return res.json({
           message: sent.ok
             ? 'Code OTP (mode test : e-mail non configuré).'
@@ -1856,7 +1874,9 @@ export async function createServerInstance() {
         return res.status(401).json({ error: 'Jeton Google invalide ou expiré.' });
       }
       if (!payload || !payload.sub) return res.status(401).json({ error: 'Jeton Google invalide.' });
-      if (payload.email_verified === false) return res.status(403).json({ error: 'Adresse Google non vérifiée.' });
+      // Defense en profondeur : on exige que l'e-mail Google soit EXPLICITEMENT
+      // verifie (un claim absent est traite comme non verifie).
+      if (payload.email_verified !== true) return res.status(403).json({ error: 'Adresse Google non vérifiée.' });
 
       const googleId: string = payload.sub;
       const email: string = String(payload.email || '').trim().toLowerCase();
@@ -2845,7 +2865,7 @@ export async function createServerInstance() {
   const LIMITS = { title: 300, description: 8000, chapterContent: 200_000, comment: 8000 };
   const tooLong = (v: unknown, max: number) => typeof v === 'string' && v.length > max;
 
-  app.post('/api/stories', requireAuth, async (req: any, res) => {
+  app.post('/api/stories', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const story = req.body;
       if (tooLong(story.title, LIMITS.title) || tooLong(story.description, LIMITS.description)) {
@@ -2970,7 +2990,7 @@ export async function createServerInstance() {
     res.json(chapters.map(serializeChapter));
   });
 
-  app.post('/api/stories/:storyId/chapters', requireAuth, async (req: any, res) => {
+  app.post('/api/stories/:storyId/chapters', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const story = await prisma.story.findUnique({ where: { id: req.params.storyId } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
@@ -2997,7 +3017,7 @@ export async function createServerInstance() {
             data: {
               id: chapter.id || undefined,
               title: chapter.title || 'Chapitre sans titre',
-              content: chapter.content || '',
+              content: sanitizeStoredHtml(chapter.content || ''),
               order: (lastCh?.order ?? 0) + 1,
               tomeId, // NULL si non fourni / invalide (chapitre hors tome).
               isPublished: Boolean(chapter.isPublished ?? (chapter.status === 'Publié')),
@@ -3042,7 +3062,7 @@ export async function createServerInstance() {
         where: { id: req.params.id },
         data: {
           title: chapter.title,
-          content: chapter.content,
+          content: sanitizeStoredHtml(chapter.content),
           // 'order' n'est PAS modifiable ici : ecrire l'order fourni par le client
           // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
@@ -3102,7 +3122,7 @@ export async function createServerInstance() {
         where: { id: req.params.chapterId },
         data: {
           title: chapter.title,
-          content: chapter.content,
+          content: sanitizeStoredHtml(chapter.content),
           // 'order' n'est PAS modifiable ici : ecrire l'order fourni par le client
           // pouvait violer @@unique([storyId, order]) (P2002) et faire echouer la
           // sauvegarde silencieusement. L'ordre est fixe a la creation.
@@ -3143,7 +3163,7 @@ export async function createServerInstance() {
   // ----- Tomes (volumes) : regroupement optionnel de chapitres -----
   // Réservés à l'auteur / admin. La lecture des tomes se fait via serializeStory
   // (ils accompagnent l'œuvre), pas besoin d'un GET dédié.
-  app.post('/api/stories/:storyId/tomes', requireAuth, async (req: any, res) => {
+  app.post('/api/stories/:storyId/tomes', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const story = await prisma.story.findUnique({ where: { id: req.params.storyId }, select: { authorId: true } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
@@ -3221,7 +3241,7 @@ export async function createServerInstance() {
     res.json(comments.map(serializeComment));
   });
 
-  app.post('/api/comments', requireAuth, async (req: any, res) => {
+  app.post('/api/comments', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const { storyId, chapterId, content } = req.body;
       if (!storyId || !chapterId || !content) return res.status(400).json({ error: 'storyId, chapterId et content sont requis' });
@@ -3264,7 +3284,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/stories/:storyId/comments', requireAuth, async (req: any, res) => {
+  app.post('/api/stories/:storyId/comments', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const { chapterId, content } = req.body;
       if (!chapterId || !content) return res.status(400).json({ error: 'chapterId et content sont requis' });
@@ -3372,7 +3392,7 @@ export async function createServerInstance() {
     }
   });
 
-  app.post('/api/comments/:id/replies', requireAuth, async (req: any, res) => {
+  app.post('/api/comments/:id/replies', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
       if (!content) return res.status(400).json({ error: 'content est requis' });
