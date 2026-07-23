@@ -346,7 +346,11 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
   };
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-2 animate-fade-in text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen flex items-center justify-center lg:p-6 bg-white dark:bg-[#0E0E14] lg:bg-gradient-to-br lg:from-[#17123a] lg:via-[#241155] lg:to-[#0d0a1f] animate-fade-in text-gray-900 dark:text-gray-100">
+      {/* Carte de connexion CENTREE (desktop) : le split violet / blanc vit DANS
+          une carte arrondie qui flotte sur un fond sombre violet, facon page web.
+          Sur mobile, pas de carte : le formulaire occupe l'ecran normalement. */}
+      <div className="w-full lg:max-w-[1400px] lg:grid lg:grid-cols-2 lg:min-h-[640px] lg:rounded-[2rem] lg:overflow-hidden lg:shadow-2xl lg:border lg:border-purple-500/20 bg-white dark:bg-[#0E0E14]">
 
       {/* Panneau de MARQUE (DESKTOP >= lg) — facon page de connexion de site web,
           inspire du modele fourni (visuel + accroche + badge), aux couleurs de
@@ -356,6 +360,35 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-fuchsia-400/20 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 -left-24 w-80 h-80 rounded-full bg-purple-400/20 blur-3xl pointer-events-none" />
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+
+        {/* NUAGES : silhouettes douces flottant dans le panneau (comme le modele),
+            en blanc tres transparent, derriere le contenu. */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMid slice" viewBox="0 0 620 720" fill="#ffffff" aria-hidden="true">
+          <g opacity="0.10">
+            <g transform="translate(470,120)">
+              <ellipse cx="0" cy="0" rx="66" ry="38" /><ellipse cx="60" cy="14" rx="50" ry="30" />
+              <ellipse cx="-58" cy="16" rx="44" ry="28" /><rect x="-100" y="10" width="166" height="34" rx="17" />
+            </g>
+          </g>
+          <g opacity="0.08">
+            <g transform="translate(540,330)">
+              <ellipse cx="0" cy="0" rx="54" ry="30" /><ellipse cx="48" cy="12" rx="40" ry="24" />
+              <ellipse cx="-46" cy="12" rx="36" ry="22" /><rect x="-82" y="8" width="130" height="26" rx="13" />
+            </g>
+          </g>
+          <g opacity="0.07">
+            <g transform="translate(470,470)">
+              <ellipse cx="0" cy="0" rx="44" ry="26" /><ellipse cx="40" cy="10" rx="32" ry="20" />
+              <ellipse cx="-38" cy="10" rx="28" ry="18" /><rect x="-66" y="6" width="106" height="22" rx="11" />
+            </g>
+          </g>
+          <g opacity="0.06">
+            <g transform="translate(150,560)">
+              <ellipse cx="0" cy="0" rx="40" ry="24" /><ellipse cx="36" cy="9" rx="30" ry="19" />
+              <ellipse cx="-34" cy="9" rx="26" ry="17" /><rect x="-60" y="5" width="96" height="20" rx="10" />
+            </g>
+          </g>
+        </svg>
 
         {/* Zone LOGO : le VRAI logo PLUME (plume + wordmark), variante claire. */}
         <div className="relative z-10 -ml-2">
@@ -409,8 +442,9 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         </div>
       </div>
 
-      {/* Colonne du FORMULAIRE (centre) */}
-      <div className="flex flex-col items-center justify-center min-h-[90vh] lg:min-h-screen py-8 px-6">
+      {/* Colonne du FORMULAIRE (centre). Sur desktop, sa hauteur est portee par
+          la carte (pas de min-h-screen qui deborderait). */}
+      <div className="flex flex-col items-center justify-center min-h-[90vh] lg:min-h-0 py-8 px-6 lg:px-12">
 
       {/* Brand Launcher Block — masque sur desktop (le panneau de gauche marque
           deja PLUME) pour un formulaire epure facon site web. */}
@@ -426,10 +460,11 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
       {/* Main card panel. Sur desktop : plus large, plus aere, champs et titres
           agrandis (variantes lg: ciblant les input/h2/label descendants) pour un
           vrai rendu web ; sur mobile, la carte compacte reste identique. */}
-      <div className="w-full max-w-sm lg:max-w-[440px] bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-2xl lg:rounded-3xl p-6 lg:p-10 shadow-xl lg:shadow-2xl relative overflow-hidden transition-all duration-300 lg:[&_input]:py-3.5 lg:[&_input]:text-sm lg:[&_h2]:text-2xl lg:[&_label]:text-[11px]">
+      <div className="w-full max-w-sm lg:max-w-[420px] bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-2xl p-6 lg:p-0 shadow-xl lg:shadow-none lg:border-0 lg:bg-transparent lg:dark:bg-transparent relative overflow-hidden transition-all duration-300 lg:[&_input]:py-3.5 lg:[&_input]:text-sm lg:[&_h2]:text-2xl lg:[&_label]:text-[11px]">
         
-        {/* Decorative Top Accent line */}
-        <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-purple-600 to-violet-850" />
+        {/* Decorative Top Accent line (masque sur desktop : la carte englobante
+            porte deja son propre cadre). */}
+        <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-purple-600 to-violet-850 lg:hidden" />
 
         {/* Global Loading screen */}
         {isLoading && (
@@ -986,6 +1021,7 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         {' '}et notre{' '}
         <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline hover:text-purple-600 dark:hover:text-purple-400">Politique de confidentialité</a>.
       </p>
+      </div>
       </div>
     </div>
   );

@@ -6,8 +6,11 @@
 
     <title>PLUME</title>
 
-    <link rel="icon" type="image/png" href="/plume-icon.png" />
-    <link rel="apple-touch-icon" href="/app-icon.png" />
+    <!-- Favicon = icone de l'appli mobile (plume). Le ?v= force les navigateurs
+         a re-telecharger l'icone (ils la mettent en cache tres agressivement). -->
+    <link rel="icon" type="image/png" sizes="512x512" href="/plume-icon.png?v=2" />
+    <link rel="shortcut icon" type="image/png" href="/plume-icon.png?v=2" />
+    <link rel="apple-touch-icon" href="/app-icon.png?v=2" />
 
     <!-- PWA : installable sur ordinateur, Android et iPhone -->
     <link rel="manifest" href="/manifest.webmanifest" />
