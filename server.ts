@@ -1079,13 +1079,14 @@ export async function createServerInstance() {
   // Protège contre le MIME-sniffing, le clickjacking et les fuites de referrer.
   // HSTS en prod. CSP posée en mode REPORT-ONLY (voir ci-dessous).
   //
-  // CSP « report-only » : n'applique AUCUN blocage — le navigateur se contente
-  // de SIGNALER (POST vers /api/csp-report) ce qui serait refusé par cette
-  // politique. Objectif : observer les besoins reels de l'app (scripts, styles,
-  // images Cloudinary, connexions socket, Google Identity…) AVANT de passer un
-  // jour la CSP en mode bloquant. La politique reflete l'usage attendu ; on
-  // l'ajustera selon les rapports, puis on basculera sur `Content-Security-Policy`.
-  const CSP_REPORT_ONLY = [
+  // CSP en mode BLOQUANT. Elle a d'abord ete deployee en report-only : les
+  // rapports collectes (/api/csp-report) n'ont revele que des ressources
+  // LEGITIMES bloquees (Google Fonts + feuille de style Google Identity),
+  // desormais autorisees ci-dessous. Aucun script/connexion illegitime.
+  // `report-uri` reste actif : les eventuelles nouvelles violations sont encore
+  // journalisees, meme en mode bloquant. Pour revenir en observation sans
+  // blocage : renommer l'en-tete en `Content-Security-Policy-Report-Only`.
+  const CSP_POLICY = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
@@ -1093,11 +1094,13 @@ export async function createServerInstance() {
     "form-action 'self'",
     // Scripts : le bundle de l'app + Google Identity Services (bouton Google).
     "script-src 'self' https://accounts.google.com https://apis.google.com",
-    // Styles inline (attributs style de React / Tailwind) tolerés.
-    "style-src 'self' 'unsafe-inline'",
+    // Styles : inline (attributs style React / Tailwind) + Google Fonts (CSS) +
+    // feuille de style de Google Identity.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
     // Images : Cloudinary, avatars Google, data:/blob: (previews locales).
     "img-src 'self' data: blob: https:",
-    "font-src 'self' data:",
+    // Polices : Google Fonts (gstatic) + data:.
+    "font-src 'self' data: https://fonts.gstatic.com",
     // API same-origin + WebSocket (socket.io) + Google.
     "connect-src 'self' https: wss:",
     // Audio des messages / lecture immersive.
@@ -1117,10 +1120,10 @@ export async function createServerInstance() {
     if (process.env.NODE_ENV === 'production') {
       res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
     }
-    // CSP report-only uniquement sur les reponses de DOCUMENT/ASSET (pas l'API
+    // CSP (bloquante) uniquement sur les reponses de DOCUMENT/ASSET (pas l'API
     // JSON) : c'est la page chargee qui declenche/évalue la politique.
     if (!req.path.startsWith('/api')) {
-      res.setHeader('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
+      res.setHeader('Content-Security-Policy', CSP_POLICY);
     }
     next();
   });
