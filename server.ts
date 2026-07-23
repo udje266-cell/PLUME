@@ -1077,7 +1077,37 @@ export async function createServerInstance() {
 
   // ── En-têtes de sécurité (durcissement, sans dépendance type helmet) ────────
   // Protège contre le MIME-sniffing, le clickjacking et les fuites de referrer.
-  // Pas de CSP stricte ici (risquerait de casser l'app/Cloudinary) ; HSTS en prod.
+  // HSTS en prod. CSP posée en mode REPORT-ONLY (voir ci-dessous).
+  //
+  // CSP « report-only » : n'applique AUCUN blocage — le navigateur se contente
+  // de SIGNALER (POST vers /api/csp-report) ce qui serait refusé par cette
+  // politique. Objectif : observer les besoins reels de l'app (scripts, styles,
+  // images Cloudinary, connexions socket, Google Identity…) AVANT de passer un
+  // jour la CSP en mode bloquant. La politique reflete l'usage attendu ; on
+  // l'ajustera selon les rapports, puis on basculera sur `Content-Security-Policy`.
+  const CSP_REPORT_ONLY = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    // Scripts : le bundle de l'app + Google Identity Services (bouton Google).
+    "script-src 'self' https://accounts.google.com https://apis.google.com",
+    // Styles inline (attributs style de React / Tailwind) tolerés.
+    "style-src 'self' 'unsafe-inline'",
+    // Images : Cloudinary, avatars Google, data:/blob: (previews locales).
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    // API same-origin + WebSocket (socket.io) + Google.
+    "connect-src 'self' https: wss:",
+    // Audio des messages / lecture immersive.
+    "media-src 'self' blob: data: https:",
+    // Iframe du bouton Google.
+    "frame-src https://accounts.google.com",
+    "worker-src 'self' blob:",
+    'report-uri /api/csp-report',
+  ].join('; ');
+
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -1086,6 +1116,11 @@ export async function createServerInstance() {
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(self), camera=()');
     if (process.env.NODE_ENV === 'production') {
       res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+    }
+    // CSP report-only uniquement sur les reponses de DOCUMENT/ASSET (pas l'API
+    // JSON) : c'est la page chargee qui declenche/évalue la politique.
+    if (!req.path.startsWith('/api')) {
+      res.setHeader('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
     }
     next();
   });
@@ -1181,6 +1216,25 @@ export async function createServerInstance() {
     max: 40,
     message: 'Trop de créations en peu de temps. Patiente un moment.',
   });
+
+  // Collecte des rapports de violation CSP (envoyes par le navigateur en mode
+  // report-only). Parseur dedie (content-type application/csp-report), debit
+  // borne, journalisation compacte. Aucune donnee sensible ; toujours 204.
+  app.post(
+    '/api/csp-report',
+    clientErrorLimiter,
+    express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
+    (req: any, res) => {
+      try {
+        const body: any = req.body || {};
+        const r = body['csp-report'] || (Array.isArray(body) ? body[0]?.body : body) || {};
+        const directive = r['violated-directive'] || r.effectiveDirective || r.violatedDirective || '?';
+        const blocked = r['blocked-uri'] || r.blockedURL || '?';
+        console.warn(`[CSP-REPORT] directive=${String(directive).slice(0, 80)} blocked=${String(blocked).slice(0, 200)}`);
+      } catch { /* rapport malforme : ignore */ }
+      res.status(204).end();
+    },
+  );
 
   // Le JWT embarque la version de session (tv) : si l'utilisateur réinitialise
   // son mot de passe ou est banni, tokenVersion est incrémenté en base et tous
