@@ -1602,31 +1602,59 @@ export default function ReadingView({
     drawPlumeLogo(ctx, 665, 715, 0.45);
   };
 
-  const exportLyricardImage = () => {
+  // IMPORTANT : appele DIRECTEMENT depuis le clic (pas de setTimeout), car le
+  // partage natif `navigator.share` EXIGE un geste utilisateur : l'envelopper
+  // dans un timer le casserait (NotAllowedError) dans l'APK et sur mobile.
+  const exportLyricardImage = async () => {
+    const previewCanvas = previewCanvasRef.current;
+    if (!previewCanvas) return;
     setExportingLyricard(true);
-    setTimeout(() => {
-      try {
-        const previewCanvas = previewCanvasRef.current;
-        if (!previewCanvas) {
-          setExportingLyricard(false);
+    try {
+      drawPlumeCard(previewCanvas);
+
+      const fileName = `plume_citation_${story.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.png`;
+
+      // Le canvas -> Blob (plus fiable que toDataURL sur mobile).
+      const blob: Blob | null = await new Promise((resolve) =>
+        previewCanvas.toBlob((b) => resolve(b), 'image/png'),
+      );
+      if (!blob) throw new Error('canvas vide');
+
+      const file = new File([blob], fileName, { type: 'image/png' });
+      const nav: any = typeof navigator !== 'undefined' ? navigator : {};
+
+      // 1) MOBILE (web ET application) : la feuille de PARTAGE native permet
+      //    « Enregistrer l'image » / Photos / Fichiers. C'est le seul chemin
+      //    fiable dans la WebView de l'APK (le <a download> y est ignore) et
+      //    sur navigateur mobile (ou le download data-URL est capricieux).
+      if (typeof nav.canShare === 'function' && nav.canShare({ files: [file] })) {
+        try {
+          await nav.share({ files: [file], title: 'Ma PlumeCard', text: 'Une citation depuis PLUME 🪶' });
           return;
+        } catch (shareErr: any) {
+          // Annulation volontaire : on n'enchaine pas sur un telechargement.
+          if (shareErr?.name === 'AbortError') return;
+          // Autre erreur de partage : on tente le telechargement classique.
         }
-
-        drawPlumeCard(previewCanvas);
-
-        const dataUrl = previewCanvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = `plume_citation_${story.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.png`;
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        console.error("Erreur d'exportation de la PlumeCard:", err);
-      } finally {
-        setExportingLyricard(false);
       }
-    }, 400);
+
+      // 2) DESKTOP (ou pas de partage de fichiers) : telechargement via
+      //    Object URL (plus robuste que la data-URL).
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = url;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    } catch (err) {
+      console.error("Erreur d'exportation de la PlumeCard:", err);
+      alert("Impossible d'enregistrer la PlumeCard. Réessaie dans un instant.");
+    } finally {
+      setExportingLyricard(false);
+    }
   };
 
   // Theme styling definitions (V1 & V2 Adapted)
