@@ -538,9 +538,12 @@ export default function HomeView({
               <div key={story.id} className="w-36 flex-shrink-0 lg:w-auto bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
                 <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
                   <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  {started && (
+                  {/* Barre de progression : affichée UNIQUEMENT si elle a une
+                      valeur à montrer (percent > 0). Sinon (progression non
+                      encore calculable), on ne montre pas une barre vide/figée. */}
+                  {started && percent > 0 && (
                     <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
-                      <div className="h-full bg-purple-500" style={{ width: `${percent}%` }} />
+                      <div className="h-full bg-purple-500" style={{ width: `${Math.min(100, percent)}%` }} />
                     </div>
                   )}
                 </div>

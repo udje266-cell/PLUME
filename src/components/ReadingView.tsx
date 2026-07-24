@@ -45,6 +45,7 @@ import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Media } from '@capacitor-community/media';
@@ -848,9 +849,21 @@ export default function ReadingView({
     const onHide = () => { if (document.visibilityState === 'hidden') flushKeepalive(); };
     window.addEventListener('pagehide', flushKeepalive);
     document.addEventListener('visibilitychange', onHide);
+    // NATIF (Capacitor) : dans l'APK, `pagehide`/`visibilitychange` ne se
+    // déclenchent pas toujours quand l'utilisateur bascule/ferme l'app -> on
+    // ecoute l'evenement FIABLE de passage en arriere-plan pour synchroniser la
+    // position AVANT que le systeme ne tue l'app (sinon la progression est
+    // perdue apres une reinstallation).
+    let appStateHandle: { remove: () => void } | null = null;
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) flushKeepalive();
+      }).then((h) => { appStateHandle = h; }).catch(() => {});
+    }
     return () => {
       window.removeEventListener('pagehide', flushKeepalive);
       document.removeEventListener('visibilitychange', onHide);
+      appStateHandle?.remove();
     };
   }, []);
   // Chapitres REELLEMENT lus (defilement >= 95 % OU temps de lecture suffisant)
@@ -1102,10 +1115,11 @@ export default function ReadingView({
     }, 1000); // Temps suffisant pour la fin de la transition de scroll
   };
 
-  // Synchroniser le paragraphe actif avec le défilement de l'écran en mode cinéma
+  // Synchroniser le paragraphe actif avec le défilement de l'écran — dans TOUS
+  // les modes de lecture (plus seulement le mode cinéma). Le paragraphe en cours
+  // de lecture (le plus proche de la ligne de mire) est ainsi mis en évidence et
+  // suivi au défilement, que le mode cinéma soit actif ou non.
   useEffect(() => {
-    if (!isCinemaMode) return;
-
     const handleScroll = () => {
       if (isClickScrollingRef.current) return;
 
@@ -1169,7 +1183,7 @@ export default function ReadingView({
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (clickScrollTimeoutRef.current) clearTimeout(clickScrollTimeoutRef.current);
     };
-  }, [isCinemaMode, activeChapter.id]);
+  }, [activeChapter.id]);
 
   // Quand on active le mode cinéma, focaliser le paragraphe actif actuel
   useEffect(() => {
