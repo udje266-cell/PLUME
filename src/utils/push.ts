@@ -15,6 +15,28 @@ import { Capacitor } from '@capacitor/core';
 import { authHeaders } from './auth';
 
 let registered = false;
+// Dernier jeton FCM reçu : mémorisé pour pouvoir le DÉSENREGISTRER à la
+// déconnexion (sinon l'appareil continue de recevoir les notifications de
+// l'ancien compte).
+let lastFcmToken: string | null = null;
+
+// À appeler À LA DÉCONNEXION (avant de purger la session) : dissocie ce jeton
+// d'appareil du compte côté serveur, pour STOPPER les notifications push de ce
+// compte sur cet appareil.
+export async function unregisterPushNotifications(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || !lastFcmToken) { registered = false; return; }
+  try {
+    await fetch('/api/devices/unregister', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ token: lastFcmToken }),
+    });
+  } catch { /* hors-ligne : au pire, le jeton devient périmé côté FCM */ }
+  finally {
+    lastFcmToken = null;
+    registered = false; // permet un ré-enregistrement propre au prochain login
+  }
+}
 
 export async function initPushNotifications(): Promise<void> {
   if (registered || !Capacitor.isNativePlatform()) return;
@@ -34,6 +56,7 @@ export async function initPushNotifications(): Promise<void> {
 
     // Jeton FCM reçu → on l'envoie au serveur.
     await PushNotifications.addListener('registration', async (token) => {
+      lastFcmToken = token.value;
       try {
         await fetch('/api/devices/register', {
           method: 'POST',

@@ -45,7 +45,7 @@ import { GroupCallManager } from './utils/groupCall';
 import { startRingtone, stopRingtone } from './utils/ringtone';
 import { enqueueAction, flushQueue, queueLength, onQueueChange } from './utils/offlineQueue';
 import { mergeServerStickers } from './utils/stickers';
-import { initPushNotifications } from './utils/push';
+import { initPushNotifications, unregisterPushNotifications } from './utils/push';
 import { Capacitor } from '@capacitor/core';
 import PullToRefresh from './components/PullToRefresh';
 import InstallPrompt from './components/InstallPrompt';
@@ -3396,6 +3396,10 @@ export default function App() {
 
   // Log Out
   const handleLogout = () => {
+    // Dissocie CE jeton d'appareil du compte AVANT de purger la session (l'en-tête
+    // d'auth est capté de façon synchrone) : sinon l'appareil continuerait de
+    // recevoir les notifications push de l'ancien compte.
+    unregisterPushNotifications().catch(() => {});
     // Demande au serveur d'effacer le cookie httpOnly d'authentification.
     fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
     setAuthToken(null);

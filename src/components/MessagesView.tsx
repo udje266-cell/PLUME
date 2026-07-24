@@ -50,6 +50,42 @@ import { VerifiedBadge } from './VerifiedBadge';
 import GroupSettingsView from './GroupSettingsView';
 import { generateCoverDataUri } from '../utils/coverImage';
 
+// Rend un texte de message en transformant les URL en LIENS CLIQUABLES (ouverts
+// dans le navigateur / une nouvelle vue). Le reste est rendu comme du texte
+// React (échappé) — aucune injection HTML. La ponctuation finale collée à l'URL
+// (« . », « ) »…) est laissée hors du lien.
+function renderMessageText(text: string): React.ReactNode {
+  if (!text) return text;
+  const urlRe = /(https?:\/\/[^\s<]+)/g;
+  const out: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = urlRe.exec(text)) !== null) {
+    if (m.index > lastIndex) out.push(text.slice(lastIndex, m.index));
+    let url = m[0];
+    let trail = '';
+    const t = url.match(/[.,!?;:)\]]+$/);
+    if (t) { trail = t[0]; url = url.slice(0, -trail.length); }
+    out.push(
+      <a
+        key={`lnk-${key++}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline font-semibold break-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>,
+    );
+    if (trail) out.push(trail);
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) out.push(text.slice(lastIndex));
+  return out.length ? out : text;
+}
+
 /**
  * Accusés de lecture « façon plume » (style WhatsApp) :
  *   • 1 plume blanche  → message envoyé
@@ -1577,7 +1613,7 @@ export default function MessagesView({
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
-                            {msg.content}
+                            {renderMessageText(msg.content)}
                           </p>
                         )}
 
@@ -1720,7 +1756,7 @@ export default function MessagesView({
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words pr-1 text-left">
-                            {msg.content}
+                            {renderMessageText(msg.content)}
                           </p>
                         )}
 
