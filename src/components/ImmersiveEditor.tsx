@@ -17,24 +17,33 @@ import { Story, Chapter } from '../types';
 import { useAndroidBack } from '../utils/backButton';
 import { authHeaders } from '../utils/auth';
 
-// Appel a l'assistant IA serveur (Gemini). Renvoie le texte genere, ou null si
-// l'IA est indisponible (aucune cle configuree, erreur reseau, quota) — l'appelant
-// bascule alors sur le moteur local. Erreurs de saisie (429/400) -> exception.
+// Assistant d'ecriture en priorite LOCAL. On tente le serveur (Gemini) avec un
+// TIMEOUT court ; a la moindre indisponibilite (quota/429, erreur, lenteur,
+// reseau), on renvoie null -> l'appelant bascule SILENCIEUSEMENT sur le moteur
+// local (aucun blocage, aucune erreur affichee). Ainsi le volet fonctionne
+// toujours, meme sans cle Gemini valide.
 async function requestAI(mode: string, text: string): Promise<string | null> {
   try {
-    const res = await fetch('/api/ai/assist', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ mode, text }),
-    });
-    if (res.status === 503) return null; // IA non configuree -> repli local
-    if (res.status === 429) throw new Error('Patiente un instant avant une nouvelle requete IA.');
-    if (!res.ok) return null; // 4xx/5xx divers -> repli local silencieux
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    let res: Response;
+    try {
+      res = await fetch('/api/ai/assist', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ mode, text }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    // 503 (non configuree), 429 (quota), 4xx/5xx : dans TOUS les cas on retombe
+    // sur le moteur local, sans exception ni message d'erreur.
+    if (!res.ok) return null;
     const data = await res.json();
     return typeof data.result === 'string' && data.result.trim() ? data.result.trim() : null;
-  } catch (e: any) {
-    if (e?.message?.includes('Patiente')) throw e;
-    return null; // reseau injoignable -> repli local
+  } catch {
+    return null; // timeout / abort / reseau -> repli local
   }
 }
 
@@ -912,10 +921,21 @@ export default function ImmersiveEditor({
     setAiNote('L’assistant IA réécrit ton texte…');
     try {
       const ai = await requestAI('rewrite', text);
-      if (ai) { setAiResult(ai); setAiNote('Version réécrite par l’IA. Relis avant d’appliquer.'); }
-      else { setAiResult(''); setAiNote("Assistant IA indisponible : aucune clé n'est configurée sur le serveur."); }
-    } catch (e: any) {
-      setAiResult(''); setAiNote(e?.message || 'Assistant IA indisponible.');
+      if (ai) {
+        setAiResult(ai);
+        setAiNote('Version réécrite par l’IA. Relis avant d’appliquer.');
+      } else {
+        // Pas d'IA distante : AMÉLIORATION LOCALE — nettoyage typographique
+        // (ponctuation, espaces, majuscules) + redécoupage soigné en paragraphes.
+        const { text: cleaned } = cleanFrenchTypography(text);
+        const polished = segmentIntoParagraphs(cleaned).join('\n\n');
+        setAiResult(polished || cleaned);
+        setAiNote('Amélioration locale : typographie et structure soignées. Relis avant d’appliquer.');
+      }
+    } catch {
+      const { text: cleaned } = cleanFrenchTypography(text);
+      setAiResult(cleaned);
+      setAiNote('Amélioration locale appliquée. Relis avant d’appliquer.');
     } finally {
       setAiBusy(false);
     }
