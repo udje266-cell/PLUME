@@ -47,6 +47,7 @@ import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Media } from '@capacitor-community/media';
 
 // ── Rendu du contenu de chapitre avec mise en forme inline (gras/italique/
 // souligne). Le contenu peut etre du HTML leger (nouveaux chapitres ecrits dans
@@ -1618,25 +1619,30 @@ export default function ReadingView({
       const fileName = `plume_citation_${story.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.png`;
 
       // ── APPLICATION NATIVE (Android/iOS via Capacitor) ────────────────────
-      // Le <a download> et navigator.share sont peu fiables dans la WebView :
-      // on ECRIT le PNG sur l'appareil (Filesystem) puis on ouvre la feuille de
-      // partage NATIVE (plugin Share) -> « Enregistrer l'image », Photos,
-      // Fichiers, WhatsApp… C'est le chemin garanti dans l'APK.
+      // On ECRIT le PNG sur l'appareil (Filesystem) puis on l'ENREGISTRE
+      // DIRECTEMENT dans la galerie Photos (plugin Media). Repli sur la feuille
+      // de partage native si l'enregistrement direct echoue (ancien appareil,
+      // permission refusee).
       if (Capacitor.isNativePlatform()) {
         const base64 = previewCanvas.toDataURL('image/png').split(',')[1];
         await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Cache });
         const { uri } = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
         try {
-          await Share.share({
-            title: 'Ma PlumeCard',
-            text: 'Une citation depuis PLUME 🪶',
-            url: uri,
-            dialogTitle: 'Enregistrer ou partager ma PlumeCard',
-          });
-        } catch (shareErr: any) {
-          // Annulation par l'utilisateur : pas une erreur (ne pas alerter).
-          const msg = String(shareErr?.message || shareErr || '').toLowerCase();
-          if (!msg.includes('cancel') && !msg.includes('abort')) throw shareErr;
+          await Media.savePhoto({ path: uri, fileName, albumIdentifier: undefined });
+          alert('PlumeCard enregistrée dans ta galerie 🖼️');
+        } catch (mediaErr) {
+          console.error('Enregistrement galerie echoue, repli sur le partage:', mediaErr);
+          try {
+            await Share.share({
+              title: 'Ma PlumeCard',
+              text: 'Une citation depuis PLUME 🪶',
+              url: uri,
+              dialogTitle: 'Enregistrer ou partager ma PlumeCard',
+            });
+          } catch (shareErr: any) {
+            const msg = String(shareErr?.message || shareErr || '').toLowerCase();
+            if (!msg.includes('cancel') && !msg.includes('abort')) throw shareErr;
+          }
         }
         return;
       }

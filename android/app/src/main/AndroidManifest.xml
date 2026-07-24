@@ -70,4 +70,8 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- Notifications push (Android 13+ exige une permission runtime). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Enregistrer une PlumeCard dans la galerie. Sur Android 10+ (API 29+),
+         l'ecriture passe par MediaStore SANS permission ; on ne declare
+         WRITE_EXTERNAL_STORAGE que pour les anciennes versions. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 </manifest>
