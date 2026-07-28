@@ -5,11 +5,13 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Send, 
-  MessageSquare, 
-  Plus, 
-  Search, 
+import {
+  Send,
+  MessageSquare,
+  Plus,
+  Compass,
+  Loader2,
+  Search,
   ArrowLeft,
   Info,
   CheckCheck,
@@ -642,6 +644,45 @@ export default function MessagesView({
   // Modals state
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
+  // Découverte des groupes PUBLICS (visible & ouvert).
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [publicGroups, setPublicGroups] = useState<Array<{ id: string; name: string; description: string; avatar?: string; memberCount: number; requireApproval: boolean; isMember: boolean }>>([]);
+  const [discoverBusy, setDiscoverBusy] = useState(false);
+  const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
+
+  const openDiscover = async () => {
+    setDiscoverOpen(true);
+    setDiscoverBusy(true);
+    try {
+      const res = await fetch('/api/groups/public', { headers: authHeaders() });
+      const data = await res.json().catch(() => []);
+      setPublicGroups(Array.isArray(data) ? data : []);
+    } catch { setPublicGroups([]); }
+    finally { setDiscoverBusy(false); }
+  };
+
+  const joinPublicGroup = async (gid: string) => {
+    setJoiningGroupId(gid);
+    try {
+      const res = await fetch('/api/groups/join', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ groupId: gid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(data.error || 'Adhésion impossible.'); return; }
+      if (data.status === 'pending') {
+        alert('Demande envoyée — un administrateur doit l’approuver.');
+        setPublicGroups((prev) => prev.map((g) => g.id === gid ? { ...g, isMember: true } : g));
+      } else {
+        // Le serveur emet `group_created` -> l'app ajoute le groupe a la liste.
+        setPublicGroups((prev) => prev.map((g) => g.id === gid ? { ...g, isMember: true } : g));
+        setDiscoverOpen(false);
+        if (data.group?.id) { setActiveGroupId(data.group.id); }
+      }
+    } catch { alert('Erreur réseau.'); }
+    finally { setJoiningGroupId(null); }
+  };
 
   // New Group Form States
   const [newGroupName, setNewGroupName] = useState('');
@@ -1141,8 +1182,55 @@ export default function MessagesView({
               >
                 <Users className="w-4.5 h-4.5" />
               </button>
+              <button
+                type="button"
+                onClick={openDiscover}
+                className="p-1.5 hover:bg-purple-100/60 dark:hover:bg-purple-950/20 rounded-full text-purple-600 dark:text-purple-400 font-bold transition flex items-center justify-center"
+                title="Découvrir des groupes publics"
+              >
+                <Compass className="w-4.5 h-4.5" />
+              </button>
             </div>
           </div>
+
+          {/* MODALE : DÉCOUVRIR DES GROUPES PUBLICS */}
+          {discoverOpen && (
+            <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={() => setDiscoverOpen(false)}>
+              <div className="w-full sm:max-w-md bg-white dark:bg-[#0E0E14] rounded-t-3xl sm:rounded-3xl border border-gray-150 dark:border-purple-900/20 shadow-2xl max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-zinc-800">
+                  <h3 className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2"><Compass className="w-4 h-4 text-purple-600" /> Groupes publics</h3>
+                  <button onClick={() => setDiscoverOpen(false)} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {discoverBusy ? (
+                    <div className="flex items-center justify-center py-12 text-purple-500"><Loader2 className="w-6 h-6 animate-spin" /></div>
+                  ) : publicGroups.length === 0 ? (
+                    <p className="text-center text-xs text-gray-400 py-12 px-6 leading-relaxed">Aucun groupe public pour l’instant. Crée-en un et passe-le en « Public » dans ses réglages !</p>
+                  ) : (
+                    publicGroups.map((g) => (
+                      <div key={g.id} className="flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50 dark:bg-black/30 border border-gray-100 dark:border-purple-900/15">
+                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center overflow-hidden shrink-0">
+                          {g.avatar ? <img src={g.avatar} alt={g.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <Users className="w-5 h-5 text-purple-500" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-gray-900 dark:text-white truncate">{g.name}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{g.memberCount} membre{g.memberCount > 1 ? 's' : ''}{g.description ? ` · ${g.description}` : ''}</p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={g.isMember || joiningGroupId === g.id}
+                          onClick={() => joinPublicGroup(g.id)}
+                          className="shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-1"
+                        >
+                          {joiningGroupId === g.id ? <Loader2 className="w-3 h-3 animate-spin" /> : g.isMember ? 'Rejoint' : (g.requireApproval ? 'Demander' : 'Rejoindre')}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Symmetrical interactive Tabs with sleek indicator lines */}
           <div className="flex bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 text-xs font-semibold select-none">
