@@ -58,30 +58,28 @@ import { generateCoverDataUri } from '../utils/coverImage';
 // (« . », « ) »…) est laissée hors du lien.
 function renderMessageText(text: string): React.ReactNode {
   if (!text) return text;
-  const urlRe = /(https?:\/\/[^\s<]+)/g;
+  // Deux motifs : URL (lien cliquable) OU mention @pseudo (surlignée).
+  const tokenRe = /(https?:\/\/[^\s<]+)|(@[\p{L}0-9_]{2,})/gu;
   const out: React.ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
   let key = 0;
-  while ((m = urlRe.exec(text)) !== null) {
+  while ((m = tokenRe.exec(text)) !== null) {
     if (m.index > lastIndex) out.push(text.slice(lastIndex, m.index));
-    let url = m[0];
-    let trail = '';
-    const t = url.match(/[.,!?;:)\]]+$/);
-    if (t) { trail = t[0]; url = url.slice(0, -trail.length); }
-    out.push(
-      <a
-        key={`lnk-${key++}`}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline font-semibold break-all"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {url}
-      </a>,
-    );
-    if (trail) out.push(trail);
+    if (m[1]) {
+      let url = m[1];
+      let trail = '';
+      const t = url.match(/[.,!?;:)\]]+$/);
+      if (t) { trail = t[0]; url = url.slice(0, -trail.length); }
+      out.push(
+        <a key={`lnk-${key++}`} href={url} target="_blank" rel="noopener noreferrer" className="underline font-semibold break-all" onClick={(e) => e.stopPropagation()}>{url}</a>,
+      );
+      if (trail) out.push(trail);
+    } else if (m[2]) {
+      out.push(
+        <span key={`men-${key++}`} className="font-black bg-purple-400/25 rounded px-0.5">{m[2]}</span>,
+      );
+    }
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < text.length) out.push(text.slice(lastIndex));
@@ -324,6 +322,9 @@ export default function MessagesView({
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
 
   const [messageText, setMessageText] = useState('');
+  // Autocomplétion des mentions @ (groupes).
+  const [mentionActive, setMentionActive] = useState(false);
+  const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [customStickers, setCustomStickers] = useState<string[]>(() => getCustomStickers());
@@ -783,8 +784,42 @@ export default function MessagesView({
   // « En train d'écrire » : on prévient l'interlocuteur quand on tape, et on
   // arrête après une courte pause. (Conversations privées uniquement.)
   const typingStopRef = useRef<any>(null);
+  // Autocomplétion des MENTIONS @ (groupes) : on détecte un jeton « @partiel »
+  // juste avant le curseur et on propose les membres correspondants.
+  const detectMention = (value: string) => {
+    if (!activeGroupId) { setMentionActive(false); return; }
+    const el = messageInputRef.current;
+    const pos = el ? (el.selectionStart ?? value.length) : value.length;
+    const before = value.slice(0, pos);
+    const m = before.match(/(?:^|\s)@([\p{L}0-9_]*)$/u);
+    if (!m) { setMentionActive(false); return; }
+    const q = m[1].toLowerCase();
+    const memberIds = activeGroup?.members || [];
+    const sugg = (allUsers || [])
+      .filter((u) => memberIds.includes(u.id) && u.id !== currentUser.id && u.username.toLowerCase().includes(q))
+      .slice(0, 6);
+    setMentionSuggestions(sugg);
+    setMentionActive(sugg.length > 0);
+  };
+
+  const applyMention = (username: string) => {
+    const el = messageInputRef.current;
+    const value = messageText;
+    const pos = el ? (el.selectionStart ?? value.length) : value.length;
+    const before = value.slice(0, pos).replace(/(?:^|\s)@([\p{L}0-9_]*)$/u, (full) => {
+      const lead = /^\s/.test(full) ? full[0] : '';
+      return `${lead}@${username} `;
+    });
+    const after = value.slice(pos);
+    const newVal = before + after;
+    setMessageText(newVal);
+    setMentionActive(false);
+    setTimeout(() => { el?.focus(); const np = before.length; el?.setSelectionRange(np, np); }, 0);
+  };
+
   const handleTypingChange = (value: string) => {
     setMessageText(value);
+    detectMention(value);
     if (activeGroupId) {
       const members = activeGroup?.members || [];
       onGroupTyping?.(activeGroupId, members, true);
@@ -976,7 +1011,7 @@ export default function MessagesView({
       if (activeGroupId) onEditGroupMessage?.(editingMsg.id, messageText.trim());
       else onEditMessage?.(editingMsg.id, messageText.trim());
       setEditingMsg(null);
-      setMessageText('');
+      setMessageText(''); setMentionActive(false);
       return;
     }
 
@@ -989,7 +1024,7 @@ export default function MessagesView({
       onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
     }
     setReplyTo(null);
-    setMessageText('');
+    setMessageText(''); setMentionActive(false);
     // Fin de saisie : on arrête l'indicateur « écrit… » chez l'interlocuteur.
     if (!activeGroupId && interlocutor) {
       clearTimeout(typingStopRef.current);
@@ -2078,6 +2113,23 @@ export default function MessagesView({
                   <Lock className="w-4 h-4 shrink-0" /> <span>{composerLockReason}</span>
                 </div>
               ) : (
+              <>
+              {/* Autocomplétion des MENTIONS @ (groupes). */}
+              {mentionActive && activeGroupId && mentionSuggestions.length > 0 && (
+                <div className="mb-1.5 bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/25 rounded-2xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                  {mentionSuggestions.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => applyMention(u.username)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-purple-500/10 transition text-left"
+                    >
+                      <img src={u.avatar} alt={u.username} className="w-7 h-7 rounded-full object-cover bg-zinc-200 dark:bg-zinc-800 shrink-0" referrerPolicy="no-referrer" />
+                      <span className="text-xs font-bold text-gray-900 dark:text-white truncate">@{u.username}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <form onSubmit={handleSend} className="flex items-end space-x-1.5">
                 {isRecording || uploadingVoice ? (
                   /* Barre d'enregistrement vocal (privé ET groupe). */
@@ -2159,6 +2211,7 @@ export default function MessagesView({
                   </>
                 )}
               </form>
+              </>
               )}
 
           </div>
