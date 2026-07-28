@@ -1513,6 +1513,38 @@ export default function MessagesView({
             );
           })()}
 
+          {/* BANDEAU « MESSAGE ÉPINGLÉ » (groupe) — facon WhatsApp : affiche le
+              dernier message epingle, cliquable pour y sauter ; les moderateurs
+              peuvent le desepingler. */}
+          {activeGroupId && (() => {
+            const pinnedMsgs = activeGroupMessages.filter((m: any) => m.pinned && !m.deletedForEveryone);
+            if (pinnedMsgs.length === 0) return null;
+            const top = pinnedMsgs[pinnedMsgs.length - 1] as any;
+            const preview = parseSticker(top.content) ? '🪶 Sticker'
+              : (top.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale'
+              : (top.content || '');
+            const jumpTo = () => {
+              const el = document.getElementById(`gmsg-${top.id}`);
+              if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('ring-2', 'ring-purple-500', 'rounded-2xl'); setTimeout(() => el.classList.remove('ring-2', 'ring-purple-500', 'rounded-2xl'), 1600); }
+            };
+            return (
+              <div className="px-3 py-2 bg-purple-50/80 dark:bg-purple-950/25 border-b border-purple-500/15 backdrop-blur-md flex items-center gap-2 shrink-0 animate-fade-in select-none">
+                <button type="button" onClick={jumpTo} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                  <span className="text-sm shrink-0">📌</span>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 leading-none">Message épinglé{pinnedMsgs.length > 1 ? ` (${pinnedMsgs.length})` : ''}</p>
+                    <p className="text-[11px] text-gray-700 dark:text-gray-200 truncate leading-snug">{preview}</p>
+                  </div>
+                </button>
+                {isGroupModPlus && (
+                  <button type="button" onClick={() => pinGroupMsg(top)} title="Désépingler" className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-500/10 transition">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* ACTIVE CHAT WORKSPACE AREA */}
           <div ref={scrollContainerRef} className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 overscroll-contain" style={{ ...chatBgStyle, WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', willChange: 'scroll-position' }}>
             {activeGroupId ? (
@@ -1553,7 +1585,8 @@ export default function MessagesView({
                   return (
                     <React.Fragment key={msg.id}>{dateSep}
                     <div
-                      className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                      id={`gmsg-${msg.id}`}
+                      className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in scroll-mt-24`}
                     >
                       <div
                         onTouchStart={() => startLongPress(msg as any)}

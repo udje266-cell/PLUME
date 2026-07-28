@@ -4587,12 +4587,55 @@ export async function createServerInstance() {
   });
 
   // Rejoindre via code d'invitation.
+  // Découverte : groupes PUBLICS (visible & ouvert), pour les rejoindre sans lien.
+  app.get('/api/groups/public', requireAuth, async (req: any, res) => {
+    try {
+      const groups = await prisma.readingGroup.findMany({
+        where: { visibility: 'public' },
+        select: {
+          id: true, name: true, description: true, avatar: true, storyId: true,
+          requireApproval: true, createdAt: true,
+          _count: { select: { members: true } },
+          members: { where: { id: req.user.id }, select: { id: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 60,
+      });
+      res.json(groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description || '',
+        avatar: g.avatar || undefined,
+        storyId: g.storyId || undefined,
+        memberCount: g._count.members,
+        requireApproval: !!g.requireApproval,
+        isMember: g.members.length > 0,
+      })));
+    } catch (error) {
+      console.error('[GROUPS] public:', error);
+      res.status(500).json({ error: 'Erreur lors du chargement des groupes publics.' });
+    }
+  });
+
   app.post('/api/groups/join', requireAuth, async (req: any, res) => {
     try {
       const code = String(req.body?.code || '').trim();
-      if (!code) return res.status(400).json({ error: 'Code requis.' });
-      const group = await prisma.readingGroup.findUnique({ where: { inviteCode: code }, include: { members: { select: { id: true } } } });
-      if (!group || group.inviteEnabled === false) return res.status(404).json({ error: 'Lien d’invitation invalide ou désactivé.' });
+      const groupId = String(req.body?.groupId || '').trim();
+      let group: any = null;
+      if (code) {
+        group = await prisma.readingGroup.findUnique({ where: { inviteCode: code }, include: { members: { select: { id: true } } } });
+        if (!group || group.inviteEnabled === false) return res.status(404).json({ error: 'Lien d’invitation invalide ou désactivé.' });
+      } else if (groupId) {
+        // Adhesion DIRECTE par identifiant : reservee aux groupes PUBLICS (les
+        // « privé »/« invite » exigent un lien / un ajout par un admin).
+        group = await prisma.readingGroup.findUnique({ where: { id: groupId }, include: { members: { select: { id: true } } } });
+        if (!group) return res.status(404).json({ error: 'Groupe introuvable.' });
+        if (group.visibility !== 'public') {
+          return res.status(403).json({ error: 'Ce groupe n’est pas public : il faut un lien d’invitation.' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Code ou groupe requis.' });
+      }
       const existing = await getMembership(group.id, req.user.id);
       if (existing?.status === 'banned') return res.status(403).json({ error: 'Vous avez été banni de ce groupe.' });
       if (group.members.some((m: any) => m.id === req.user.id)) {

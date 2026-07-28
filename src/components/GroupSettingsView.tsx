@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import {
   ChevronLeft, Camera, Pencil, Check, X, Link2, RotateCcw, Power, Copy,
   UserPlus, Crown, Shield, ShieldCheck, User as UserIcon, Trash2, Ban, LogOut,
-  MoreVertical, MessageCircle, Megaphone, Globe, Lock, EyeOff, Users, Clock, Loader2,
+  MoreVertical, MessageCircle, Megaphone, Globe, Lock, EyeOff, Users, Clock, Loader2, Share2,
 } from 'lucide-react';
 import { User, ReadingGroup, GroupMembership, GroupRole } from '../types';
 import { authHeaders } from '../utils/auth';
@@ -126,6 +126,26 @@ export default function GroupSettingsView({ group, currentUser, allUsers, onClos
   }, [group.id]);
   const inviteLink = invite ? groupInviteUrl(invite.code) : '';
   const copyInvite = () => { if (inviteLink) { navigator.clipboard?.writeText(inviteLink).catch(() => {}); showToast('Lien copié.'); } };
+  // Partage NATIF du lien d'invitation (facon WhatsApp) : feuille de partage du
+  // telephone -> WhatsApp, SMS, etc. Repli sur navigator.share (web) puis copie.
+  const shareInvite = async () => {
+    if (!inviteLink || !invite?.enabled) return;
+    const text = `Rejoins mon groupe de lecture « ${group.name} » sur PLUME 🪶`;
+    try {
+      const { Capacitor } = await import('@capacitor/core');
+      if (Capacitor.isNativePlatform()) {
+        const { Share } = await import('@capacitor/share');
+        await Share.share({ title: 'Invitation PLUME', text, url: inviteLink, dialogTitle: 'Partager l’invitation' });
+        return;
+      }
+    } catch { /* natif indisponible -> web ci-dessous */ }
+    const nav = navigator as any;
+    if (typeof nav.share === 'function') {
+      try { await nav.share({ title: 'Invitation PLUME', text, url: inviteLink }); return; }
+      catch (e: any) { if (e?.name === 'AbortError') return; }
+    }
+    copyInvite(); // dernier repli : copie dans le presse-papiers
+  };
   const resetInvite = async () => { const r = await api(`/api/groups/${group.id}/invite/reset`, 'POST'); if (r?.code) { setInvite({ code: r.code, enabled: invite?.enabled ?? true }); showToast('Nouveau lien généré.'); } };
   const toggleInvite = async () => { const next = !(invite?.enabled ?? true); const r = await api(`/api/groups/${group.id}/invite/toggle`, 'POST', { enabled: next }); if (r) setInvite((p) => p ? { ...p, enabled: next } : p); };
 
@@ -305,6 +325,8 @@ export default function GroupSettingsView({ group, currentUser, allUsers, onClos
                 <span className="text-xs text-gray-600 dark:text-gray-300 font-mono truncate flex-1">{invite?.enabled ? (inviteLink || '...') : 'Lien désactivé'}</span>
                 <button onClick={copyInvite} disabled={!invite?.enabled} className="text-purple-600 disabled:opacity-40" aria-label="Copier"><Copy className="w-4 h-4" /></button>
               </div>
+              {/* Partager le lien directement (facon WhatsApp). */}
+              <button onClick={shareInvite} disabled={!invite?.enabled} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-[11px] font-black uppercase flex items-center justify-center gap-1.5 transition"><Share2 className="w-3.5 h-3.5" /> Partager le lien d'invitation</button>
               <div className="flex gap-2">
                 <button onClick={resetInvite} className="flex-1 py-2 rounded-xl bg-gray-100 dark:bg-zinc-850 text-gray-700 dark:text-gray-200 text-[11px] font-black uppercase flex items-center justify-center gap-1.5"><RotateCcw className="w-3.5 h-3.5" /> Réinitialiser</button>
                 <button onClick={toggleInvite} className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase flex items-center justify-center gap-1.5 ${invite?.enabled ? 'bg-red-500/10 text-red-600 dark:text-red-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}><Power className="w-3.5 h-3.5" /> {invite?.enabled ? 'Désactiver' : 'Activer'}</button>
