@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ArrowLeft, 
   BookOpen, 
@@ -1196,7 +1197,10 @@ export default function ReadingView({
       setIsSpeaking(false);
       return;
     }
-    if (!ttsSupported()) return;
+    if (!ttsSupported()) {
+      alert("La synthèse vocale n'est pas disponible sur cet appareil. Vérifie que la synthèse vocale (Google/Samsung TTS) est installée et activée dans les réglages Android.");
+      return;
+    }
     const from = speakIdxRef.current || activeParagraphIndex || 0;
     speakFrom(from);
   };
@@ -1953,11 +1957,14 @@ export default function ReadingView({
         </div>
       )}
 
-      {/* LECTEUR AUDIO FLOTTANT (« livre audio ») — visible seulement si la
-          fonctionnalite est activee et supportee par l'appareil. */}
-      {audiobookEnabled && ttsSupported() && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[60] animate-fade-in select-none">
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-full bg-black/70 backdrop-blur-md text-white shadow-2xl border border-white/10">
+      {/* LECTEUR AUDIO FLOTTANT (« livre audio ») — rendu via un PORTAL sur
+          document.body avec un z-index tres eleve pour passer AU-DESSUS de la
+          barre de navigation du bas (qui a un z-index extreme). Visible des que
+          la fonctionnalite est activee (l'indisponibilite eventuelle de la
+          synthese est signalee au moment du clic). */}
+      {audiobookEnabled && createPortal(
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-28 z-[2147483000] animate-fade-in select-none" style={{ bottom: 'max(7rem, calc(env(safe-area-inset-bottom) + 6rem))' }}>
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-full bg-black/80 backdrop-blur-md text-white shadow-2xl border border-white/15">
             <button
               onClick={toggleAudiobook}
               aria-label={isSpeaking ? 'Mettre en pause' : 'Écouter le livre'}
@@ -1996,7 +2003,8 @@ export default function ReadingView({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* 3. MULTI-LAYER READING BOARD CHASSIS */}
@@ -2212,7 +2220,7 @@ export default function ReadingView({
                   </button>
 
                   {/* Livre audio (synthese vocale) : activation/desactivation. */}
-                  {ttsSupported() && (
+                  {(
                     <button
                       id="toggle-audiobook-btn"
                       onClick={() => setAudiobookEnabled((v) => !v)}
