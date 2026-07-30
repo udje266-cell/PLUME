@@ -121,6 +121,7 @@ export interface Story {
   authorVerified: boolean;
   cover: string;
   genre: string;
+  genres?: string[];
   category: string;
   ambiance: string;
   format: string;

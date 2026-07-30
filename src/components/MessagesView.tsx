@@ -1228,10 +1228,12 @@ export default function MessagesView({
             </div>
           </div>
 
-          {/* MODALE : DÉCOUVRIR DES GROUPES PUBLICS */}
-          {discoverOpen && (
-            <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={() => setDiscoverOpen(false)}>
-              <div className="w-full sm:max-w-md bg-white dark:bg-[#0E0E14] rounded-t-3xl sm:rounded-3xl border border-gray-150 dark:border-purple-900/20 shadow-2xl max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          {/* MODALE : DÉCOUVRIR DES GROUPES PUBLICS. Rendue via un PORTAL sur
+              document.body pour être TOUJOURS au-dessus de la barre de navigation
+              du bas (et jamais piégée par un ancêtre transformé/scrollable). */}
+          {discoverOpen && createPortal(
+            <div className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDiscoverOpen(false)}>
+              <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl border border-gray-150 dark:border-purple-900/20 shadow-2xl max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-zinc-800">
                   <h3 className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2"><Compass className="w-4 h-4 text-purple-600" /> Groupes publics</h3>
                   <button onClick={() => setDiscoverOpen(false)} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white"><X className="w-4 h-4" /></button>
@@ -1264,7 +1266,8 @@ export default function MessagesView({
                   )}
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
 
           {/* Symmetrical interactive Tabs with sleek indicator lines */}

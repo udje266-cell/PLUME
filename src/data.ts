@@ -8,16 +8,29 @@ import { Story, User, Comment, Message } from './types';
 export const GENRES = [
   'Science-Fiction',
   'Thriller & Policier',
+  'Thriller',
+  'Thriller psychologique',
+  'Huis clos',
   'Romance',
   'Fantasy',
+  'Fantastique',
   'Réaliste',
+  'Contemporain',
   'Drame',
   'Poésie',
   'Historique',
   'Action',
-  'Mystère',
   'Aventure',
-  'Surnaturel'
+  'Mystère',
+  'Policier',
+  'Surnaturel',
+  'Horreur',
+  'Épouvante',
+  'Dystopie',
+  'Comédie',
+  'Jeunesse',
+  'Young Adult',
+  'Nouvelle'
 ];
 
 export const CATEGORIES = [

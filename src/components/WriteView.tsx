@@ -133,7 +133,12 @@ export default function WriteView({
   // Create / Edit Story Form fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [genre, setGenre] = useState(GENRES[0]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([GENRES[0]]);
+  const toggleGenre = (g: string) => {
+    setSelectedGenres(prev =>
+      prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]
+    );
+  };
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [ambiance, setAmbiance] = useState(AMBIANCES[0]);
   const [format, setFormat] = useState(FORMATS[0]);
@@ -241,7 +246,7 @@ export default function WriteView({
   const resetStoryForm = () => {
     setTitle('');
     setDescription('');
-    setGenre(GENRES[0]);
+    setSelectedGenres([GENRES[0]]);
     setCategory(CATEGORIES[0]);
     setAmbiance(AMBIANCES[0]);
     setFormat(FORMATS[0]);
@@ -258,7 +263,11 @@ export default function WriteView({
     setSelectedStoryToEdit(story);
     setTitle(story.title);
     setDescription(story.description);
-    setGenre(story.genre);
+    setSelectedGenres(
+      Array.isArray(story.genres) && story.genres.length
+        ? story.genres
+        : (story.genre ? [story.genre] : [GENRES[0]])
+    );
     setCategory(story.category || CATEGORIES[0]);
     setAmbiance(story.ambiance || AMBIANCES[0]);
     setFormat(story.format || FORMATS[0]);
@@ -341,12 +350,15 @@ export default function WriteView({
     if (!title.trim() || !description.trim()) return;
 
     const tagsArray = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+    const genresArray = selectedGenres.length ? selectedGenres : [GENRES[0]];
+    const primaryGenre = genresArray[0];
 
     if (selectedStoryToEdit) {
       onUpdateStory(selectedStoryToEdit.id, {
         title,
         description,
-        genre,
+        genre: primaryGenre,
+        genres: genresArray,
         category,
         ambiance,
         format,
@@ -369,7 +381,8 @@ export default function WriteView({
         authorAvatar: currentUser.avatar,
         authorVerified: currentUser.isVerified,
         cover: finalCover,
-        genre,
+        genre: primaryGenre,
+        genres: genresArray,
         category,
         ambiance,
         format,
@@ -406,7 +419,7 @@ export default function WriteView({
       // Clean creator values so they are fresh for any future session
       setTitle('');
       setDescription('');
-      setGenre(GENRES[0]);
+      setSelectedGenres([GENRES[0]]);
       setCategory(CATEGORIES[0]);
       setAmbiance(AMBIANCES[0]);
       setFormat(FORMATS[0]);
@@ -671,16 +684,31 @@ export default function WriteView({
 
             {/* Selector Grid */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Genre Principal</label>
-                <select
-                  id="create-story-genre"
-                  value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs focus:outline-none"
-                >
-                  {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
+              <div className="col-span-2">
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">
+                  Genres Principaux
+                  <span className="ml-2 font-normal normal-case text-gray-400">(un ou plusieurs)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
+                  {GENRES.map(g => {
+                    const active = selectedGenres.includes(g);
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => toggleGenre(g)}
+                        aria-pressed={active}
+                        className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
+                          active
+                            ? 'bg-purple-600 border-purple-600 text-white'
+                            : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:border-purple-400'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div>

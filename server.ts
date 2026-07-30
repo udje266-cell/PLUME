@@ -243,9 +243,13 @@ function serializeTome(tome: any) {
 function serializeStory(story: any) {
   if (!story) return story;
   const author = story.author ? serializeUser(story.author) : null;
+  // Genres multiples : on renvoie TOUJOURS un tableau non vide (repli sur le
+  // genre principal historique si `genres` est vide, pour les œuvres anciennes).
+  const genresArr = parseJsonArray(story.genres);
   return {
     ...story,
     tags: parseJsonArray(story.tags),
+    genres: genresArr.length ? genresArr : (story.genre ? [story.genre] : []),
     status: storyStatusFromPrisma(story.status),
     ageRating: ageRatingFromPrisma(story.ageRating),
     structure: story.structure === 'tomes' ? 'tomes' : 'chapters',
@@ -2928,13 +2932,22 @@ export async function createServerInstance() {
       if (tooLong(story.title, LIMITS.title) || tooLong(story.description, LIMITS.description)) {
         return res.status(400).json({ error: 'Titre (max 300) ou description (max 8000) trop long.' });
       }
+      // On accepte désormais plusieurs genres principaux. Le champ scalaire
+      // `genre` (obligatoire dans le schéma) reçoit le premier genre pour
+      // conserver la compatibilité, tandis que la liste complète est
+      // sérialisée dans `genres`.
+      const genresList = (Array.isArray(story.genres) && story.genres.length
+        ? story.genres
+        : (story.genre ? [story.genre] : []))
+        .filter((g: unknown): g is string => typeof g === 'string' && g.trim().length > 0);
       const newStory = await prisma.story.create({
         data: {
           id: story.id || undefined,
           title: story.title || 'Sans titre',
           description: story.description || '',
           cover: story.cover || null,
-          genre: story.genre || 'Non classé',
+          genre: genresList[0] || 'Non classé',
+          genres: JSON.stringify(genresList),
           category: story.category || null,
           ambiance: story.ambiance || null,
           format: story.format || null,
@@ -2970,11 +2983,15 @@ export async function createServerInstance() {
       if (tooLong(story.title, LIMITS.title) || tooLong(story.description, LIMITS.description)) {
         return res.status(400).json({ error: 'Titre (max 300) ou description (max 8000) trop long.' });
       }
+      const genresUpdate = Array.isArray(story.genres)
+        ? story.genres.filter((g: unknown): g is string => typeof g === 'string' && g.trim().length > 0)
+        : null;
       const data: any = {
         title: story.title,
         description: story.description,
         cover: story.cover,
-        genre: story.genre,
+        genre: genresUpdate && genresUpdate.length ? genresUpdate[0] : story.genre,
+        genres: genresUpdate ? JSON.stringify(genresUpdate) : undefined,
         category: story.category,
         ambiance: story.ambiance,
         format: story.format,

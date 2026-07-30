@@ -2767,6 +2767,7 @@ export default function App() {
       authorVerified: currentUser.isVerified,
       cover: storyData.cover || generateCoverDataUri(storyData.title || 'PLUME'),
       genre: storyData.genre || 'Science-Fiction',
+      genres: (Array.isArray(storyData.genres) && storyData.genres.length ? storyData.genres : (storyData.genre ? [storyData.genre] : [])),
       category: storyData.category || 'Roman',
       ambiance: storyData.ambiance || 'Mystérieux',
       format: storyData.format || 'Roman Fleuve',

@@ -180,23 +180,31 @@ export default function ExplorerView({
       const matchAuthor = normalizeText(story.authorName).includes(textQuery);
       const matchDesc = normalizeText(story.description).includes(textQuery);
       const matchTags = story.tags.some(t => normalizeText(t).includes(textQuery));
-      const matchGenre = normalizeText(story.genre).includes(textQuery);
+      const storyGenreList = (Array.isArray(story.genres) && story.genres.length ? story.genres : [story.genre]);
+      const matchGenre = storyGenreList.some(g => normalizeText(g).includes(textQuery));
       if (!matchTitle && !matchAuthor && !matchDesc && !matchTags && !matchGenre) {
         return false;
       }
     }
 
+    // Liste complète des genres du récit (multi-genres, avec repli sur le
+    // genre principal historique).
+    const storyGenres = (Array.isArray(story.genres) && story.genres.length ? story.genres : [story.genre]);
+
     // Genre selector check
     if (selectedGenre !== 'Tous') {
       const gNorm = selectedGenre.toLowerCase();
-      const stNorm = story.genre.toLowerCase();
-      if (!stNorm.includes(gNorm) && !gNorm.includes(stNorm)) return false;
+      const match = storyGenres.some(g => {
+        const stNorm = g.toLowerCase();
+        return stNorm.includes(gNorm) || gNorm.includes(stNorm);
+      });
+      if (!match) return false;
     }
 
     // Lateral parent filter sync
     if (activeFilter && selectedGenre === 'Tous') {
       const { type, value } = activeFilter;
-      if (type === 'genre' && !story.genre.toLowerCase().includes(value.toLowerCase())) return false;
+      if (type === 'genre' && !storyGenres.some(g => g.toLowerCase().includes(value.toLowerCase()))) return false;
       if (type === 'category' && story.category !== value) return false;
       if (type === 'ambiance' && story.ambiance !== value) return false;
       if (type === 'format' && story.format !== value) return false;

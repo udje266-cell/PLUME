@@ -129,7 +129,11 @@ model Story {
   title          String
   description    String
   cover          String?
+  // Genre PRINCIPAL (compat historique + tri) = 1er des genres selectionnes.
   genre          String
+  // Genres principaux MULTIPLES (JSON array). Permet a une œuvre d'appartenir a
+  // plusieurs genres (ex. Thriller + Huis clos). `genre` reste le premier.
+  genres         String   @default("[]")
   category       String?
   ambiance       String?
   format         String?
