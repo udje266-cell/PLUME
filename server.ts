@@ -4673,6 +4673,39 @@ export async function createServerInstance() {
       if (group.requireApproval) {
         await ensureMembership(group.id, req.user.id, 'member', 'pending');
         await broadcastGroupUpdate(group.id);
+        // ALERTER les administrateurs : sans ca, la demande d'adhesion etait une
+        // « action sans consequence » (aucune notification, l'admin devait ouvrir
+        // les reglages du groupe par hasard). On notifie chaque admin/proprietaire
+        // (temps reel + push), en evitant de se notifier soi-meme.
+        try {
+          const admins = await prisma.groupMember.findMany({
+            where: { groupId: group.id, role: { in: ['owner', 'admin'] }, status: 'active' },
+            select: { userId: true },
+          });
+          const adminIds = new Set<string>(admins.map((a) => a.userId));
+          if (group.creatorId) adminIds.add(group.creatorId);
+          adminIds.delete(req.user.id);
+          for (const adminId of adminIds) {
+            const notification = await prisma.notification.create({
+              data: {
+                userId: adminId,
+                type: 'GROUP_REQUEST' as any,
+                title: 'Demande d’adhésion',
+                message: `@${req.user.username || 'Un utilisateur'} souhaite rejoindre « ${group.name} ».`,
+                data: {
+                  groupId: group.id,
+                  groupName: group.name,
+                  actorId: req.user.id,
+                  actorName: req.user.username,
+                  actorAvatar: req.user.avatar || '',
+                } as any,
+              },
+            });
+            notifyUser(adminId, notification);
+          }
+        } catch (e) {
+          console.error('[GROUPS] notif demande adhesion:', e);
+        }
         return res.json({ status: 'pending' });
       }
       await prisma.readingGroup.update({ where: { id: group.id }, data: { members: { connect: { id: req.user.id } } } });

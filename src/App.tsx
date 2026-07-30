@@ -84,6 +84,9 @@ function mapServerNotificationType(type: string): AppNotification['type'] {
     COMMENT_REPLY: 'comment',
     NEW_CHAPTER: 'comment',
     NEW_STORY: 'comment', // porte un storyId → le clic ouvre l'œuvre
+    // Demande d'adhesion a un groupe : porte un groupId → le clic ouvre le
+    // groupe (l'admin y approuve la demande via Reglages → Demandes en attente).
+    GROUP_REQUEST: 'message',
   };
   return map[type] || 'follow';
 }
