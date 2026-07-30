@@ -658,23 +658,43 @@ export default function MessagesView({
     setDiscoverBusy(true);
     setDiscoverSearch('');
     setDiscoverError('');
+    // Le backend Render se met en veille apres 15 min : la 1re requete peut
+    // tomber pendant le reveil (502/503) ou juste apres. On RESISTE au reveil a
+    // froid en reessayant plusieurs fois avec une attente croissante, plutot que
+    // d'afficher une erreur immediate qui laisse croire que le groupe a disparu.
+    const delays = [0, 1500, 2500, 4000, 6000]; // ~14 s de tentatives
+    let lastStatus = 0;
     try {
-      const res = await fetch('/api/groups/public', { headers: authHeaders() });
-      if (!res.ok) {
-        // On distingue clairement une erreur serveur / reveil a froid d'un
-        // veritable « aucun groupe », pour ne pas laisser croire a l'utilisateur
-        // que son groupe public a disparu.
-        setDiscoverError('Impossible de charger les groupes publics (le serveur se reveille peut-etre). Reessaie dans quelques secondes.');
-        setPublicGroups([]);
-        return;
+      for (let i = 0; i < delays.length; i++) {
+        if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+        try {
+          const res = await fetch('/api/groups/public', { headers: authHeaders() });
+          lastStatus = res.status;
+          // 401 = jeton invalide (inutile de reessayer) ; on sort avec erreur.
+          if (res.status === 401) {
+            setDiscoverError('Session expiree. Reconnecte-toi puis reessaie.');
+            setPublicGroups([]);
+            return;
+          }
+          if (res.ok) {
+            const data = await res.json().catch(() => []);
+            setPublicGroups(Array.isArray(data) ? data : []);
+            setDiscoverError('');
+            return;
+          }
+          // 5xx (reveil Render) -> on laisse la boucle reessayer.
+        } catch {
+          // Erreur reseau (serveur pas encore joignable) -> on reessaie.
+        }
       }
-      const data = await res.json().catch(() => []);
-      setPublicGroups(Array.isArray(data) ? data : []);
-    } catch {
-      setDiscoverError('Connexion au serveur impossible. Verifie ta connexion puis reessaie.');
+      // Toutes les tentatives ont echoue.
+      setDiscoverError(
+        lastStatus >= 500 || lastStatus === 0
+          ? 'Le serveur se reveille (mise en veille apres inactivite). Patiente ~30 s puis appuie sur Reessayer.'
+          : `Impossible de charger les groupes publics (code ${lastStatus}). Reessaie.`
+      );
       setPublicGroups([]);
-    }
-    finally { setDiscoverBusy(false); }
+    } finally { setDiscoverBusy(false); }
   };
 
   // Filtrage LOCAL des groupes publics par la barre de recherche : on ne montre
