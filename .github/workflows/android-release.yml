@@ -52,7 +52,12 @@ jobs:
       - name: Build du bundle web (vers le backend)
         run: npm run build:mobile
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://plume-app-fudd.onrender.com' }}
+          # URL du backend CANONIQUE (le seul service defini dans render.yaml).
+          # On ne passe plus par la variable de depot `vars.VITE_API_URL` : elle
+          # pointait vers une ANCIENNE URL Render (routes obsoletes -> 404 sur les
+          # endpoints recents comme /api/groups/public). On force l'URL du service
+          # de production pour que l'APK et le backend restent alignes.
+          VITE_API_URL: 'https://plume-app-fudd.onrender.com'
           VITE_CLOUDINARY_CLOUD_NAME: ${{ vars.VITE_CLOUDINARY_CLOUD_NAME }}
           VITE_CLOUDINARY_UPLOAD_PRESET: ${{ vars.VITE_CLOUDINARY_UPLOAD_PRESET }}
           # WEB Client ID Google (identifiant PUBLIC, déjà présent dans le bundle
