@@ -650,17 +650,43 @@ export default function MessagesView({
   const [publicGroups, setPublicGroups] = useState<Array<{ id: string; name: string; description: string; avatar?: string; memberCount: number; requireApproval: boolean; isMember: boolean }>>([]);
   const [discoverBusy, setDiscoverBusy] = useState(false);
   const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
+  const [discoverSearch, setDiscoverSearch] = useState('');
+  const [discoverError, setDiscoverError] = useState('');
 
   const openDiscover = async () => {
     setDiscoverOpen(true);
     setDiscoverBusy(true);
+    setDiscoverSearch('');
+    setDiscoverError('');
     try {
       const res = await fetch('/api/groups/public', { headers: authHeaders() });
+      if (!res.ok) {
+        // On distingue clairement une erreur serveur / reveil a froid d'un
+        // veritable « aucun groupe », pour ne pas laisser croire a l'utilisateur
+        // que son groupe public a disparu.
+        setDiscoverError('Impossible de charger les groupes publics (le serveur se reveille peut-etre). Reessaie dans quelques secondes.');
+        setPublicGroups([]);
+        return;
+      }
       const data = await res.json().catch(() => []);
       setPublicGroups(Array.isArray(data) ? data : []);
-    } catch { setPublicGroups([]); }
+    } catch {
+      setDiscoverError('Connexion au serveur impossible. Verifie ta connexion puis reessaie.');
+      setPublicGroups([]);
+    }
     finally { setDiscoverBusy(false); }
   };
+
+  // Filtrage LOCAL des groupes publics par la barre de recherche : on ne montre
+  // que ceux dont le nom (ou la description) correspond. Les groupes prives ne
+  // sont jamais renvoyes par l'API, donc jamais listes ici.
+  const filteredPublicGroups = (() => {
+    const q = discoverSearch.trim().toLowerCase();
+    if (!q) return publicGroups;
+    return publicGroups.filter((g) =>
+      g.name.toLowerCase().includes(q) || (g.description || '').toLowerCase().includes(q)
+    );
+  })();
 
   const joinPublicGroup = async (gid: string) => {
     setJoiningGroupId(gid);
@@ -1238,13 +1264,38 @@ export default function MessagesView({
                   <h3 className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2"><Compass className="w-4 h-4 text-purple-600" /> Groupes publics</h3>
                   <button onClick={() => setDiscoverOpen(false)} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white"><X className="w-4 h-4" /></button>
                 </div>
+                {/* Barre de recherche : ne liste que les groupes PUBLICS correspondants. */}
+                <div className="px-4 pt-3 pb-1">
+                  <div className="relative bg-gray-100/80 dark:bg-zinc-900 rounded-xl flex items-center px-3 py-2 border border-transparent focus-within:border-purple-400">
+                    <Search className="w-4 h-4 text-purple-400 dark:text-zinc-500 shrink-0 mr-2.5" />
+                    <input
+                      type="text"
+                      value={discoverSearch}
+                      onChange={(e) => setDiscoverSearch(e.target.value)}
+                      placeholder="Rechercher un groupe public..."
+                      className="w-full bg-transparent text-xs text-gray-900 dark:text-white placeholder-gray-400 border-none outline-none focus:ring-0 p-0"
+                    />
+                    {discoverSearch && (
+                      <button onClick={() => setDiscoverSearch('')} className="ml-2 shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Effacer">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="flex-1 overflow-y-auto p-3 space-y-2">
                   {discoverBusy ? (
                     <div className="flex items-center justify-center py-12 text-purple-500"><Loader2 className="w-6 h-6 animate-spin" /></div>
+                  ) : discoverError ? (
+                    <div className="text-center py-12 px-6 space-y-3">
+                      <p className="text-xs text-red-500 leading-relaxed">{discoverError}</p>
+                      <button onClick={openDiscover} className="px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider bg-purple-600 text-white hover:bg-purple-700">Reessayer</button>
+                    </div>
                   ) : publicGroups.length === 0 ? (
                     <p className="text-center text-xs text-gray-400 py-12 px-6 leading-relaxed">Aucun groupe public pour l’instant. Crée-en un et passe-le en « Public » dans ses réglages !</p>
+                  ) : filteredPublicGroups.length === 0 ? (
+                    <p className="text-center text-xs text-gray-400 py-12 px-6 leading-relaxed">Aucun groupe public ne correspond à « {discoverSearch.trim()} ».</p>
                   ) : (
-                    publicGroups.map((g) => (
+                    filteredPublicGroups.map((g) => (
                       <div key={g.id} className="flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50 dark:bg-black/30 border border-gray-100 dark:border-purple-900/15">
                         <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center overflow-hidden shrink-0">
                           {g.avatar ? <img src={g.avatar} alt={g.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <Users className="w-5 h-5 text-purple-500" />}
