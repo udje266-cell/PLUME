@@ -23,6 +23,8 @@ import {
   Volume2,
   VolumeX,
   Headphones,
+  Play,
+  Pause,
   Sparkles,
   Info,
   Maximize2,
@@ -44,6 +46,7 @@ import { getBookProgress, saveBookProgress, getScrollParent, buildParaMeta, book
 import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
+import { ttsSupported, loadVoices, pickFrenchVoice, speakText, ttsCancel } from '../utils/tts';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
@@ -482,7 +485,7 @@ export default function ReadingView({
   // en cours de lecture (taille, thème, interligne, police) était PERDU en
   // fermant le livre — il fallait tout re-régler à chaque session.
   const readingPrefsKey = `plume_reading_prefs_${currentUser.id}`;
-  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme }> => {
+  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme; audiobookEnabled: boolean; speechRate: number }> => {
     try {
       const raw = JSON.parse(localStorage.getItem(readingPrefsKey) || '{}') || {};
       // VALIDATION : des valeurs corrompues (NaN, 999, enum inconnu) cassaient
@@ -493,6 +496,9 @@ export default function ReadingView({
       if (['serif', 'sans', 'mono'].includes(raw.fontStyle)) out.fontStyle = raw.fontStyle;
       if (['compact', 'normal', 'relaxed'].includes(raw.lineSpacing)) out.lineSpacing = raw.lineSpacing;
       if (['light', 'sepia', 'dark', 'dimmed'].includes(raw.readingTheme)) out.readingTheme = raw.readingTheme;
+      if (typeof raw.audiobookEnabled === 'boolean') out.audiobookEnabled = raw.audiobookEnabled;
+      const sr = Number(raw.speechRate);
+      if (Number.isFinite(sr)) out.speechRate = Math.min(2, Math.max(0.5, sr));
       return out;
     } catch { return {}; }
   })();
@@ -500,9 +506,12 @@ export default function ReadingView({
   const [fontStyle, setFontStyle] = useState<FontStyleType>(savedPrefs.fontStyle ?? prefFontStyle); // Typography presets
   const [lineSpacing, setLineSpacing] = useState<LineSpacingType>(savedPrefs.lineSpacing ?? 'normal');
   const [readingTheme, setReadingTheme] = useState<ReadingTheme>(savedPrefs.readingTheme ?? prefTheme);
+  // « Livre audio » (synthèse vocale). Activable/désactivable, réglable en vitesse.
+  const [audiobookEnabled, setAudiobookEnabled] = useState<boolean>(savedPrefs.audiobookEnabled ?? true);
+  const [speechRate, setSpeechRate] = useState<number>(savedPrefs.speechRate ?? 1);
   useEffect(() => {
-    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme })); } catch { /* plein */ }
-  }, [fontSize, fontStyle, lineSpacing, readingTheme, readingPrefsKey]);
+    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, speechRate })); } catch { /* plein */ }
+  }, [fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, speechRate, readingPrefsKey]);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
   
   // Interactive Custom controls
@@ -1092,7 +1101,11 @@ export default function ReadingView({
   // Gérer la sélection manuelle de paragraphe (click)
   const handleParagraphSelect = (pIdx: number) => {
     setActiveParagraphIndex(pIdx);
-    
+    // Livre audio : taper un paragraphe déplace le point de lecture vocale ; si
+    // la narration est en cours, elle reprend depuis ce paragraphe.
+    speakIdxRef.current = pIdx;
+    if (speakingRef.current) speakFrom(pIdx);
+
     if (clickScrollTimeoutRef.current) {
       clearTimeout(clickScrollTimeoutRef.current);
     }
@@ -1114,6 +1127,84 @@ export default function ReadingView({
       isClickScrollingRef.current = false;
     }, 1000); // Temps suffisant pour la fin de la transition de scroll
   };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // « LIVRE AUDIO » : lecture vocale du chapitre, paragraphe par paragraphe.
+  // Le paragraphe lu est surligné (activeParagraphIndex) et amené à l'écran.
+  // La lecture enchaîne les paragraphes puis passe au chapitre suivant.
+  // ─────────────────────────────────────────────────────────────────────────
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const speakingRef = useRef<boolean>(false);   // true tant que la lecture audio tourne
+  const speakIdxRef = useRef<number>(0);          // dernier paragraphe lu (reprise)
+  const frVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const speechRateRef = useRef<number>(speechRate);
+  useEffect(() => { speechRateRef.current = speechRate; }, [speechRate]);
+
+  useEffect(() => {
+    if (!ttsSupported()) return;
+    loadVoices().then((vs) => { frVoiceRef.current = pickFrenchVoice(vs); }).catch(() => {});
+  }, []);
+
+  const stopAudiobook = () => {
+    speakingRef.current = false;
+    ttsCancel();
+    setIsSpeaking(false);
+  };
+
+  const speakFrom = (startIdx: number) => {
+    if (!ttsSupported()) return;
+    ttsCancel();
+    speakingRef.current = true;
+    setIsSpeaking(true);
+    const speakOne = (i: number) => {
+      if (!speakingRef.current) return;
+      const chapParas = contentToParagraphs(story.chapters?.[chapterIdxRef.current]?.content || '');
+      if (i >= chapParas.length) {
+        // Fin de chapitre : on enchaîne sur le suivant s'il existe, sinon on s'arrête.
+        const nextCh = chapterIdxRef.current + 1;
+        if (nextCh < (story.chapters?.length || 0)) {
+          setActiveChapterIndex(nextCh);
+          setTimeout(() => {
+            if (!speakingRef.current) return;
+            speakIdxRef.current = 0;
+            setActiveParagraphIndex(0);
+            scrollToParagraph(0);
+            speakOne(0);
+          }, 450); // laisser le nouveau chapitre se monter
+        } else {
+          stopAudiobook();
+        }
+        return;
+      }
+      speakIdxRef.current = i;
+      setActiveParagraphIndex(i);
+      scrollToParagraph(i);
+      speakText(chapParas[i].text, {
+        rate: speechRateRef.current,
+        voice: frVoiceRef.current,
+        onend: () => { if (speakingRef.current) speakOne(i + 1); },
+      });
+    };
+    speakOne(startIdx);
+  };
+
+  const toggleAudiobook = () => {
+    if (isSpeaking) {
+      // Pause : on garde la position pour reprendre au même paragraphe.
+      speakingRef.current = false;
+      ttsCancel();
+      setIsSpeaking(false);
+      return;
+    }
+    if (!ttsSupported()) return;
+    const from = speakIdxRef.current || activeParagraphIndex || 0;
+    speakFrom(from);
+  };
+
+  // Arrêt de la synthèse quand on quitte le lecteur (démontage).
+  useEffect(() => () => { speakingRef.current = false; ttsCancel(); }, []);
+  // Si l'utilisateur DÉSACTIVE la fonctionnalité en cours de lecture, on coupe.
+  useEffect(() => { if (!audiobookEnabled) stopAudiobook(); }, [audiobookEnabled]);
 
   // Synchroniser le paragraphe actif avec le défilement de l'écran — dans TOUS
   // les modes de lecture (plus seulement le mode cinéma). Le paragraphe en cours
@@ -1862,6 +1953,52 @@ export default function ReadingView({
         </div>
       )}
 
+      {/* LECTEUR AUDIO FLOTTANT (« livre audio ») — visible seulement si la
+          fonctionnalite est activee et supportee par l'appareil. */}
+      {audiobookEnabled && ttsSupported() && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[60] animate-fade-in select-none">
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-full bg-black/70 backdrop-blur-md text-white shadow-2xl border border-white/10">
+            <button
+              onClick={toggleAudiobook}
+              aria-label={isSpeaking ? 'Mettre en pause' : 'Écouter le livre'}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] transition shrink-0"
+            >
+              {isSpeaking ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+            </button>
+            <div className="flex items-center gap-1.5 pr-1.5">
+              <Headphones className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">
+                {isSpeaking ? 'Lecture…' : 'Livre audio'}
+              </span>
+              {/* Vitesse de lecture */}
+              <select
+                value={speechRate}
+                onChange={(e) => setSpeechRate(Number(e.target.value))}
+                onClick={(e) => e.stopPropagation()}
+                className="ml-1 bg-white/10 rounded-md text-[11px] font-bold px-1.5 py-1 outline-none cursor-pointer"
+                title="Vitesse de lecture"
+              >
+                <option className="text-black" value={0.75}>0.75×</option>
+                <option className="text-black" value={1}>1×</option>
+                <option className="text-black" value={1.25}>1.25×</option>
+                <option className="text-black" value={1.5}>1.5×</option>
+                <option className="text-black" value={2}>2×</option>
+              </select>
+              {isSpeaking && (
+                <button
+                  onClick={stopAudiobook}
+                  aria-label="Arrêter"
+                  className="ml-0.5 flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition shrink-0"
+                  title="Arrêter la lecture audio"
+                >
+                  <VolumeX className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3. MULTI-LAYER READING BOARD CHASSIS */}
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 relative">
         
@@ -2073,6 +2210,26 @@ export default function ReadingView({
                       {isCinemaMode ? 'Actif' : 'Désactivé'}
                     </span>
                   </button>
+
+                  {/* Livre audio (synthese vocale) : activation/desactivation. */}
+                  {ttsSupported() && (
+                    <button
+                      id="toggle-audiobook-btn"
+                      onClick={() => setAudiobookEnabled((v) => !v)}
+                      className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border font-bold transition select-none cursor-pointer ${
+                        audiobookEnabled
+                          ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-sm'
+                          : 'bg-gray-100 dark:bg-zinc-800/70 border-gray-200 dark:border-zinc-705 text-gray-550'
+                      }`}
+                      title="Écoutez le livre comme un livre audio (lecture vocale)."
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                      <span>Livre audio</span>
+                      <span className={`text-[9px] py-0.2 px-1 rounded uppercase ${audiobookEnabled ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
+                        {audiobookEnabled ? 'Activé' : 'Désactivé'}
+                      </span>
+                    </button>
+                  )}
 
                   {/* Reading Theme Selectors list */}
                   <div className="flex items-center gap-1">
