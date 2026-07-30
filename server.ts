@@ -4350,6 +4350,40 @@ export async function createServerInstance() {
 
   const genInviteCode = () => crypto.randomBytes(6).toString('base64url');
 
+  // Découverte : groupes PUBLICS (visible & ouvert), pour les rejoindre sans
+  // lien. IMPORTANT : cette route DOIT etre declaree AVANT `/api/groups/:id`,
+  // sinon Express fait matcher « /api/groups/public » sur « :id » (id="public")
+  // -> le handler ci-dessous n'est jamais atteint et l'app recoit un 404
+  // « Groupe introuvable » (avec jeton) ou 401 (sans jeton).
+  app.get('/api/groups/public', requireAuth, async (req: any, res) => {
+    try {
+      const groups = await prisma.readingGroup.findMany({
+        where: { visibility: 'public' },
+        select: {
+          id: true, name: true, description: true, avatar: true, storyId: true,
+          requireApproval: true, createdAt: true,
+          _count: { select: { members: true } },
+          members: { where: { id: req.user.id }, select: { id: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 60,
+      });
+      res.json(groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description || '',
+        avatar: g.avatar || undefined,
+        storyId: g.storyId || undefined,
+        memberCount: g._count.members,
+        requireApproval: !!g.requireApproval,
+        isMember: g.members.length > 0,
+      })));
+    } catch (error) {
+      console.error('[GROUPS] public:', error);
+      res.status(500).json({ error: 'Erreur lors du chargement des groupes publics.' });
+    }
+  });
+
   // GET un groupe complet (roster) — reserve aux membres actifs.
   app.get('/api/groups/:id', requireAuth, async (req: any, res) => {
     try {
@@ -4603,36 +4637,8 @@ export async function createServerInstance() {
     }
   });
 
-  // Rejoindre via code d'invitation.
-  // Découverte : groupes PUBLICS (visible & ouvert), pour les rejoindre sans lien.
-  app.get('/api/groups/public', requireAuth, async (req: any, res) => {
-    try {
-      const groups = await prisma.readingGroup.findMany({
-        where: { visibility: 'public' },
-        select: {
-          id: true, name: true, description: true, avatar: true, storyId: true,
-          requireApproval: true, createdAt: true,
-          _count: { select: { members: true } },
-          members: { where: { id: req.user.id }, select: { id: true } },
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: 60,
-      });
-      res.json(groups.map((g) => ({
-        id: g.id,
-        name: g.name,
-        description: g.description || '',
-        avatar: g.avatar || undefined,
-        storyId: g.storyId || undefined,
-        memberCount: g._count.members,
-        requireApproval: !!g.requireApproval,
-        isMember: g.members.length > 0,
-      })));
-    } catch (error) {
-      console.error('[GROUPS] public:', error);
-      res.status(500).json({ error: 'Erreur lors du chargement des groupes publics.' });
-    }
-  });
+  // (La route GET /api/groups/public est declaree plus haut, AVANT
+  // /api/groups/:id, pour ne pas etre masquee par le parametre :id.)
 
   app.post('/api/groups/join', requireAuth, async (req: any, res) => {
     try {
