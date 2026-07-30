@@ -26,6 +26,7 @@ import {
   Headphones,
   Play,
   Pause,
+  X,
   Sparkles,
   Info,
   Maximize2,
@@ -486,7 +487,7 @@ export default function ReadingView({
   // en cours de lecture (taille, thème, interligne, police) était PERDU en
   // fermant le livre — il fallait tout re-régler à chaque session.
   const readingPrefsKey = `plume_reading_prefs_${currentUser.id}`;
-  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme; audiobookEnabled: boolean; speechRate: number }> => {
+  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme; audiobookEnabled: boolean; audioMini: boolean; speechRate: number }> => {
     try {
       const raw = JSON.parse(localStorage.getItem(readingPrefsKey) || '{}') || {};
       // VALIDATION : des valeurs corrompues (NaN, 999, enum inconnu) cassaient
@@ -498,6 +499,7 @@ export default function ReadingView({
       if (['compact', 'normal', 'relaxed'].includes(raw.lineSpacing)) out.lineSpacing = raw.lineSpacing;
       if (['light', 'sepia', 'dark', 'dimmed'].includes(raw.readingTheme)) out.readingTheme = raw.readingTheme;
       if (typeof raw.audiobookEnabled === 'boolean') out.audiobookEnabled = raw.audiobookEnabled;
+      if (typeof raw.audioMini === 'boolean') out.audioMini = raw.audioMini;
       const sr = Number(raw.speechRate);
       if (Number.isFinite(sr)) out.speechRate = Math.min(2, Math.max(0.5, sr));
       return out;
@@ -509,10 +511,12 @@ export default function ReadingView({
   const [readingTheme, setReadingTheme] = useState<ReadingTheme>(savedPrefs.readingTheme ?? prefTheme);
   // « Livre audio » (synthèse vocale). Activable/désactivable, réglable en vitesse.
   const [audiobookEnabled, setAudiobookEnabled] = useState<boolean>(savedPrefs.audiobookEnabled ?? true);
+  // Lecteur audio replie en une petite pastille (pour ne pas encombrer l'ecran).
+  const [audioMini, setAudioMini] = useState<boolean>(savedPrefs.audioMini ?? false);
   const [speechRate, setSpeechRate] = useState<number>(savedPrefs.speechRate ?? 1);
   useEffect(() => {
-    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, speechRate })); } catch { /* plein */ }
-  }, [fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, speechRate, readingPrefsKey]);
+    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, audioMini, speechRate })); } catch { /* plein */ }
+  }, [fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, audioMini, speechRate, readingPrefsKey]);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
   
   // Interactive Custom controls
@@ -1963,46 +1967,68 @@ export default function ReadingView({
           la fonctionnalite est activee (l'indisponibilite eventuelle de la
           synthese est signalee au moment du clic). */}
       {audiobookEnabled && createPortal(
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-28 z-[2147483000] animate-fade-in select-none" style={{ bottom: 'max(7rem, calc(env(safe-area-inset-bottom) + 6rem))' }}>
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-full bg-black/80 backdrop-blur-md text-white shadow-2xl border border-white/15">
+        <div className="fixed right-3 z-[2147483000] animate-fade-in select-none" style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}>
+          {audioMini ? (
+            // REPLIÉ : petite pastille discrète (icône casque) — tap pour rouvrir.
             <button
-              onClick={toggleAudiobook}
-              aria-label={isSpeaking ? 'Mettre en pause' : 'Écouter le livre'}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] transition shrink-0"
+              onClick={() => setAudioMini(false)}
+              aria-label="Ouvrir le livre audio"
+              title="Livre audio"
+              className={`relative flex items-center justify-center w-11 h-11 rounded-full bg-black/70 backdrop-blur-md text-white shadow-2xl border border-white/15 transition ${isSpeaking ? 'ring-2 ring-purple-500' : ''}`}
             >
-              {isSpeaking ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              <Headphones className="w-5 h-5 text-purple-300" />
+              {isSpeaking && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />}
             </button>
-            <div className="flex items-center gap-1.5 pr-1.5">
-              <Headphones className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">
-                {isSpeaking ? 'Lecture…' : 'Livre audio'}
-              </span>
-              {/* Vitesse de lecture */}
-              <select
-                value={speechRate}
-                onChange={(e) => setSpeechRate(Number(e.target.value))}
-                onClick={(e) => e.stopPropagation()}
-                className="ml-1 bg-white/10 rounded-md text-[11px] font-bold px-1.5 py-1 outline-none cursor-pointer"
-                title="Vitesse de lecture"
+          ) : (
+            // DÉPLOYÉ : lecteur complet, avec un « × » pour le replier.
+            <div className="flex items-center gap-2 pl-2.5 pr-2 py-2 rounded-full bg-black/80 backdrop-blur-md text-white shadow-2xl border border-white/15">
+              <button
+                onClick={toggleAudiobook}
+                aria-label={isSpeaking ? 'Mettre en pause' : 'Écouter le livre'}
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] transition shrink-0"
               >
-                <option className="text-black" value={0.75}>0.75×</option>
-                <option className="text-black" value={1}>1×</option>
-                <option className="text-black" value={1.25}>1.25×</option>
-                <option className="text-black" value={1.5}>1.5×</option>
-                <option className="text-black" value={2}>2×</option>
-              </select>
-              {isSpeaking && (
-                <button
-                  onClick={stopAudiobook}
-                  aria-label="Arrêter"
-                  className="ml-0.5 flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition shrink-0"
-                  title="Arrêter la lecture audio"
+                {isSpeaking ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">
+                  {isSpeaking ? 'Lecture…' : 'Livre audio'}
+                </span>
+                {/* Vitesse de lecture */}
+                <select
+                  value={speechRate}
+                  onChange={(e) => setSpeechRate(Number(e.target.value))}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white/10 rounded-md text-[11px] font-bold px-1.5 py-1 outline-none cursor-pointer"
+                  title="Vitesse de lecture"
                 >
-                  <VolumeX className="w-3.5 h-3.5" />
+                  <option className="text-black" value={0.75}>0.75×</option>
+                  <option className="text-black" value={1}>1×</option>
+                  <option className="text-black" value={1.25}>1.25×</option>
+                  <option className="text-black" value={1.5}>1.5×</option>
+                  <option className="text-black" value={2}>2×</option>
+                </select>
+                {isSpeaking && (
+                  <button
+                    onClick={stopAudiobook}
+                    aria-label="Arrêter"
+                    className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition shrink-0"
+                    title="Arrêter la lecture audio"
+                  >
+                    <VolumeX className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {/* Replier le lecteur (le rend minuscule sans couper la lecture). */}
+                <button
+                  onClick={() => setAudioMini(true)}
+                  aria-label="Réduire le lecteur audio"
+                  className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition shrink-0"
+                  title="Masquer / réduire"
+                >
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>,
         document.body,
       )}
