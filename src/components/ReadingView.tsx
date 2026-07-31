@@ -2386,37 +2386,26 @@ export default function ReadingView({
             </div>
           )}
 
-          {/* Chapter headers */}
+          {/* Chapter headers — direction design : UN seul label (au lieu de trois
+              lignes de majuscules mono) + le titre serif mis en avant, et on
+              sort lectures/likes du seuil de lecture (ils vivent sur la fiche).
+              Il ne reste que ce qui prepare la lecture : reperage + duree. */}
           <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
-            {tomeLabel ? (
-              <>
-                <span className="text-[10px] uppercase font-mono tracking-widest text-purple-500 font-black block mb-1 leading-none">
-                  {tomeLabel.title}
-                </span>
-                <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
-                  Tome {tomeLabel.tomeNumber} • Chapitre {tomeLabel.chapterInTome}
-                </span>
-              </>
-            ) : (
-              <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-extrabold block mb-2 leading-none">
-                Récit {story.category} • Chapitre {activeChapterIndex + 1} de {story.chapters.length}
-              </span>
-            )}
-            <h2 className="text-2xl md:text-3xl font-serif font-black tracking-tight mb-4 leading-normal">
+            <span className="text-[10px] uppercase font-mono tracking-[0.16em] text-[#7C3AED] dark:text-purple-400 font-bold block mb-3 leading-none">
+              {tomeLabel
+                ? `Tome ${tomeLabel.tomeNumber} · Chapitre ${tomeLabel.chapterInTome}`
+                : `Chapitre ${activeChapterIndex + 1} sur ${story.chapters.length}`}
+              {' · '}{formatMinutes(chapterMinutes(activeChapter))} de lecture
+            </span>
+            <h2 className="text-2xl md:text-[1.9rem] font-serif font-semibold tracking-tight mb-3 leading-tight text-balance">
               {activeChapter.title}
             </h2>
-            
+
             {!isImmersive && (
-              <div className="flex items-center justify-center space-x-2 text-[10px] text-gray-450 font-mono select-none">
-                <span>Publié le {new Date(activeChapter.publishDate).toLocaleDateString()}</span>
-                <span>•</span>
-                <span>{paragraphs.length} Paragraphes</span>
-                <span>•</span>
+              <div className="flex items-center justify-center gap-2 text-[11px] text-gray-450 select-none">
+                <span>{paragraphs.length} paragraphes</span>
+                <span className="opacity-40">·</span>
                 <span>{Math.round(plainFromHtml(activeChapter.content).length / 5)} mots</span>
-                <span>•</span>
-                <span>{story.reads || 0} lectures</span>
-                <span>•</span>
-                <span>{story.likes || 0} likes</span>
               </div>
             )}
           </div>
