@@ -640,8 +640,8 @@ export default function HomeView({
                       <Share2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-[10px] font-black text-gray-900 dark:text-white line-clamp-1 cursor-pointer">{story.title}</h4>
-                  <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
+                  <h4 onClick={() => onSelectStory(story)} className="mt-1.5 font-serif text-[12px] font-semibold text-gray-900 dark:text-white line-clamp-1 cursor-pointer leading-tight">{story.title}</h4>
+                  <p className="text-[10px] text-gray-400 line-clamp-1">{story.authorName}</p>
                   <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-400">
                     <span className="flex items-center gap-0.5" title="Lectures"><Eye className="w-2.5 h-2.5 shrink-0" />{formatStat(story.reads || 0)}</span>
                     <span className="flex items-center gap-0.5" title="J’aime"><Heart className="w-2.5 h-2.5 shrink-0" />{formatStat(story.likes || 0)}</span>
