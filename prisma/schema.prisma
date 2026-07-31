@@ -629,3 +629,29 @@ model DeviceToken {
 
   @@index([userId])
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TELEMETRIE DE LECTURE (Phase 0 du moteur de recommandation).
+// Journal d'evenements APPEND-ONLY : la source de verite brute. On n'agrege
+// pas encore (Phase 1) ; on se contente de collecter proprement. Types :
+//   read_start | read_progress | read_end | complete | abandon
+//   (extensible : vote | favorite | comment | share | follow | quote ...)
+// payload (JSON) porte { percent, dwellMs, wpm, fromPercent, paragraph, device }.
+// trustAtTime fige la confiance de l'utilisateur au moment de l'event (1 par
+// defaut tant que l'anti-fraude n'est pas construit — Phase 3).
+// ─────────────────────────────────────────────────────────────────────────
+model ReadingEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  storyId     String
+  chapterId   String?
+  type        String
+  payload     Json?
+  sessionId   String?
+  trustAtTime Float    @default(1)
+  createdAt   DateTime @default(now())
+
+  @@index([storyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}

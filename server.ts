@@ -1225,6 +1225,67 @@ export async function createServerInstance() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // TELEMETRIE DE LECTURE (Phase 0 recommandation) — POST /api/events.
+  // Recoit des LOTS d'evenements (le client accumule et envoie par paquets) et
+  // les journalise en append-only dans ReadingEvent. Aucun calcul ici : on
+  // collecte proprement, l'agregation viendra en Phase 1. Debit borne, taille
+  // et types valides pour ne pas polluer le journal.
+  // ─────────────────────────────────────────────────────────────────────────
+  const EVENT_TYPES = new Set([
+    'read_start', 'read_progress', 'read_end', 'complete', 'abandon',
+    'vote', 'favorite', 'comment', 'share', 'follow', 'quote',
+  ]);
+  const eventsLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 120, // le client envoie par paquets -> tres peu de requetes en pratique
+    message: 'Trop d’événements. Patiente un moment.',
+  });
+  app.post('/api/events', requireAuth, eventsLimiter, async (req: any, res) => {
+    try {
+      const list = Array.isArray(req.body?.events) ? req.body.events : [];
+      if (!list.length) return res.json({ ok: true, n: 0 });
+      const now = Date.now();
+      const rows = list.slice(0, 100).map((e: any) => {
+        const type = String(e?.type || '');
+        const storyId = String(e?.storyId || '').trim();
+        if (!EVENT_TYPES.has(type) || !storyId) return null;
+        // On borne la charge utile (evite un payload geant) et on n'accepte que
+        // des cles connues, converties en nombres/strings surs.
+        let payload: any = null;
+        if (e?.payload && typeof e.payload === 'object') {
+          const p = e.payload;
+          payload = {};
+          for (const k of ['percent', 'dwellMs', 'wpm', 'fromPercent', 'paragraph', 'chapterIndex']) {
+            if (typeof p[k] === 'number' && Number.isFinite(p[k])) payload[k] = p[k];
+          }
+          if (typeof p.device === 'string') payload.device = p.device.slice(0, 24);
+        }
+        return {
+          userId: req.user.id,
+          storyId: storyId.slice(0, 64),
+          chapterId: e?.chapterId ? String(e.chapterId).slice(0, 64) : null,
+          type,
+          payload,
+          sessionId: e?.sessionId ? String(e.sessionId).slice(0, 48) : null,
+          // trustAtTime fige la confiance de l'utilisateur (1 tant que l'anti-
+          // fraude n'existe pas). Champ pret pour la Phase 3.
+          trustAtTime: 1,
+          // Horodatage serveur (on ignore l'horloge client, manipulable).
+          createdAt: new Date(now),
+        };
+      }).filter(Boolean) as any[];
+      if (!rows.length) return res.json({ ok: true, n: 0 });
+      await prisma.readingEvent.createMany({ data: rows });
+      res.json({ ok: true, n: rows.length });
+    } catch (error) {
+      console.error('[EVENTS]', error);
+      // On ne renvoie jamais d'erreur bloquante : la telemetrie ne doit JAMAIS
+      // degrader l'experience de lecture.
+      res.json({ ok: false });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // VOIX NEURONALE (livre audio « premium ») via ElevenLabs.
   // La cle API reste cote serveur (ELEVENLABS_API_KEY). On synthetise un
   // passage a la fois et on met en cache le mp3 (hash du texte + voix) pour ne

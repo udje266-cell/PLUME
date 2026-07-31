@@ -49,6 +49,7 @@ import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, unlockNeuralAudio, ttsCancel } from '../utils/tts';
+import { trackEvent, flushEvents } from '../utils/telemetry';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
@@ -906,7 +907,44 @@ export default function ReadingView({
     completionMarkedRef.current = true;
     onToggleCompletedStories(story.id);
     if (currentlyReadingRef.current.includes(story.id)) onToggleCurrentlyReading(story.id);
+    // Télémétrie (Phase 0) : complétion réelle du récit.
+    trackEvent('complete', story.id, { chapterId: story.chapters?.[chapterIdx]?.id, payload: { chapterIndex: chapterIdx } });
   };
+
+  // ── TÉLÉMÉTRIE DE LECTURE (Phase 0) ────────────────────────────────────────
+  // On mesure, par chapitre : temps réel passé (dwell), progression maximale
+  // atteinte et vitesse (wpm). Ces signaux honnêtes alimenteront le StoryScore.
+  const readStartTsRef = useRef<number>(Date.now());
+  const maxChapterRatioRef = useRef<number>(0);
+  const lastProgressEmitRef = useRef<number>(0);
+  const emitReadEnd = (chIdx: number) => {
+    if (isOwnStory) return; // pas de télémétrie sur ses propres récits
+    const ch = story.chapters?.[chIdx];
+    if (!ch || ch.id === '__empty__') return;
+    const dwellMs = Math.min(30 * 60 * 1000, Date.now() - readStartTsRef.current); // borné à 30 min (anti-idle)
+    const maxRatio = maxChapterRatioRef.current;
+    if (dwellMs < 1500 && maxRatio < 0.02) return; // ouverture fugace : on ignore
+    const words = Math.round(plainFromHtml(ch.content || '').length / 5);
+    const minutes = dwellMs / 60000;
+    const wpm = minutes > 0.05 ? Math.round((words * maxRatio) / minutes) : 0;
+    trackEvent('read_end', story.id, {
+      chapterId: ch.id,
+      payload: { percent: Math.round(maxRatio * 100), dwellMs: Math.round(dwellMs), wpm, chapterIndex: chIdx },
+    });
+  };
+  useEffect(() => {
+    if (isOwnStory) return;
+    const ch = story.chapters?.[activeChapterIndex];
+    readStartTsRef.current = Date.now();
+    maxChapterRatioRef.current = 0;
+    lastProgressEmitRef.current = 0;
+    if (ch && ch.id !== '__empty__') {
+      trackEvent('read_start', story.id, { chapterId: ch.id, payload: { chapterIndex: activeChapterIndex } });
+    }
+    const idxAtEnter = activeChapterIndex;
+    return () => { emitReadEnd(idxAtEnter); flushEvents(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChapterIndex, story.id]);
   useEffect(() => {
     // Le conteneur réellement défilé pour la lecture (sinon la fenêtre/page).
     const getScroller = (): HTMLElement | null => getScrollParent(readerRootRef.current);
@@ -962,6 +1000,20 @@ export default function ReadingView({
         if (curCh && curCh.id !== '__empty__') {
           progressSyncRef.current = { chapterId: curCh.id, percent: chapterParaFraction(curPara, chapParaCount) };
           scheduleProgressSync();
+        }
+
+        // Télémétrie (Phase 0) : progression max du chapitre + read_progress
+        // débité (au plus 1 event / 10 s) pour ne pas inonder le journal.
+        if (!isOwnStory && curCh && curCh.id !== '__empty__') {
+          if (ratio > maxChapterRatioRef.current) maxChapterRatioRef.current = ratio;
+          const nowTs = Date.now();
+          if (nowTs - lastProgressEmitRef.current > 10000) {
+            lastProgressEmitRef.current = nowTs;
+            trackEvent('read_progress', story.id, {
+              chapterId: curCh.id,
+              payload: { percent: Math.round(ratio * 100), paragraph: curPara, chapterIndex: chapterIdxRef.current },
+            });
+          }
         }
 
         // Chapitre courant REELLEMENT lu : defile jusqu'au bout (>= 95 %).
