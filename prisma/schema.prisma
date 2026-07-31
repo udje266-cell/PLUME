@@ -674,3 +674,33 @@ model StoryStats {
   storyScore     Float    @default(0)   // score de qualite de lecture final, 0..1
   updatedAt      DateTime @updatedAt
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANALYSE IA DE CONTENU (Phase 3 recommandation). Produite une fois par recit
+// (job differe, si GEMINI_API_KEY est configuree). Themes/mots-cles/emotion/
+// rythme servent la recommandation « cold-start » (recommander un recit neuf
+// sans historique de lecture, par similarite de contenu).
+// ─────────────────────────────────────────────────────────────────────────
+model StoryContentAI {
+  storyId    String   @id
+  themes     Json?    // ["trahison","huis clos","survie"]
+  keywords   Json?    // mots-cles saillants
+  emotion    String?  // tonalite dominante (tension, tendresse, ...)
+  pacing     Float    @default(0.5)  // 0 (contemplatif) -> 1 (haletant)
+  narration  String?  // 1re personne / 3e personne / multiple
+  model      String?  // tracabilite (quel modele a produit l'analyse)
+  updatedAt  DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCORE DE CONFIANCE ANTI-FRAUDE (Phase 3). 1 = humain sur, 0 = bot avere.
+// Recalcule periodiquement a partir de signaux comportementaux (vitesse de
+// lecture impossible, dwell nul avec forte progression...). Sert a ponderer /
+// ignorer les signaux des comptes suspects. Jamais de bannissement automatique.
+// ─────────────────────────────────────────────────────────────────────────
+model TrustScore {
+  userId    String   @id
+  score     Float    @default(1)
+  signals   Json?    // detail des penalites appliquees
+  updatedAt DateTime @updatedAt
+}

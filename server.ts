@@ -815,7 +815,13 @@ async function aggregateStoryStats(): Promise<number> {
     } else if (e.type === 'read_end') {
       const p: any = e.payload;
       const d = p && typeof p.dwellMs === 'number' ? p.dwellMs : 0;
-      if (d > 0) {
+      const wpm = p && typeof p.wpm === 'number' ? p.wpm : 0;
+      // ANTI-FRAUDE (§9) : on IGNORE les lectures a vitesse impossible (> 1500
+      // mots/min = ~3x la vitesse humaine max) ou au dwell derisoire avec forte
+      // progression (lecture artificielle / bot). L'event n'entre pas dans les
+      // stats : le score se protege sans bannir personne.
+      const botLike = wpm > 1500 || (d < 800 && (p?.percent || 0) > 40);
+      if (d > 0 && !botLike) {
         dwellSum.set(e.storyId, (dwellSum.get(e.storyId) || 0) + d / 1000);
         dwellCount.set(e.storyId, (dwellCount.get(e.storyId) || 0) + 1);
       }
@@ -859,6 +865,123 @@ async function aggregateStoryStats(): Promise<number> {
     } catch { /* un récit ne doit pas casser tout le batch */ }
   }
   return written;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANTI-FRAUDE (Phase 3) — TrustScore par utilisateur.
+// On mesure la part de lectures « impossibles » (vitesse surhumaine, dwell nul
+// avec forte progression) dans l'activite recente d'un utilisateur. Beaucoup de
+// lectures artificielles -> score de confiance abaisse. Aucun bannissement :
+// le score sert a ponderer les signaux (ici, a reperer les comptes a surveiller).
+// ═══════════════════════════════════════════════════════════════════════════
+async function computeTrustScores(): Promise<number> {
+  const since = new Date(Date.now() - 30 * 86_400_000);
+  const events = await prisma.readingEvent.findMany({
+    where: { type: 'read_end', createdAt: { gte: since } },
+    select: { userId: true, payload: true },
+    take: 200_000,
+  });
+  const total = new Map<string, number>();
+  const bot = new Map<string, number>();
+  for (const e of events) {
+    const p: any = e.payload || {};
+    const wpm = typeof p.wpm === 'number' ? p.wpm : 0;
+    const d = typeof p.dwellMs === 'number' ? p.dwellMs : 0;
+    const botLike = wpm > 1500 || (d < 800 && (p.percent || 0) > 40);
+    total.set(e.userId, (total.get(e.userId) || 0) + 1);
+    if (botLike) bot.set(e.userId, (bot.get(e.userId) || 0) + 1);
+  }
+  let written = 0;
+  for (const [userId, n] of total) {
+    if (n < 4) continue; // pas assez d'activite pour juger
+    const b = bot.get(userId) || 0;
+    const ratio = b / n;
+    // Penalite proportionnelle a la part de lectures suspectes (max 0.7).
+    const score = Math.max(0, Math.min(1, 1 - Math.min(0.7, ratio * 0.8)));
+    try {
+      await prisma.trustScore.upsert({
+        where: { userId },
+        update: { score, signals: { readEnds: n, botLike: b, ratio: Math.round(ratio * 100) / 100 } as any },
+        create: { userId, score, signals: { readEnds: n, botLike: b, ratio: Math.round(ratio * 100) / 100 } as any },
+      });
+      written++;
+    } catch { /* best-effort */ }
+  }
+  return written;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANALYSE IA DE CONTENU (Phase 3) — themes / mots-cles / emotion / rythme.
+// Un appel Gemini par recit (si GEMINI_API_KEY configuree), en tache differee.
+// Sert la recommandation « cold-start » (similarite de contenu quand un recit
+// n'a pas encore de lecteurs). Sans cle : no-op silencieux.
+// ═══════════════════════════════════════════════════════════════════════════
+function parseJsonLoose(text: string): any {
+  try {
+    // Retire d'eventuelles balises de code ```json ... ```
+    const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) return null;
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch { return null; }
+}
+
+async function analyzeStoryContent(storyId: string): Promise<boolean> {
+  if (!GEMINI_API_KEY) return false;
+  const story = await prisma.story.findUnique({
+    where: { id: storyId },
+    select: { id: true, title: true, description: true, genre: true, chapters: { where: { isPublished: true }, orderBy: { order: 'asc' }, take: 1, select: { content: true } } },
+  });
+  if (!story) return false;
+  const firstChapter = (story.chapters?.[0]?.content || '').replace(/<[^>]+>/g, ' ').slice(0, 4000);
+  const sys = "Tu es un analyste litteraire. A partir des informations d'un roman, renvoie STRICTEMENT un objet JSON valide (aucun texte autour) avec les cles : "
+    + '"themes" (tableau de 3 a 6 themes en francais, mots simples), '
+    + '"keywords" (tableau de 5 a 8 mots-cles), '
+    + '"emotion" (tonalite dominante en un mot: tension, tendresse, melancolie, humour, peur, espoir, ...), '
+    + '"pacing" (nombre 0 a 1: 0 contemplatif, 1 haletant), '
+    + '"narration" ("premiere personne" | "troisieme personne" | "multiple").';
+  const userText = `Titre: ${story.title}\nGenre: ${story.genre}\nResume: ${story.description || '(aucun)'}\nDebut du texte:\n${firstChapter}`;
+  try {
+    const raw = await callGemini(sys, userText, 512);
+    const j = parseJsonLoose(raw);
+    if (!j) return false;
+    const themes = Array.isArray(j.themes) ? j.themes.slice(0, 6).map((x: any) => String(x).slice(0, 40)) : [];
+    const keywords = Array.isArray(j.keywords) ? j.keywords.slice(0, 10).map((x: any) => String(x).slice(0, 40)) : [];
+    const emotion = typeof j.emotion === 'string' ? j.emotion.slice(0, 40) : null;
+    const pacing = typeof j.pacing === 'number' ? Math.max(0, Math.min(1, j.pacing)) : 0.5;
+    const narration = typeof j.narration === 'string' ? j.narration.slice(0, 40) : null;
+    await prisma.storyContentAI.upsert({
+      where: { storyId: story.id },
+      update: { themes, keywords, emotion, pacing, narration, model: GEMINI_MODEL, updatedAt: new Date() },
+      create: { storyId: story.id, themes, keywords, emotion, pacing, narration, model: GEMINI_MODEL },
+    });
+    return true;
+  } catch (e) {
+    console.warn('[RECO-AI] analyse echouee', storyId, (e as any)?.message || e);
+    return false;
+  }
+}
+
+// Analyse quelques recits publies encore non analyses (borne pour le quota).
+async function analyzePendingContent(maxPerRun = 5): Promise<number> {
+  if (!GEMINI_API_KEY) return 0;
+  const analyzed = await prisma.storyContentAI.findMany({ select: { storyId: true } });
+  const done = new Set(analyzed.map((a) => a.storyId));
+  const candidates = await prisma.story.findMany({
+    where: { status: 'PUBLIE' },
+    select: { id: true },
+    orderBy: { createdAt: 'desc' },
+    take: 300,
+  });
+  const pending = candidates.map((c) => c.id).filter((id) => !done.has(id)).slice(0, maxPerRun);
+  let n = 0;
+  for (const id of pending) {
+    const ok = await analyzeStoryContent(id);
+    if (ok) n++;
+    await new Promise((r) => setTimeout(r, 1500)); // douceur avec le quota Gemini
+  }
+  return n;
 }
 
 // ----- Système de niveaux (XP) -----
@@ -1406,6 +1529,55 @@ export async function createServerInstance() {
     try {
       const n = await aggregateStoryStats();
       res.json({ ok: true, updated: n });
+    } catch (e: any) {
+      res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
+    }
+  });
+
+  // Déclenchements manuels (admin) : anti-fraude + analyse IA de contenu.
+  app.post('/api/admin/reco/trust', requireAuth, async (req: any, res) => {
+    if (roleFromPrisma(req.user.role) !== 'Administrateur') return res.status(403).json({ error: 'Action interdite.' });
+    try { res.json({ ok: true, updated: await computeTrustScores() }); }
+    catch (e: any) { res.status(500).json({ error: String(e?.message || e).slice(0, 200) }); }
+  });
+  app.post('/api/admin/reco/analyze', requireAuth, async (req: any, res) => {
+    if (roleFromPrisma(req.user.role) !== 'Administrateur') return res.status(403).json({ error: 'Action interdite.' });
+    if (!GEMINI_API_KEY) return res.status(503).json({ error: 'Analyse IA non configurée (GEMINI_API_KEY).' });
+    try { res.json({ ok: true, analyzed: await analyzePendingContent(10) }); }
+    catch (e: any) { res.status(500).json({ error: String(e?.message || e).slice(0, 200) }); }
+  });
+
+  // Tableau d'ÉQUITÉ (§11) : coefficient de Gini de l'exposition (lectures) par
+  // AUTEUR. 0 = parfaitement égalitaire, 1 = un seul auteur capte tout. Sert à
+  // surveiller l'effet « les riches deviennent plus riches ».
+  app.get('/api/admin/reco/equity', requireAuth, async (req: any, res) => {
+    if (roleFromPrisma(req.user.role) !== 'Administrateur') return res.status(403).json({ error: 'Action interdite.' });
+    try {
+      const stories = await prisma.story.findMany({ where: { status: 'PUBLIE' }, select: { authorId: true, reads: true } });
+      const byAuthor = new Map<string, number>();
+      for (const s of stories) byAuthor.set(s.authorId, (byAuthor.get(s.authorId) || 0) + (s.reads || 0));
+      const values = Array.from(byAuthor.values()).sort((a, b) => a - b);
+      const n = values.length;
+      const totalReads = values.reduce((a, b) => a + b, 0);
+      // Coefficient de Gini.
+      let gini = 0;
+      if (n > 0 && totalReads > 0) {
+        let cum = 0;
+        for (let i = 0; i < n; i++) cum += (i + 1) * values[i];
+        gini = (2 * cum) / (n * totalReads) - (n + 1) / n;
+      }
+      // Part captée par le top 10 %.
+      const topCount = Math.max(1, Math.floor(n * 0.1));
+      const topReads = values.slice(n - topCount).reduce((a, b) => a + b, 0);
+      const topShare = totalReads > 0 ? topReads / totalReads : 0;
+      res.json({
+        authors: n,
+        publishedStories: stories.length,
+        totalReads,
+        gini: Math.round(gini * 1000) / 1000,
+        top10PercentShare: Math.round(topShare * 1000) / 1000,
+        interpretation: gini < 0.4 ? 'sain' : gini < 0.6 ? 'a surveiller' : 'concentration forte',
+      });
     } catch (e: any) {
       res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
     }
@@ -3304,13 +3476,43 @@ export async function createServerInstance() {
       });
       const qById = new Map(statsRows.map((s) => [s.storyId, s.storyScore]));
 
+      // COLD-START par le CONTENU (Phase 3) : en repli (pas de public), on
+      // classe aussi par similarité de thèmes/mots-clés issus de l'analyse IA.
+      const isFallback = candidateIds.length === 0;
+      const contentSimById = new Map<string, number>();
+      if (isFallback) {
+        const aiRows = await prisma.storyContentAI.findMany({
+          where: { storyId: { in: [targetId, ...candidates.map((c: any) => c.id)] } },
+          select: { storyId: true, themes: true, keywords: true },
+        });
+        const bag = (r: any): Set<string> => new Set([
+          ...((Array.isArray(r?.themes) ? r.themes : []) as any[]),
+          ...((Array.isArray(r?.keywords) ? r.keywords : []) as any[]),
+        ].map((x) => String(x).toLowerCase()));
+        const targetAI = aiRows.find((r) => r.storyId === targetId);
+        const targetBag = targetAI ? bag(targetAI) : new Set<string>();
+        if (targetBag.size) {
+          for (const r of aiRows) {
+            if (r.storyId === targetId) continue;
+            const b = bag(r);
+            let inter = 0;
+            for (const t of b) if (targetBag.has(t)) inter++;
+            const union = targetBag.size + b.size - inter;
+            contentSimById.set(r.storyId, union > 0 ? inter / union : 0);
+          }
+        }
+      }
+
       const scored = candidates
         .filter((c: any) => !seen.has(c.id) && !blocked.has(c.authorId) && c.authorId !== req.user.id)
         .map((c: any) => {
           const co = coCount.get(c.id) || 0;
           const affinity = audience.size ? co / audience.size : 0;  // P(candidat | public cible)
           const quality = qById.get(c.id) || 0;
-          const score = 0.7 * affinity + 0.3 * quality + (candidateIds.length ? 0 : 0.0001 * (c.reads || 0));
+          const contentSim = contentSimById.get(c.id) || 0;
+          const score = isFallback
+            ? 0.55 * contentSim + 0.4 * quality + 0.0001 * (c.reads || 0)
+            : 0.7 * affinity + 0.3 * quality;
           return { c, score };
         })
         .sort((a, b) => b.score - a.score)
@@ -6279,6 +6481,27 @@ if (process.env.NODE_ENV !== 'test') {
     };
     setTimeout(runAggregation, 90 * 1000).unref?.();
     setInterval(runAggregation, 60 * 60 * 1000).unref?.();
+
+    // Anti-fraude (Phase 3) : recalcul des TrustScore toutes les 6 h.
+    const runTrust = () => {
+      computeTrustScores()
+        .then((n) => { if (n) console.log(`[RECO] TrustScore recalculés : ${n} comptes`); })
+        .catch((e) => console.warn('[RECO] trust échoué :', (e as any)?.message || e));
+    };
+    setTimeout(runTrust, 150 * 1000).unref?.();
+    setInterval(runTrust, 6 * 60 * 60 * 1000).unref?.();
+
+    // Analyse IA de contenu (Phase 3) : quelques récits par heure, si Gemini
+    // est configuré (sinon no-op). Étalé pour respecter le quota.
+    if (GEMINI_API_KEY) {
+      const runContentAI = () => {
+        analyzePendingContent(5)
+          .then((n) => { if (n) console.log(`[RECO-AI] récits analysés : ${n}`); })
+          .catch((e) => console.warn('[RECO-AI] analyse échouée :', (e as any)?.message || e));
+      };
+      setTimeout(runContentAI, 180 * 1000).unref?.();
+      setInterval(runContentAI, 60 * 60 * 1000).unref?.();
+    }
 
     // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
     // nouvelles connexions puis on libère Prisma et Redis pour ne pas fuiter de
