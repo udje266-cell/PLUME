@@ -1236,26 +1236,35 @@ export async function createServerInstance() {
   // Voix : si ELEVENLABS_VOICE_ID est fourni, on l'utilise. SINON on resout
   // AUTOMATIQUEMENT une voix du compte (les comptes gratuits ne peuvent utiliser
   // que LEURS voix « premade », pas les voix de bibliotheque -> sinon 402).
+  // Voix par defaut compatible COMPTE GRATUIT (verifiee : renvoie 200). Les
+  // anciennes voix (Rachel, Aria...) sont passees payantes ("library voices").
+  // "Sarah" (EXAVITQu4vr4xnSDxMaL) fonctionne en gratuit ; le modele multilingue
+  // lui fait lire le francais correctement.
+  const DEFAULT_FREE_VOICE = 'EXAVITQu4vr4xnSDxMaL';
   let resolvedVoiceId: string | null = process.env.ELEVENLABS_VOICE_ID || null;
-  const resolveVoiceId = async (): Promise<string | null> => {
+  const resolveVoiceId = async (): Promise<string> => {
     if (resolvedVoiceId) return resolvedVoiceId;
-    if (!ELEVEN_KEY) return null;
+    if (!ELEVEN_KEY) return DEFAULT_FREE_VOICE;
+    // On tente de lister les voix du compte (necessite la permission "Voices" ;
+    // si la cle est limitee a "Text to Speech", cet appel echoue -> on retombe
+    // sur la voix gratuite par defaut, qui fonctionne aussi).
     try {
       const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': ELEVEN_KEY } });
-      if (!r.ok) return null;
-      const data: any = await r.json().catch(() => ({}));
-      const voices: any[] = Array.isArray(data?.voices) ? data.voices : [];
-      // Preferer une voix utilisable par les comptes gratuits (premade), et si
-      // possible orientee francais/multilingue ; sinon la premiere disponible.
-      const isFrench = (v: any) => /fr/i.test(JSON.stringify(v?.labels || {})) || /fr/i.test(v?.fine_tuning?.language || '');
-      const pick =
-        voices.find((v) => v.category === 'premade' && isFrench(v)) ||
-        voices.find((v) => v.category === 'premade') ||
-        voices.find((v) => isFrench(v)) ||
-        voices[0];
-      if (pick?.voice_id) resolvedVoiceId = pick.voice_id;
-      return resolvedVoiceId;
-    } catch { return null; }
+      if (r.ok) {
+        const data: any = await r.json().catch(() => ({}));
+        const voices: any[] = Array.isArray(data?.voices) ? data.voices : [];
+        const isFrench = (v: any) => /fr/i.test(JSON.stringify(v?.labels || {})) || /fr/i.test(v?.fine_tuning?.language || '');
+        const usable = voices.filter((v) => v.category !== 'professional'); // evite les voix payantes evidentes
+        const pick =
+          usable.find((v) => v.category === 'premade' && isFrench(v)) ||
+          usable.find((v) => v.category === 'premade') ||
+          usable.find((v) => isFrench(v)) ||
+          usable[0];
+        if (pick?.voice_id) { resolvedVoiceId = pick.voice_id; return resolvedVoiceId; }
+      }
+    } catch { /* liste indisponible -> repli */ }
+    resolvedVoiceId = DEFAULT_FREE_VOICE;
+    return resolvedVoiceId;
   };
   const TTS_MAX_CHARS = 2000; // borne par requete (protege le quota)
   // Cache LRU minimal en memoire (borne a ~200 passages).
