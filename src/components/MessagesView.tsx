@@ -39,6 +39,7 @@ import {
   Camera,
   Lock,
   Megaphone,
+  EyeOff,
   Image as ImageIcon
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -56,9 +57,8 @@ import { generateCoverDataUri } from '../utils/coverImage';
 // dans le navigateur / une nouvelle vue). Le reste est rendu comme du texte
 // React (échappé) — aucune injection HTML. La ponctuation finale collée à l'URL
 // (« . », « ) »…) est laissée hors du lien.
-function renderMessageText(text: string): React.ReactNode {
-  if (!text) return text;
-  // Deux motifs : URL (lien cliquable) OU mention @pseudo (surlignée).
+// Rend le texte « inline » : liens cliquables + mentions @pseudo surlignées.
+function tokenizeInline(text: string, keyPrefix = ''): React.ReactNode[] {
   const tokenRe = /(https?:\/\/[^\s<]+)|(@[\p{L}0-9_]{2,})/gu;
   const out: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -72,17 +72,65 @@ function renderMessageText(text: string): React.ReactNode {
       const t = url.match(/[.,!?;:)\]]+$/);
       if (t) { trail = t[0]; url = url.slice(0, -trail.length); }
       out.push(
-        <a key={`lnk-${key++}`} href={url} target="_blank" rel="noopener noreferrer" className="underline font-semibold break-all" onClick={(e) => e.stopPropagation()}>{url}</a>,
+        <a key={`${keyPrefix}lnk-${key++}`} href={url} target="_blank" rel="noopener noreferrer" className="underline font-semibold break-all" onClick={(e) => e.stopPropagation()}>{url}</a>,
       );
       if (trail) out.push(trail);
     } else if (m[2]) {
       out.push(
-        <span key={`men-${key++}`} className="font-black bg-purple-400/25 rounded px-0.5">{m[2]}</span>,
+        <span key={`${keyPrefix}men-${key++}`} className="font-black bg-purple-400/25 rounded px-0.5">{m[2]}</span>,
       );
     }
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < text.length) out.push(text.slice(lastIndex));
+  return out;
+}
+
+// Spoiler « facon Discord » : le contenu entre ||…|| est masque derriere une
+// pastille « Spoil · Afficher ». Chaque destinataire revele de SON cote.
+function SpoilerChip({ content }: { content: string }) {
+  const [revealed, setRevealed] = useState(false);
+  if (revealed) {
+    return <span className="rounded bg-purple-500/12 px-1">{tokenizeInline(content, 'sp-')}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); setRevealed(true); }}
+      className="inline-flex items-center gap-1 align-middle rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-zinc-700/90 text-zinc-100 hover:bg-zinc-600 transition select-none"
+      title="Contenu masqué (spoiler) — appuyer pour afficher"
+    >
+      <EyeOff className="w-3 h-3" /> Spoil · Afficher
+    </button>
+  );
+}
+
+// Aperçus (liste, réponse) : on ne DOIT jamais y révéler un spoiler. On
+// remplace ||…|| par une étiquette neutre.
+function maskSpoilers(text: string): string {
+  if (!text || text.indexOf('||') === -1) return text;
+  return text.replace(/\|\|[\s\S]+?\|\|/g, '🚫 Spoiler');
+}
+
+// Marqueur de spoiler : ||texte||. `allowSpoiler` n'est vrai que pour les
+// messages de GROUPE (jamais en messages privés).
+function renderMessageText(text: string, allowSpoiler = false): React.ReactNode {
+  if (!text) return text;
+  if (!allowSpoiler || text.indexOf('||') === -1) {
+    const inline = tokenizeInline(text);
+    return inline.length ? inline : text;
+  }
+  const spoilerRe = /\|\|([\s\S]+?)\|\|/g;
+  const out: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = spoilerRe.exec(text)) !== null) {
+    if (m.index > lastIndex) out.push(...tokenizeInline(text.slice(lastIndex, m.index), `s${key}-`));
+    out.push(<SpoilerChip key={`spoil-${key++}`} content={m[1]} />);
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) out.push(...tokenizeInline(text.slice(lastIndex), `s${key}-`));
   return out.length ? out : text;
 }
 
@@ -322,6 +370,9 @@ export default function MessagesView({
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
 
   const [messageText, setMessageText] = useState('');
+  // Mode « spoiler » (groupes uniquement) : le prochain message envoyé sera
+  // masqué derrière une pastille « Spoil · Afficher » (façon Discord).
+  const [spoilerMode, setSpoilerMode] = useState(false);
   // Autocomplétion des mentions @ (groupes).
   const [mentionActive, setMentionActive] = useState(false);
   const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
@@ -557,7 +608,16 @@ export default function MessagesView({
   // messages et dans les 6 minutes suivant l'envoi.
   const canDeleteForEveryone = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 6 * 60 * 1000);
   const startReply = (m: Message) => { setReplyTo(m); setEditingMsg(null); setActionMsg(null); messageInputRef.current?.focus(); };
-  const startEdit = (m: Message) => { setEditingMsg(m); setReplyTo(null); setMessageText(m.content); setActionMsg(null); setTimeout(() => messageInputRef.current?.focus(), 0); };
+  const startEdit = (m: Message) => {
+    setEditingMsg(m); setReplyTo(null);
+    // Édition d'un spoiler de groupe : on retire les ||…|| pour éditer le texte
+    // nu, et on réactive le mode spoiler (il sera ré-encadré à l'envoi).
+    const spoilerMatch = m.content.match(/^\|\|([\s\S]+)\|\|$/);
+    if (activeGroupId && spoilerMatch) { setMessageText(spoilerMatch[1]); setSpoilerMode(true); }
+    else { setMessageText(m.content); setSpoilerMode(false); }
+    setActionMsg(null);
+    setTimeout(() => messageInputRef.current?.focus(), 0);
+  };
   // Ajuste la hauteur du champ message (retour à la ligne automatique, jusqu'à
   // ~5 lignes puis défilement) — comportement type WhatsApp.
   const autoSizeMessageInput = () => {
@@ -1054,17 +1114,22 @@ export default function MessagesView({
 
     // Modification d'un message existant (privé OU groupe) plutôt qu'un envoi.
     if (editingMsg) {
-      if (activeGroupId) onEditGroupMessage?.(editingMsg.id, messageText.trim());
-      else onEditMessage?.(editingMsg.id, messageText.trim());
+      if (activeGroupId) {
+        const edited = spoilerMode ? `||${messageText.trim()}||` : messageText.trim();
+        onEditGroupMessage?.(editingMsg.id, edited);
+      } else onEditMessage?.(editingMsg.id, messageText.trim());
       setEditingMsg(null);
-      setMessageText(''); setMentionActive(false);
+      setMessageText(''); setMentionActive(false); setSpoilerMode(false);
       return;
     }
 
     if (activeGroupId) {
       // Message de groupe persisté côté serveur (avec éventuelle réponse).
-      onSendGroupMessage(activeGroupId, messageText.trim(), replyTo?.id || null, announceNext && isGroupAdminPlus);
+      // Spoiler : on encadre le texte de ||…|| ; le rendu le masque a la reception.
+      const groupContent = spoilerMode ? `||${messageText.trim()}||` : messageText.trim();
+      onSendGroupMessage(activeGroupId, groupContent, replyTo?.id || null, announceNext && isGroupAdminPlus);
       setAnnounceNext(false);
+      setSpoilerMode(false);
     } else if (activeConversationId) {
       // Envoi privé (avec éventuelle réponse à un message).
       onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
@@ -1516,7 +1581,7 @@ export default function MessagesView({
                         </p>
                       ) : (
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
-                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage)) : 'Aucune discussion récente'}</span>
+                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : maskSpoilers(group.lastMessage))) : 'Aucune discussion récente'}</span>
                         </p>
                       )}
 
@@ -1814,7 +1879,7 @@ export default function MessagesView({
                         {repliedMsg && (
                           <div className={`mb-1 px-2 py-1 rounded-lg border-l-2 text-left ${isSentByMe ? 'bg-white/15 border-white/60' : 'bg-purple-500/10 border-purple-500'}`}>
                             <p className={`text-[9px] font-black truncate ${isSentByMe ? 'opacity-90' : 'text-purple-600 dark:text-purple-400'}`}>{repliedMsg.senderId === currentUser.id ? 'Vous' : repliedMsg.senderName}</p>
-                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : (repliedMsg.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : repliedMsg.content}</p>
+                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : (repliedMsg.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : maskSpoilers(repliedMsg.content)}</p>
                           </div>
                         )}
 
@@ -1843,7 +1908,7 @@ export default function MessagesView({
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
-                            {renderMessageText(msg.content)}
+                            {renderMessageText(msg.content, true)}
                           </p>
                         )}
 
@@ -2160,7 +2225,7 @@ export default function MessagesView({
                       {(editingMsg || replyTo)?.deletedForEveryone ? 'Message supprimé'
                         : parseSticker((editingMsg || replyTo)!.content) ? '🪶 Sticker'
                         : (editingMsg || replyTo)!.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale'
-                        : (editingMsg || replyTo)!.content}
+                        : maskSpoilers((editingMsg || replyTo)!.content)}
                     </p>
                   </div>
                   <button type="button" onClick={() => { setReplyTo(null); setEditingMsg(null); setMessageText(''); }} className="text-gray-400 hover:text-gray-600 shrink-0" aria-label="Annuler"><X className="w-4 h-4" /></button>
@@ -2178,6 +2243,20 @@ export default function MessagesView({
                 >
                   <Megaphone className="w-3.5 h-3.5 shrink-0" />
                   {announceNext ? 'Le prochain message sera une annonce' : 'Envoyer en annonce'}
+                </button>
+              )}
+
+              {/* Bascule SPOILER (groupes uniquement, tous les membres) : le
+                  prochain message part masqué derrière une pastille « Spoil ». */}
+              {activeGroupId && !composerLocked && (
+                <button
+                  type="button"
+                  onClick={() => setSpoilerMode((v) => !v)}
+                  className={`mb-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${spoilerMode ? 'bg-zinc-700 text-white' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400'}`}
+                  title="Masquer le prochain message derrière un « Spoiler »"
+                >
+                  <EyeOff className="w-3.5 h-3.5 shrink-0" />
+                  {spoilerMode ? 'Le prochain message sera masqué (Spoiler)' : 'Marquer comme spoiler'}
                 </button>
               )}
 
