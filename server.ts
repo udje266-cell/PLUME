@@ -4854,11 +4854,14 @@ export async function createServerInstance() {
       group.members.forEach((m) => io.to(`user:${m.id}`).emit('new_group_message', serialized));
 
       // Notification + push aux AUTRES membres (l'app peut etre fermee).
+      // Un SPOILER (||…||) ne doit JAMAIS apparaitre en clair dans la notif :
+      // on le remplace par une etiquette neutre avant de construire l'apercu.
+      const maskedForPreview = content.replace(/\|\|[\s\S]+?\|\|/g, '🚫 Spoiler');
       const gPreview = content.startsWith('[sticker]')
         ? '🪶 Sticker'
         : content.startsWith('[🎙️ Note Vocale')
           ? '🎙️ Note vocale'
-          : (content.length > 140 ? content.slice(0, 137) + '…' : content);
+          : (maskedForPreview.length > 140 ? maskedForPreview.slice(0, 137) + '…' : maskedForPreview);
 
       // MENTIONS (@pseudo) facon WhatsApp : on repere les membres tagues dans le
       // texte pour leur envoyer une notification DEDIEE (« vous a mentionne »),

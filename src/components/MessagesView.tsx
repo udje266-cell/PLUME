@@ -57,12 +57,19 @@ import { generateCoverDataUri } from '../utils/coverImage';
 // dans le navigateur / une nouvelle vue). Le reste est rendu comme du texte
 // React (échappé) — aucune injection HTML. La ponctuation finale collée à l'URL
 // (« . », « ) »…) est laissée hors du lien.
-// Rend le texte « inline » : liens cliquables + mentions @pseudo surlignées.
-// `myUsername` (facultatif) : quand on est la personne mentionnee, la mention
-// est mise en avant plus fortement (facon WhatsApp).
-function tokenizeInline(text: string, keyPrefix = '', myUsername?: string): React.ReactNode[] {
-  const tokenRe = /(https?:\/\/[^\s<]+)|(@[\p{L}0-9_]{2,})/gu;
-  const me = (myUsername || '').toLowerCase();
+// Options de rendu inline (mentions @ cliquables, œuvres # cliquables).
+interface InlineOpts {
+  myUsername?: string;
+  onMention?: (username: string) => void;   // @pseudo -> ouvrir le profil
+  onStory?: (title: string) => void;        // #«œuvre» -> ouvrir le récit
+}
+
+// Rend le texte « inline » : liens cliquables + mentions @pseudo (cliquables,
+// surlignées ; la tienne l'est plus fortement) + œuvres #«Titre» (chip cliquable).
+function tokenizeInline(text: string, keyPrefix = '', opts: InlineOpts = {}): React.ReactNode[] {
+  // 3 motifs : URL | @mention | #«Titre d'œuvre».
+  const tokenRe = /(https?:\/\/[^\s<]+)|(@[\p{L}0-9_]{2,})|#«([^»]{1,120})»/gu;
+  const me = (opts.myUsername || '').toLowerCase();
   const out: React.ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -79,10 +86,29 @@ function tokenizeInline(text: string, keyPrefix = '', myUsername?: string): Reac
       );
       if (trail) out.push(trail);
     } else if (m[2]) {
-      const handle = m[2].slice(1).toLowerCase();
-      const isMe = me && (handle === me || handle === 'tous' || handle === 'everyone' || handle === 'all');
+      const handle = m[2].slice(1);
+      const low = handle.toLowerCase();
+      const isMe = !!me && (low === me || low === 'tous' || low === 'everyone' || low === 'all');
+      const isAll = low === 'tous' || low === 'everyone' || low === 'all';
+      const cls = `font-black rounded px-0.5 ${isMe ? 'bg-purple-500/35 text-purple-900 dark:text-purple-100 px-1' : 'bg-purple-400/25'} ${opts.onMention && !isAll ? 'cursor-pointer hover:underline' : ''}`;
       out.push(
-        <span key={`${keyPrefix}men-${key++}`} className={isMe ? 'font-black bg-purple-500/35 text-purple-900 dark:text-purple-100 rounded px-1' : 'font-black bg-purple-400/25 rounded px-0.5'}>{m[2]}</span>,
+        <span
+          key={`${keyPrefix}men-${key++}`}
+          className={cls}
+          onClick={opts.onMention && !isAll ? (e) => { e.stopPropagation(); opts.onMention!(handle); } : undefined}
+          role={opts.onMention && !isAll ? 'button' : undefined}
+        >{m[2]}</span>,
+      );
+    } else if (m[3]) {
+      const title = m[3];
+      out.push(
+        <span
+          key={`${keyPrefix}sto-${key++}`}
+          className={`inline-flex items-center gap-1 align-middle rounded-md px-1.5 py-0.5 text-[11px] font-bold bg-purple-600/15 text-purple-700 dark:text-purple-300 ${opts.onStory ? 'cursor-pointer hover:bg-purple-600/25' : ''}`}
+          onClick={opts.onStory ? (e) => { e.stopPropagation(); opts.onStory!(title); } : undefined}
+          role={opts.onStory ? 'button' : undefined}
+          title={title}
+        >📖 {title}</span>,
       );
     }
     lastIndex = m.index + m[0].length;
@@ -93,10 +119,10 @@ function tokenizeInline(text: string, keyPrefix = '', myUsername?: string): Reac
 
 // Spoiler « facon Discord » : le contenu entre ||…|| est masque derriere une
 // pastille « Spoil · Afficher ». Chaque destinataire revele de SON cote.
-function SpoilerChip({ content }: { content: string }) {
+function SpoilerChip({ content, opts }: { content: string; opts?: InlineOpts }) {
   const [revealed, setRevealed] = useState(false);
   if (revealed) {
-    return <span className="rounded bg-purple-500/12 px-1">{tokenizeInline(content, 'sp-')}</span>;
+    return <span className="rounded bg-purple-500/12 px-1">{tokenizeInline(content, 'sp-', opts)}</span>;
   }
   return (
     <button
@@ -118,12 +144,12 @@ function maskSpoilers(text: string): string {
 }
 
 // Marqueur de spoiler : ||texte||. `allowSpoiler` n'est vrai que pour les
-// messages de GROUPE (jamais en messages privés). `myUsername` met en avant les
-// mentions qui te concernent.
-function renderMessageText(text: string, allowSpoiler = false, myUsername?: string): React.ReactNode {
+// messages de GROUPE (jamais en messages privés). `opts` porte le contexte
+// (mentions/œuvres cliquables, ta mention mise en avant).
+function renderMessageText(text: string, allowSpoiler = false, opts: InlineOpts = {}): React.ReactNode {
   if (!text) return text;
   if (!allowSpoiler || text.indexOf('||') === -1) {
-    const inline = tokenizeInline(text, '', myUsername);
+    const inline = tokenizeInline(text, '', opts);
     return inline.length ? inline : text;
   }
   const spoilerRe = /\|\|([\s\S]+?)\|\|/g;
@@ -132,11 +158,11 @@ function renderMessageText(text: string, allowSpoiler = false, myUsername?: stri
   let m: RegExpExecArray | null;
   let key = 0;
   while ((m = spoilerRe.exec(text)) !== null) {
-    if (m.index > lastIndex) out.push(...tokenizeInline(text.slice(lastIndex, m.index), `s${key}-`, myUsername));
-    out.push(<SpoilerChip key={`spoil-${key++}`} content={m[1]} />);
+    if (m.index > lastIndex) out.push(...tokenizeInline(text.slice(lastIndex, m.index), `s${key}-`, opts));
+    out.push(<SpoilerChip key={`spoil-${key++}`} content={m[1]} opts={opts} />);
     lastIndex = m.index + m[0].length;
   }
-  if (lastIndex < text.length) out.push(...tokenizeInline(text.slice(lastIndex), `s${key}-`, myUsername));
+  if (lastIndex < text.length) out.push(...tokenizeInline(text.slice(lastIndex), `s${key}-`, opts));
   return out.length ? out : text;
 }
 
@@ -382,6 +408,9 @@ export default function MessagesView({
   // Autocomplétion des mentions @ (groupes).
   const [mentionActive, setMentionActive] = useState(false);
   const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
+  // Autocomplétion des ŒUVRES (#) — groupes uniquement.
+  const [storyTagActive, setStoryTagActive] = useState(false);
+  const [storySuggestions, setStorySuggestions] = useState<Story[]>([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [customStickers, setCustomStickers] = useState<string[]>(() => getCustomStickers());
@@ -929,9 +958,71 @@ export default function MessagesView({
     setTimeout(() => { el?.focus(); const np = before.length; el?.setSelectionRange(np, np); }, 0);
   };
 
+  // Autocomplétion des ŒUVRES (#) dans les groupes : on détecte « #requête »
+  // avant le curseur et on propose les récits publiés dont le titre correspond.
+  const detectStoryTag = (value: string) => {
+    if (!activeGroupId) { setStoryTagActive(false); return; }
+    const el = messageInputRef.current;
+    const pos = el ? (el.selectionStart ?? value.length) : value.length;
+    const before = value.slice(0, pos);
+    // #requête : lettres/chiffres/espaces après un # (pas déjà refermé par «»).
+    const m = before.match(/(?:^|\s)#([\p{L}0-9][\p{L}0-9 '’-]{0,60})$/u);
+    if (!m) { setStoryTagActive(false); return; }
+    const q = m[1].trim().toLowerCase();
+    if (q.length < 1) { setStoryTagActive(false); return; }
+    const sugg = (stories || [])
+      .filter((s) => (s.status === 'Publié') && s.title && s.title.toLowerCase().includes(q))
+      .slice(0, 6);
+    setStorySuggestions(sugg);
+    setStoryTagActive(sugg.length > 0);
+  };
+
+  const applyStoryTag = (story: Story) => {
+    const el = messageInputRef.current;
+    const value = messageText;
+    const pos = el ? (el.selectionStart ?? value.length) : value.length;
+    // Titre encadré de «…» : jeton non ambigu, lisible, rendu en chip cliquable.
+    const before = value.slice(0, pos).replace(/(?:^|\s)#([\p{L}0-9][\p{L}0-9 '’-]{0,60})$/u, (full) => {
+      const lead = /^\s/.test(full) ? full[0] : '';
+      return `${lead}#«${story.title}» `;
+    });
+    const after = value.slice(pos);
+    const newVal = before + after;
+    setMessageText(newVal);
+    setStoryTagActive(false);
+    setTimeout(() => { el?.focus(); const np = before.length; el?.setSelectionRange(np, np); }, 0);
+  };
+
+  // @pseudo cliquable -> profil du membre. #«Titre» cliquable -> ouvrir le récit.
+  const openMentionProfile = (username: string) => {
+    const u = (allUsers || []).find((x) => x.username?.toLowerCase() === username.toLowerCase());
+    if (u) onViewProfile?.(u.id);
+  };
+  const openStoryByTitle = (title: string) => {
+    const s = (stories || []).find((x) => x.title?.toLowerCase() === title.toLowerCase());
+    if (s) onSelectStory(s);
+  };
+  // Contexte de rendu passé au moteur (mentions/œuvres cliquables + ma mention).
+  const groupRenderOpts: InlineOpts = { myUsername: currentUser.username, onMention: openMentionProfile, onStory: openStoryByTitle };
+
+  // Badge « @ » façon WhatsApp : un groupe a-t-il un message NON LU qui me
+  // mentionne ? On regarde les derniers messages non lus (des autres) du groupe.
+  const meLowerForMention = (currentUser.username || '').toLowerCase();
+  const groupMentionsMe = (groupId: string, unread: number): boolean => {
+    if (!unread || unread <= 0 || !meLowerForMention) return false;
+    const recent = (groupMessages || [])
+      .filter((m) => m.groupId === groupId && m.senderId !== currentUser.id)
+      .slice(-Math.min(unread, 20));
+    return recent.some((m) => {
+      const c = (m.content || '').toLowerCase();
+      return c.includes(`@${meLowerForMention}`) || /@(tous|everyone|all)\b/.test(c);
+    });
+  };
+
   const handleTypingChange = (value: string) => {
     setMessageText(value);
     detectMention(value);
+    detectStoryTag(value);
     if (activeGroupId) {
       const members = activeGroup?.members || [];
       onGroupTyping?.(activeGroupId, members, true);
@@ -1125,7 +1216,7 @@ export default function MessagesView({
         onEditGroupMessage?.(editingMsg.id, edited);
       } else onEditMessage?.(editingMsg.id, messageText.trim());
       setEditingMsg(null);
-      setMessageText(''); setMentionActive(false); setSpoilerMode(false);
+      setMessageText(''); setMentionActive(false); setStoryTagActive(false); setSpoilerMode(false);
       return;
     }
 
@@ -1141,7 +1232,7 @@ export default function MessagesView({
       onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
     }
     setReplyTo(null);
-    setMessageText(''); setMentionActive(false);
+    setMessageText(''); setMentionActive(false); setStoryTagActive(false);
     // Fin de saisie : on arrête l'indicateur « écrit… » chez l'interlocuteur.
     if (!activeGroupId && interlocutor) {
       clearTimeout(typingStopRef.current);
@@ -1591,6 +1682,10 @@ export default function MessagesView({
                         </p>
                       )}
 
+                      {/* Badge « @ » : tu as été mentionné (façon WhatsApp). */}
+                      {!isGroupActive && groupMentionsMe(group.id, group.unreadCount || 0) && (
+                        <span className="bg-purple-600 text-white font-black text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0" title="Vous avez été mentionné">@</span>
+                      )}
                       {/* Badge de non-lus (masqué sur le groupe déjà ouvert). */}
                       {!isGroupActive && (group.unreadCount || 0) > 0 && (
                         <span className="bg-purple-600 text-white font-black text-[9px] min-w-4.5 h-4.5 px-1 rounded-full flex items-center justify-center shrink-0">
@@ -1914,7 +2009,7 @@ export default function MessagesView({
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
-                            {renderMessageText(msg.content, true, currentUser.username)}
+                            {renderMessageText(msg.content, true, groupRenderOpts)}
                           </p>
                         )}
 
@@ -2285,6 +2380,26 @@ export default function MessagesView({
                     >
                       <img src={u.avatar} alt={u.username} className="w-7 h-7 rounded-full object-cover bg-zinc-200 dark:bg-zinc-800 shrink-0" referrerPolicy="no-referrer" />
                       <span className="text-xs font-bold text-gray-900 dark:text-white truncate">@{u.username}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Autocomplétion des ŒUVRES (#) — groupes uniquement. */}
+              {storyTagActive && activeGroupId && storySuggestions.length > 0 && (
+                <div className="mb-1.5 bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/25 rounded-2xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                  {storySuggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => applyStoryTag(s)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-purple-500/10 transition text-left"
+                    >
+                      <img src={s.cover} alt={s.title} className="w-6 h-8 rounded object-cover bg-zinc-200 dark:bg-zinc-800 shrink-0" referrerPolicy="no-referrer" />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold text-gray-900 dark:text-white truncate">📖 {s.title}</span>
+                        <span className="block text-[10px] text-gray-400 truncate">{s.authorName}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
