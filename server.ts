@@ -4829,7 +4829,7 @@ export async function createServerInstance() {
       const wantAnnouncement = !!req.body?.isAnnouncement;
       if (!content) return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide.' });
       if (content.length > 2000) return res.status(400).json({ error: 'Message trop long (2000 caractères max).' });
-      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
+      const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true, username: true } } } });
       if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
       const myRole = await effectiveRole(group, req.user.id);
@@ -4859,21 +4859,43 @@ export async function createServerInstance() {
         : content.startsWith('[🎙️ Note Vocale')
           ? '🎙️ Note vocale'
           : (content.length > 140 ? content.slice(0, 137) + '…' : content);
+
+      // MENTIONS (@pseudo) facon WhatsApp : on repere les membres tagues dans le
+      // texte pour leur envoyer une notification DEDIEE (« vous a mentionne »),
+      // plus visible qu'une notif de message ordinaire. On gere aussi @tous /
+      // @everyone (tout le groupe) reserve aux admins.
+      const mentionedNames = new Set(
+        (content.match(/@([\p{L}0-9_]{2,})/gu) || []).map((s) => s.slice(1).toLowerCase())
+      );
+      const wantsAll = isAdminPlus && (mentionedNames.has('tous') || mentionedNames.has('everyone') || mentionedNames.has('all'));
+      const mentionedIds = new Set<string>();
+      if (wantsAll) {
+        group.members.forEach((m) => { if (m.id !== req.user.id) mentionedIds.add(m.id); });
+      } else if (mentionedNames.size) {
+        group.members.forEach((m) => {
+          if (m.id !== req.user.id && m.username && mentionedNames.has(m.username.toLowerCase())) mentionedIds.add(m.id);
+        });
+      }
+
       await Promise.all(
         group.members
           .filter((m) => m.id !== req.user.id)
           .map(async (m) => {
+            const mentioned = mentionedIds.has(m.id);
             const notif = await prisma.notification.create({
               data: {
                 userId: m.id,
                 type: 'MESSAGE' as any,
-                title: `👥 ${group.name}`,
-                message: `${req.user.username || 'Un membre'} : ${gPreview}`,
+                title: mentioned ? `💬 Mention · ${group.name}` : `👥 ${group.name}`,
+                message: mentioned
+                  ? `${req.user.username || 'Un membre'} vous a mentionné : ${gPreview}`
+                  : `${req.user.username || 'Un membre'} : ${gPreview}`,
                 data: {
                   actorId: req.user.id,
                   actorName: req.user.username,
                   groupId: group.id,
                   excerpt: gPreview,
+                  mention: mentioned ? true : undefined,
                 } as any,
               },
             });

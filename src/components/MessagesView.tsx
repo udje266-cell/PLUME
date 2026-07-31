@@ -58,8 +58,11 @@ import { generateCoverDataUri } from '../utils/coverImage';
 // React (échappé) — aucune injection HTML. La ponctuation finale collée à l'URL
 // (« . », « ) »…) est laissée hors du lien.
 // Rend le texte « inline » : liens cliquables + mentions @pseudo surlignées.
-function tokenizeInline(text: string, keyPrefix = ''): React.ReactNode[] {
+// `myUsername` (facultatif) : quand on est la personne mentionnee, la mention
+// est mise en avant plus fortement (facon WhatsApp).
+function tokenizeInline(text: string, keyPrefix = '', myUsername?: string): React.ReactNode[] {
   const tokenRe = /(https?:\/\/[^\s<]+)|(@[\p{L}0-9_]{2,})/gu;
+  const me = (myUsername || '').toLowerCase();
   const out: React.ReactNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -76,8 +79,10 @@ function tokenizeInline(text: string, keyPrefix = ''): React.ReactNode[] {
       );
       if (trail) out.push(trail);
     } else if (m[2]) {
+      const handle = m[2].slice(1).toLowerCase();
+      const isMe = me && (handle === me || handle === 'tous' || handle === 'everyone' || handle === 'all');
       out.push(
-        <span key={`${keyPrefix}men-${key++}`} className="font-black bg-purple-400/25 rounded px-0.5">{m[2]}</span>,
+        <span key={`${keyPrefix}men-${key++}`} className={isMe ? 'font-black bg-purple-500/35 text-purple-900 dark:text-purple-100 rounded px-1' : 'font-black bg-purple-400/25 rounded px-0.5'}>{m[2]}</span>,
       );
     }
     lastIndex = m.index + m[0].length;
@@ -113,11 +118,12 @@ function maskSpoilers(text: string): string {
 }
 
 // Marqueur de spoiler : ||texte||. `allowSpoiler` n'est vrai que pour les
-// messages de GROUPE (jamais en messages privés).
-function renderMessageText(text: string, allowSpoiler = false): React.ReactNode {
+// messages de GROUPE (jamais en messages privés). `myUsername` met en avant les
+// mentions qui te concernent.
+function renderMessageText(text: string, allowSpoiler = false, myUsername?: string): React.ReactNode {
   if (!text) return text;
   if (!allowSpoiler || text.indexOf('||') === -1) {
-    const inline = tokenizeInline(text);
+    const inline = tokenizeInline(text, '', myUsername);
     return inline.length ? inline : text;
   }
   const spoilerRe = /\|\|([\s\S]+?)\|\|/g;
@@ -126,11 +132,11 @@ function renderMessageText(text: string, allowSpoiler = false): React.ReactNode 
   let m: RegExpExecArray | null;
   let key = 0;
   while ((m = spoilerRe.exec(text)) !== null) {
-    if (m.index > lastIndex) out.push(...tokenizeInline(text.slice(lastIndex, m.index), `s${key}-`));
+    if (m.index > lastIndex) out.push(...tokenizeInline(text.slice(lastIndex, m.index), `s${key}-`, myUsername));
     out.push(<SpoilerChip key={`spoil-${key++}`} content={m[1]} />);
     lastIndex = m.index + m[0].length;
   }
-  if (lastIndex < text.length) out.push(...tokenizeInline(text.slice(lastIndex), `s${key}-`));
+  if (lastIndex < text.length) out.push(...tokenizeInline(text.slice(lastIndex), `s${key}-`, myUsername));
   return out.length ? out : text;
 }
 
@@ -1908,7 +1914,7 @@ export default function MessagesView({
                           />
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
-                            {renderMessageText(msg.content, true)}
+                            {renderMessageText(msg.content, true, currentUser.username)}
                           </p>
                         )}
 
