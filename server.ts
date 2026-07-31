@@ -1286,7 +1286,8 @@ export async function createServerInstance() {
       return res.json({ available: !!ELEVEN_KEY });
     }
     try {
-      const voiceId = await resolveVoiceId();
+      const forced = typeof req.query?.voice === 'string' ? req.query.voice : '';
+      const voiceId = forced || (await resolveVoiceId());
       if (!voiceId) return res.json({ available: true, upstreamStatus: 0, error: 'Aucune voix disponible sur le compte.' });
       const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
