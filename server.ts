@@ -1232,8 +1232,31 @@ export async function createServerInstance() {
   // le service est indisponible et l'app retombe sur la voix native.
   // ─────────────────────────────────────────────────────────────────────────
   const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || '';
-  const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // "Rachel" (multilingue) par defaut
   const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2';
+  // Voix : si ELEVENLABS_VOICE_ID est fourni, on l'utilise. SINON on resout
+  // AUTOMATIQUEMENT une voix du compte (les comptes gratuits ne peuvent utiliser
+  // que LEURS voix « premade », pas les voix de bibliotheque -> sinon 402).
+  let resolvedVoiceId: string | null = process.env.ELEVENLABS_VOICE_ID || null;
+  const resolveVoiceId = async (): Promise<string | null> => {
+    if (resolvedVoiceId) return resolvedVoiceId;
+    if (!ELEVEN_KEY) return null;
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': ELEVEN_KEY } });
+      if (!r.ok) return null;
+      const data: any = await r.json().catch(() => ({}));
+      const voices: any[] = Array.isArray(data?.voices) ? data.voices : [];
+      // Preferer une voix utilisable par les comptes gratuits (premade), et si
+      // possible orientee francais/multilingue ; sinon la premiere disponible.
+      const isFrench = (v: any) => /fr/i.test(JSON.stringify(v?.labels || {})) || /fr/i.test(v?.fine_tuning?.language || '');
+      const pick =
+        voices.find((v) => v.category === 'premade' && isFrench(v)) ||
+        voices.find((v) => v.category === 'premade') ||
+        voices.find((v) => isFrench(v)) ||
+        voices[0];
+      if (pick?.voice_id) resolvedVoiceId = pick.voice_id;
+      return resolvedVoiceId;
+    } catch { return null; }
+  };
   const TTS_MAX_CHARS = 2000; // borne par requete (protege le quota)
   // Cache LRU minimal en memoire (borne a ~200 passages).
   const ttsCache = new Map<string, Buffer>();
@@ -1263,7 +1286,9 @@ export async function createServerInstance() {
       return res.json({ available: !!ELEVEN_KEY });
     }
     try {
-      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
+      const voiceId = await resolveVoiceId();
+      if (!voiceId) return res.json({ available: true, upstreamStatus: 0, error: 'Aucune voix disponible sur le compte.' });
+      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
         body: JSON.stringify({ text: 'Bonjour.', model_id: ELEVEN_MODEL }),
@@ -1271,7 +1296,7 @@ export async function createServerInstance() {
       let detail = '';
       const ct = upstream.headers.get('content-type') || '';
       if (!upstream.ok || !ct.includes('audio')) { try { detail = (await upstream.text()).slice(0, 300); } catch { /* ignore */ } }
-      res.json({ available: true, upstreamStatus: upstream.status, contentType: ct, detail });
+      res.json({ available: true, voiceId, upstreamStatus: upstream.status, contentType: ct, detail });
     } catch (e: any) {
       res.json({ available: true, upstreamStatus: 0, error: String(e?.message || e).slice(0, 200) });
     }
@@ -1283,8 +1308,10 @@ export async function createServerInstance() {
       const raw = typeof req.body?.text === 'string' ? req.body.text : '';
       const text = raw.trim().slice(0, TTS_MAX_CHARS);
       if (!text) return res.status(400).json({ error: 'Texte vide.' });
+      const voiceId = await resolveVoiceId();
+      if (!voiceId) return res.status(503).json({ error: 'Aucune voix disponible.' });
 
-      const hash = crypto.createHash('sha256').update(`${ELEVEN_VOICE}|${ELEVEN_MODEL}|${text}`).digest('hex');
+      const hash = crypto.createHash('sha256').update(`${voiceId}|${ELEVEN_MODEL}|${text}`).digest('hex');
       const cached = ttsCacheGet(hash);
       if (cached) {
         res.set('Content-Type', 'audio/mpeg');
@@ -1292,7 +1319,7 @@ export async function createServerInstance() {
         return res.send(cached);
       }
 
-      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
+      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: {
           'xi-api-key': ELEVEN_KEY,
