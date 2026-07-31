@@ -1254,8 +1254,27 @@ export async function createServerInstance() {
   });
 
   // Le client sonde ceci pour savoir s'il doit proposer la voix neuronale.
-  app.get('/api/tts/health', requireAuth, (_req, res) => {
-    res.json({ available: !!ELEVEN_KEY });
+  // Public (ne renvoie qu'un booleen, aucune donnee sensible). Avec ?probe=1,
+  // effectue un test reel minimal aupres d'ElevenLabs et renvoie le code de
+  // reponse en amont (sert a diagnostiquer, ex. plan gratuit bloque depuis un
+  // datacenter -> 401 "detected_unusual_activity").
+  app.get('/api/tts/health', async (req: any, res) => {
+    if (String(req.query?.probe || '') !== '1' || !ELEVEN_KEY) {
+      return res.json({ available: !!ELEVEN_KEY });
+    }
+    try {
+      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+        body: JSON.stringify({ text: 'Bonjour.', model_id: ELEVEN_MODEL }),
+      });
+      let detail = '';
+      const ct = upstream.headers.get('content-type') || '';
+      if (!upstream.ok || !ct.includes('audio')) { try { detail = (await upstream.text()).slice(0, 300); } catch { /* ignore */ } }
+      res.json({ available: true, upstreamStatus: upstream.status, contentType: ct, detail });
+    } catch (e: any) {
+      res.json({ available: true, upstreamStatus: 0, error: String(e?.message || e).slice(0, 200) });
+    }
   });
 
   app.post('/api/tts', requireAuth, ttsLimiter, async (req: any, res) => {

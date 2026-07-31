@@ -145,8 +145,33 @@ export function speakText(text: string, opts: SpeakOpts): void {
 // indisponible (pas de cle, quota epuise, reseau).
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Élément audio RÉUTILISÉ (débloqué par un geste utilisateur) : sur mobile,
+// appeler play() APRÈS un fetch async est souvent bloqué/rendu muet. En
+// débloquant un même élément dans le tap puis en réutilisant cet élément, la
+// lecture fonctionne.
+let sharedAudio: HTMLAudioElement | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 let neuralAvailable: boolean | null = null; // null = pas encore sonde
+
+// mp3 silencieux minimal (pour débloquer la lecture dans le geste).
+const SILENT_MP3 =
+  'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+
+// À appeler DANS un geste utilisateur (le tap ▶️) pour autoriser la lecture
+// audio ultérieure (voix neuronale jouée après un fetch async).
+export function unlockNeuralAudio(): void {
+  try {
+    if (!sharedAudio) sharedAudio = new Audio();
+    sharedAudio.muted = true;
+    sharedAudio.src = SILENT_MP3;
+    const p = sharedAudio.play();
+    if (p && typeof (p as any).then === 'function') {
+      (p as Promise<void>).then(() => {
+        try { sharedAudio!.pause(); sharedAudio!.currentTime = 0; sharedAudio!.muted = false; } catch { /* ignore */ }
+      }).catch(() => { try { sharedAudio!.muted = false; } catch { /* ignore */ } });
+    }
+  } catch { /* ignore */ }
+}
 
 // Sonde une seule fois : le backend a-t-il une voix neuronale configuree ?
 export async function neuralTtsAvailable(): Promise<boolean> {
@@ -196,7 +221,11 @@ export function speakNeural(text: string, opts: SpeakOpts): void {
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
+      // On REUTILISE l'element debloque dans le geste (sinon lecture muette).
+      if (!sharedAudio) sharedAudio = new Audio();
+      const audio = sharedAudio;
+      audio.muted = false;
+      audio.src = url;
       audio.playbackRate = rate; // ElevenLabs rend a vitesse fixe -> on ajuste ici
       currentAudio = audio;
       const cleanup = () => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } if (currentAudio === audio) currentAudio = null; };

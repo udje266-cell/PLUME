@@ -48,7 +48,7 @@ import { getBookProgress, saveBookProgress, getScrollParent, buildParaMeta, book
 import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
-import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, ttsCancel } from '../utils/tts';
+import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, unlockNeuralAudio, ttsCancel } from '../utils/tts';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
@@ -1223,6 +1223,9 @@ export default function ReadingView({
       alert("La synthèse vocale n'est pas disponible sur cet appareil. Vérifie que la synthèse vocale (Google/Samsung TTS) est installée et activée dans les réglages Android.");
       return;
     }
+    // DANS le geste utilisateur : on debloque la lecture audio pour la voix
+    // neuronale (sinon play() apres le fetch est muet/bloque sur mobile).
+    if (neuralReadyRef.current) unlockNeuralAudio();
     const from = speakIdxRef.current || activeParagraphIndex || 0;
     speakFrom(from);
   };
