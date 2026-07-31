@@ -50,6 +50,7 @@ import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, unlockNeuralAudio, ttsCancel } from '../utils/tts';
 import { trackEvent, flushEvents } from '../utils/telemetry';
+import SimilarStories from './SimilarStories';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
@@ -129,6 +130,8 @@ interface ReadingViewProps {
   onToggleCompletedStories: (storyId: string) => void;
   onToggleReadLater: (storyId: string) => void;
   onViewProfile?: (userId: string) => void;
+  // Ouvre un autre récit en lecture (section « Les lecteurs ont aussi aimé »).
+  onSelectStory?: (story: Story) => void;
 }
 
 type ReadingTheme = 'light' | 'sepia' | 'dark' | 'dimmed';
@@ -398,6 +401,7 @@ class WebAudioSoundSynth {
 export default function ReadingView({
   story,
   onBack,
+  onSelectStory,
   currentUser,
   onToggleFeatured,
   onFollowAuthor,
@@ -2618,6 +2622,11 @@ export default function ReadingView({
               </>
             )}
           </div>
+
+          {/* « Les lecteurs ont aussi aimé » (reco Phase 2) — masquée si vide. */}
+          {!isImmersive && !isOwnStory && (
+            <SimilarStories storyId={story.id} onSelect={onSelectStory} />
+          )}
 
           {/* Navigation between chapters */}
           <div className="mt-12 pt-8 border-t border-gray-205/60 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">

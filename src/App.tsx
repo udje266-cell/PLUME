@@ -3816,6 +3816,7 @@ export default function App() {
                   key={selectedStoryForReading.id}
                   story={selectedStoryForReading}
                   onBack={() => setSelectedStoryForReading(null)}
+                  onSelectStory={handleSelectStoryForReading}
                   currentUser={currentUser!}
                   onToggleFeatured={handleToggleStoryFeatured}
                   onFollowAuthor={handleFollowAuthor}

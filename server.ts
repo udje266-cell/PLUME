@@ -3221,6 +3221,109 @@ export async function createServerInstance() {
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RECO Phase 2 — « Les lecteurs ont aussi aimé » (item-item par co-occurrence).
+  // On prend le PUBLIC d'un récit (lecteurs qui l'ont aimé / mis en favori /
+  // terminé), on regarde ce que ce public a AUSSI aimé/terminé, et on classe par
+  // co-occurrence (probabilité conditionnelle) mélangée au StoryScore (qualité).
+  // Repli sur le même genre trié par qualité si le public est trop mince.
+  // ─────────────────────────────────────────────────────────────────────────
+  app.get('/api/reco/similar/:id', requireAuth, async (req: any, res) => {
+    try {
+      const targetId = String(req.params.id);
+      const limit = Math.max(1, Math.min(20, parseInt(String(req.query.limit ?? '10'), 10) || 10));
+      const target = await prisma.story.findUnique({ where: { id: targetId }, select: { id: true, genre: true, ageRating: true } });
+      if (!target) return res.json([]);
+
+      // Récits déjà lus / aimés / en favori par le demandeur (à exclure) + auteurs bloqués.
+      const me = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          birthDate: true,
+          blockedUsers: { select: { blockedId: true } },
+          readingHistory: { select: { storyId: true } },
+          likes: { select: { storyId: true } },
+          favorites: { select: { storyId: true } },
+        },
+      });
+      const blocked = new Set((me?.blockedUsers || []).map((b: any) => b.blockedId));
+      const seen = new Set<string>([
+        targetId,
+        ...(me?.readingHistory || []).map((h: any) => h.storyId),
+        ...(me?.likes || []).map((l: any) => l.storyId),
+        ...(me?.favorites || []).map((f: any) => f.storyId),
+      ]);
+
+      // 1) Public du récit cible (borné). Likes ∪ favoris ∪ complétions (télémétrie).
+      const [tLikes, tFavs, tComplete] = await Promise.all([
+        prisma.storyLike.findMany({ where: { storyId: targetId }, select: { userId: true }, take: 1000 }),
+        prisma.favorite.findMany({ where: { storyId: targetId }, select: { userId: true }, take: 1000 }),
+        prisma.readingEvent.findMany({ where: { storyId: targetId, type: 'complete' }, select: { userId: true }, take: 1000 }),
+      ]);
+      const audience = new Set<string>([
+        ...tLikes.map((x) => x.userId), ...tFavs.map((x) => x.userId), ...tComplete.map((x) => x.userId),
+      ]);
+      audience.delete(req.user.id);
+
+      const coCount = new Map<string, number>();
+      if (audience.size >= 3) {
+        // 2) Ce que ce public a AUSSI aimé/favori/terminé.
+        const ids = Array.from(audience).slice(0, 800);
+        const [oLikes, oFavs, oComplete] = await Promise.all([
+          prisma.storyLike.findMany({ where: { userId: { in: ids } }, select: { storyId: true }, take: 20000 }),
+          prisma.favorite.findMany({ where: { userId: { in: ids } }, select: { storyId: true }, take: 20000 }),
+          prisma.readingEvent.findMany({ where: { userId: { in: ids }, type: 'complete' }, select: { storyId: true }, take: 20000 }),
+        ]);
+        for (const row of [...oLikes, ...oFavs, ...oComplete]) {
+          if (seen.has(row.storyId)) continue;
+          coCount.set(row.storyId, (coCount.get(row.storyId) || 0) + 1);
+        }
+      }
+
+      // 3) Récupère les récits candidats (co-occurrence ou repli même-genre) et classe.
+      const candidateIds = coCount.size
+        ? Array.from(coCount.keys())
+        : []; // repli plus bas si vide
+      let candidates = candidateIds.length
+        ? await prisma.story.findMany({
+            where: { id: { in: candidateIds }, status: 'PUBLIE', isFlagged: false },
+            include: { author: true, chapters: { orderBy: { order: 'asc' }, select: { id: true, title: true, order: true, isPublished: true, publishedAt: true } } },
+            take: 200,
+          })
+        : await prisma.story.findMany({
+            where: { genre: target.genre, status: 'PUBLIE', isFlagged: false, id: { not: targetId } },
+            include: { author: true, chapters: { orderBy: { order: 'asc' }, select: { id: true, title: true, order: true, isPublished: true, publishedAt: true } } },
+            orderBy: { reads: 'desc' },
+            take: 40,
+          });
+
+      // Qualité (StoryScore) des candidats pour départager.
+      const statsRows = await prisma.storyStats.findMany({
+        where: { storyId: { in: candidates.map((c: any) => c.id) } },
+        select: { storyId: true, storyScore: true },
+      });
+      const qById = new Map(statsRows.map((s) => [s.storyId, s.storyScore]));
+
+      const scored = candidates
+        .filter((c: any) => !seen.has(c.id) && !blocked.has(c.authorId) && c.authorId !== req.user.id)
+        .map((c: any) => {
+          const co = coCount.get(c.id) || 0;
+          const affinity = audience.size ? co / audience.size : 0;  // P(candidat | public cible)
+          const quality = qById.get(c.id) || 0;
+          const score = 0.7 * affinity + 0.3 * quality + (candidateIds.length ? 0 : 0.0001 * (c.reads || 0));
+          return { c, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(({ c }: any) => serializeStory(filterDraftChapters(c, undefined, false)));
+
+      res.json(scored);
+    } catch (error) {
+      console.error('[RECO] similar:', error);
+      res.json([]); // jamais bloquant : une reco absente n'est pas une erreur visible
+    }
+  });
+
   // Stories
   app.get('/api/stories', async (req: any, res) => {
     try {
