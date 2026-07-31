@@ -485,6 +485,7 @@ async function deleteUserEverything(uid: string): Promise<void> {
     prisma.readingListEntry.deleteMany({ where: { userId: uid } }),
     prisma.chapterRead.deleteMany({ where: { userId: uid } }),
     prisma.savedQuote.deleteMany({ where: { userId: uid } }),
+    prisma.passageNote.deleteMany({ where: { userId: uid } }),
     prisma.readingHistory.deleteMany({ where: { userId: uid } }),
     prisma.notification.deleteMany({ where: { userId: uid } }),
     // Jetons push (donnée personnelle liée à l'appareil) : colonne userId sans
@@ -6283,6 +6284,52 @@ export async function createServerInstance() {
     } catch (error) {
       console.error('[QUOTES] suppression:', error);
       res.status(500).json({ error: 'Erreur lors de la suppression de la citation' });
+    }
+  });
+
+  // ─── ANNOTATIONS DE LECTURE (surlignage + note perso, privees) ───────────
+  // Mes annotations pour un recit (ancrees au paragraphe).
+  app.get('/api/me/annotations', requireAuth, async (req: any, res) => {
+    try {
+      const storyId = typeof req.query.storyId === 'string' ? req.query.storyId : undefined;
+      const rows = await prisma.passageNote.findMany({
+        where: { userId: req.user.id, ...(storyId ? { storyId } : {}) },
+        orderBy: { createdAt: 'asc' },
+        take: 2000,
+      });
+      res.json(rows);
+    } catch (error) {
+      console.error('[ANNOT] chargement:', error);
+      res.status(500).json({ error: 'Erreur lors du chargement des annotations' });
+    }
+  });
+
+  // Cree/met a jour l'annotation d'un paragraphe (upsert par chapitre+index).
+  // Si color ET note sont vides -> on SUPPRIME la ligne (plus d'annotation).
+  app.post('/api/me/annotations', requireAuth, async (req: any, res) => {
+    try {
+      const storyId = String(req.body?.storyId || '');
+      const chapterId = String(req.body?.chapterId || '');
+      const paragraphIndex = Number(req.body?.paragraphIndex);
+      if (!storyId || !chapterId || !Number.isInteger(paragraphIndex) || paragraphIndex < 0) {
+        return res.status(400).json({ error: 'storyId, chapterId et paragraphIndex sont requis.' });
+      }
+      const color = typeof req.body?.color === 'string' && req.body.color ? req.body.color.slice(0, 24) : null;
+      const note = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim().slice(0, 2000) : null;
+
+      if (!color && !note) {
+        await prisma.passageNote.deleteMany({ where: { userId: req.user.id, chapterId, paragraphIndex } });
+        return res.json({ deleted: true });
+      }
+      const row = await prisma.passageNote.upsert({
+        where: { userId_chapterId_paragraphIndex: { userId: req.user.id, chapterId, paragraphIndex } },
+        update: { color, note, updatedAt: new Date() },
+        create: { userId: req.user.id, storyId, chapterId, paragraphIndex, color, note },
+      });
+      res.status(201).json(row);
+    } catch (error) {
+      console.error('[ANNOT] upsert:', error);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de l’annotation' });
     }
   });
 

@@ -704,3 +704,24 @@ model TrustScore {
   signals   Json?    // detail des penalites appliquees
   updatedAt DateTime @updatedAt
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANNOTATIONS DE LECTURE (surlignage + note personnelle sur un paragraphe).
+// Privees : chaque lecteur voit UNIQUEMENT les siennes. Ancrees au paragraphe
+// (chapterId + paragraphIndex). `color` = surlignage (null si aucun), `note` =
+// annotation texte (null si aucune). Une ligne existe si l'un ou l'autre est mis.
+// ─────────────────────────────────────────────────────────────────────────
+model PassageNote {
+  id             String   @id @default(cuid())
+  userId         String
+  storyId        String
+  chapterId      String
+  paragraphIndex Int
+  color          String?
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, chapterId, paragraphIndex])
+  @@index([userId, storyId])
+}

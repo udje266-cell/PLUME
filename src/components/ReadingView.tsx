@@ -26,6 +26,8 @@ import {
   Headphones,
   Play,
   Pause,
+  Highlighter,
+  StickyNote,
   X,
   Sparkles,
   Info,
@@ -544,6 +546,56 @@ export default function ReadingView({
   // Discrete interactions & reactions
   const [passageLikes, setPassageLikes] = useState<Record<string, number>>({});
   const [likedPassagesMe, setLikedPassagesMe] = useState<Record<string, boolean>>({});
+
+  // ── ANNOTATIONS PRIVÉES (surlignage + note perso, ancrées au paragraphe) ──
+  // Clé = `${chapterId}:${paragraphIndex}`. Chargées une fois pour le récit.
+  type Annotation = { id?: string; color?: string | null; note?: string | null };
+  const [annotations, setAnnotations] = useState<Record<string, Annotation>>({});
+  const [noteEditor, setNoteEditor] = useState<{ idx: number; value: string } | null>(null);
+  const HIGHLIGHT_COLOR = '#fbbf24'; // ambre doux
+  const annKey = (chapterId: string, idx: number) => `${chapterId}:${idx}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/me/annotations?storyId=${encodeURIComponent(story.id)}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: any[]) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        const map: Record<string, Annotation> = {};
+        for (const a of rows) map[annKey(a.chapterId, a.paragraphIndex)] = { id: a.id, color: a.color, note: a.note };
+        setAnnotations(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
+
+  // Enregistre l'annotation d'un paragraphe (surlignage et/ou note). Vide -> supprime.
+  const saveAnnotation = (idx: number, next: { color?: string | null; note?: string | null }) => {
+    const chapterId = activeChapter.id;
+    const key = annKey(chapterId, idx);
+    const cur = annotations[key] || {};
+    const color = next.color !== undefined ? next.color : (cur.color ?? null);
+    const note = next.note !== undefined ? next.note : (cur.note ?? null);
+    setAnnotations((prev) => {
+      const n = { ...prev };
+      if (!color && !note) delete n[key];
+      else n[key] = { ...cur, color, note };
+      return n;
+    });
+    fetch('/api/me/annotations', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ storyId: story.id, chapterId, paragraphIndex: idx, color, note }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((row) => { if (row && row.id) setAnnotations((prev) => (prev[key] ? { ...prev, [key]: { ...prev[key], id: row.id } } : prev)); })
+      .catch(() => {});
+  };
+  const toggleHighlight = (idx: number) => {
+    const cur = annotations[annKey(activeChapter.id, idx)];
+    saveAnnotation(idx, { color: cur?.color ? null : HIGHLIGHT_COLOR });
+  };
   // Citations : clé SCOPÉE PAR UTILISATEUR (l'ancienne clé globale faisait fuir
   // le carnet d'un compte vers l'autre sur le même appareil) + persistance
   // serveur (survit au changement d'appareil, identique app/PWA).
@@ -2113,6 +2165,36 @@ export default function ReadingView({
         document.body,
       )}
 
+      {/* ÉDITEUR DE NOTE PERSONNELLE (annotation privée d'un paragraphe). */}
+      {noteEditor && createPortal(
+        <div className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setNoteEditor(null)}>
+          <div className="w-full max-w-sm bg-white dark:bg-[#0E0E14] rounded-2xl border border-gray-150 dark:border-purple-900/20 shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <StickyNote className="w-4 h-4 text-purple-600" />
+              <h3 className="font-black text-sm text-gray-900 dark:text-white">Ma note</h3>
+              <span className="text-[10px] text-gray-400">privée</span>
+              <button onClick={() => setNoteEditor(null)} className="ml-auto p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <textarea
+              value={noteEditor.value}
+              onChange={(e) => setNoteEditor({ ...noteEditor, value: e.target.value })}
+              rows={4}
+              maxLength={2000}
+              autoFocus
+              placeholder="Écris ta note sur ce passage… (visible par toi seul)"
+              className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none resize-none focus:border-purple-400"
+            />
+            <div className="flex items-center gap-2 mt-3">
+              {annotations[annKey(activeChapter.id, noteEditor.idx)]?.note && (
+                <button onClick={() => { saveAnnotation(noteEditor.idx, { note: null }); setNoteEditor(null); }} className="text-[11px] font-bold text-red-500 hover:text-red-600">Supprimer</button>
+              )}
+              <button onClick={() => { saveAnnotation(noteEditor.idx, { note: noteEditor.value.trim() || null }); setNoteEditor(null); }} className="ml-auto px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider transition">Enregistrer</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {/* 3. MULTI-LAYER READING BOARD CHASSIS */}
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 relative">
         
@@ -2422,6 +2504,7 @@ export default function ReadingView({
               const isPFocus = activeParagraphIndex === pIdx;
               const plikes = passageLikes[capKey] || 0;
               const hasLikedPass = likedPassagesMe[capKey];
+              const ann = annotations[annKey(activeChapter.id, pIdx)];
 
               return (
                 <div
@@ -2429,18 +2512,30 @@ export default function ReadingView({
                   id={`p-idx-${pIdx}`}
                   data-paragraph-index={pIdx}
                   onClick={() => handleParagraphSelect(pIdx)}
+                  style={ann?.color ? { backgroundColor: `${ann.color}2e`, boxShadow: `inset 3px 0 0 ${ann.color}` } : undefined}
                   className={`relative group rounded-xl transition-all duration-500 cursor-pointer mb-6 ${
-                    isCinemaMode 
-                      ? (isPFocus 
-                        ? 'opacity-100 scale-[1.01] bg-purple-500/5 dark:bg-purple-950/10 p-4 shadow-sm' 
+                    isCinemaMode
+                      ? (isPFocus
+                        ? 'opacity-100 scale-[1.01] bg-purple-500/5 dark:bg-purple-950/10 p-4 shadow-sm'
                         : 'opacity-15 blur-[0.4px] hover:opacity-40 select-none scale-[0.98]'
                         )
-                      : (isPFocus 
+                      : (isPFocus
                         ? 'bg-purple-500/5 dark:bg-purple-950/5 border-l-4 border-purple-550/60 p-3.5'
                         : 'hover:bg-gray-100/30 dark:hover:bg-zinc-800/10 p-2 rounded-lg'
                         )
                   }`}
                 >
+                  {/* Indicateur de note perso : petite pastille cliquable. */}
+                  {ann?.note && !isImmersive && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setNoteEditor({ idx: pIdx, value: ann.note || '' }); }}
+                      className="absolute -left-1.5 top-1 z-10 w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-md"
+                      title="Voir ma note"
+                    >
+                      <StickyNote className="w-3 h-3" />
+                    </button>
+                  )}
                   {/* Floating discrete react toolbar next to hovered/focused paragraph */}
                   {!isImmersive && (
                     <div className={`absolute right-2 -bottom-2 z-10 items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in ${isPFocus ? 'flex' : 'hidden group-hover:flex'}`}>
@@ -2473,6 +2568,26 @@ export default function ReadingView({
                         title="Sauvegarder la citation dans mon carnet"
                       >
                         <Bookmark className="w-3 h-3" />
+                      </button>
+
+                      <div className="w-px h-3 bg-gray-200 dark:bg-zinc-800" />
+
+                      {/* Surligner ce paragraphe (annotation privée) */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleHighlight(pIdx); }}
+                        className={`font-black hover:text-amber-500 ${annotations[annKey(activeChapter.id, pIdx)]?.color ? 'text-amber-500' : 'text-gray-400'}`}
+                        title="Surligner ce passage (visible par toi seul)"
+                      >
+                        <Highlighter className="w-3 h-3" />
+                      </button>
+
+                      {/* Note personnelle sur ce paragraphe */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setNoteEditor({ idx: pIdx, value: annotations[annKey(activeChapter.id, pIdx)]?.note || '' }); }}
+                        className={`font-black hover:text-purple-600 ${annotations[annKey(activeChapter.id, pIdx)]?.note ? 'text-purple-600' : 'text-gray-400'}`}
+                        title="Ajouter une note personnelle"
+                      >
+                        <StickyNote className="w-3 h-3" />
                       </button>
 
                       <div className="w-px h-3 bg-gray-200 dark:bg-zinc-800" />
