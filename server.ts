@@ -4858,11 +4858,14 @@ export async function createServerInstance() {
       // Un SPOILER (||…||) ne doit JAMAIS apparaitre en clair dans la notif :
       // on le remplace par une etiquette neutre avant de construire l'apercu.
       const maskedForPreview = content.replace(/\|\|[\s\S]+?\|\|/g, '🚫 Spoiler');
+      const pollPreview = content.startsWith('[poll]') ? parsePoll(content) : null;
       const gPreview = content.startsWith('[sticker]')
         ? '🪶 Sticker'
         : content.startsWith('[🎙️ Note Vocale')
           ? '🎙️ Note vocale'
-          : (maskedForPreview.length > 140 ? maskedForPreview.slice(0, 137) + '…' : maskedForPreview);
+          : pollPreview
+            ? `📊 Sondage : ${pollPreview.q}`.slice(0, 140)
+            : (maskedForPreview.length > 140 ? maskedForPreview.slice(0, 137) + '…' : maskedForPreview);
 
       // MENTIONS (@pseudo) facon WhatsApp : on repere les membres tagues dans le
       // texte pour leur envoyer une notification DEDIEE (« vous a mentionne »),
@@ -4911,6 +4914,68 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de l’envoi du message de groupe.' });
+    }
+  });
+
+  // ─── SONDAGES DE GROUPE ──────────────────────────────────────────────────
+  // Le sondage est un message dont le contenu commence par « [poll] » + JSON
+  // { q: question, o: [options] }. Ici : lecture des resultats + vote.
+  const parsePoll = (content: string): { q: string; o: string[] } | null => {
+    if (!content || !content.startsWith('[poll]')) return null;
+    try {
+      const j = JSON.parse(content.slice(6));
+      if (j && typeof j.q === 'string' && Array.isArray(j.o) && j.o.length >= 2) return { q: j.q, o: j.o.map((x: any) => String(x)) };
+    } catch { /* ignore */ }
+    return null;
+  };
+  const pollMemberGuard = async (messageId: string, userId: string) => {
+    const msg = await prisma.groupMessage.findUnique({ where: { id: messageId }, select: { id: true, groupId: true, content: true } });
+    if (!msg) return { error: 404 as const };
+    const poll = parsePoll(msg.content);
+    if (!poll) return { error: 400 as const };
+    const group = await prisma.readingGroup.findUnique({ where: { id: msg.groupId }, include: { members: { select: { id: true } } } });
+    if (!group || !group.members.some((m) => m.id === userId)) return { error: 403 as const };
+    return { msg, poll, group };
+  };
+
+  app.get('/api/groups/messages/:id/poll', requireAuth, async (req: any, res) => {
+    try {
+      const g = await pollMemberGuard(req.params.id, req.user.id);
+      if ('error' in g) return res.status(g.error).json({ error: 'Sondage indisponible.' });
+      const votes = await prisma.groupPollVote.findMany({ where: { messageId: g.msg.id }, select: { userId: true, optionIndex: true } });
+      const tallies = new Array(g.poll.o.length).fill(0);
+      let myVote: number | null = null;
+      for (const v of votes) { if (v.optionIndex >= 0 && v.optionIndex < tallies.length) tallies[v.optionIndex]++; if (v.userId === req.user.id) myVote = v.optionIndex; }
+      res.json({ question: g.poll.q, options: g.poll.o, tallies, myVote, total: votes.length });
+    } catch (e) {
+      console.error('[POLL] read', e);
+      res.status(500).json({ error: 'Erreur.' });
+    }
+  });
+
+  app.post('/api/groups/messages/:id/vote', requireAuth, async (req: any, res) => {
+    try {
+      const g = await pollMemberGuard(req.params.id, req.user.id);
+      if ('error' in g) return res.status(g.error).json({ error: 'Vote impossible.' });
+      const optionIndex = Number(req.body?.optionIndex);
+      if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= g.poll.o.length) {
+        return res.status(400).json({ error: 'Option invalide.' });
+      }
+      await prisma.groupPollVote.upsert({
+        where: { messageId_userId: { messageId: g.msg.id, userId: req.user.id } },
+        update: { optionIndex },
+        create: { messageId: g.msg.id, userId: req.user.id, optionIndex },
+      });
+      const votes = await prisma.groupPollVote.findMany({ where: { messageId: g.msg.id }, select: { userId: true, optionIndex: true } });
+      const tallies = new Array(g.poll.o.length).fill(0);
+      for (const v of votes) if (v.optionIndex >= 0 && v.optionIndex < tallies.length) tallies[v.optionIndex]++;
+      // Diffusion aux membres pour un rafraichissement en direct (best-effort).
+      const memberIds = await getGroupMemberIds(g.msg.groupId);
+      memberIds.forEach((id) => io.to(`user:${id}`).emit('group_poll_updated', { messageId: g.msg.id, tallies, total: votes.length }));
+      res.json({ tallies, myVote: optionIndex, total: votes.length });
+    } catch (e) {
+      console.error('[POLL] vote', e);
+      res.status(500).json({ error: 'Erreur.' });
     }
   });
 

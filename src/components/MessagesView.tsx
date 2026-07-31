@@ -40,6 +40,7 @@ import {
   Lock,
   Megaphone,
   EyeOff,
+  BarChart3,
   Image as ImageIcon
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -133,6 +134,63 @@ function SpoilerChip({ content, opts }: { content: string; opts?: InlineOpts }) 
     >
       <EyeOff className="w-3 h-3" /> Spoil · Afficher
     </button>
+  );
+}
+
+// Un message de groupe est-il un SONDAGE ? Contenu « [poll] » + JSON {q, o}.
+function parsePollContent(content: string): { q: string; o: string[] } | null {
+  if (!content || !content.startsWith('[poll]')) return null;
+  try {
+    const j = JSON.parse(content.slice(6));
+    if (j && typeof j.q === 'string' && Array.isArray(j.o) && j.o.length >= 2) return { q: j.q, o: j.o.map((x: any) => String(x)) };
+  } catch { /* ignore */ }
+  return null;
+}
+
+// Carte de sondage (dans un message de groupe) : question, options avec barres
+// de résultat, vote par tap, total. Mise à jour en direct via un event fenêtre.
+function PollCard({ messageId, question, options }: { messageId: string; question: string; options: string[] }) {
+  const [tallies, setTallies] = useState<number[]>(() => options.map(() => 0));
+  const [myVote, setMyVote] = useState<number | null>(null);
+  const [total, setTotal] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/groups/messages/${messageId}/poll`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) { setTallies(d.tallies || []); setMyVote(d.myVote ?? null); setTotal(d.total || 0); } })
+      .catch(() => {});
+    const onUpd = (e: any) => { if (e.detail?.messageId === messageId) { setTallies(e.detail.tallies || []); setTotal(e.detail.total || 0); } };
+    window.addEventListener('plume:poll-updated', onUpd as any);
+    return () => { cancelled = true; window.removeEventListener('plume:poll-updated', onUpd as any); };
+  }, [messageId]);
+  const vote = (i: number) => {
+    fetch(`/api/groups/messages/${messageId}/vote`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ optionIndex: i }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) { setTallies(d.tallies || []); setMyVote(d.myVote ?? null); setTotal(d.total || 0); } })
+      .catch(() => {});
+  };
+  return (
+    <div className="min-w-[210px] max-w-[280px]">
+      <div className="flex items-center gap-1.5 mb-1.5"><BarChart3 className="w-3.5 h-3.5 text-purple-500" /><span className="text-[10px] font-black uppercase tracking-wider text-purple-500">Sondage</span></div>
+      <p className="text-xs font-bold mb-2 leading-snug">{question}</p>
+      <div className="space-y-1.5">
+        {options.map((opt, i) => {
+          const pct = total > 0 ? Math.round(((tallies[i] || 0) / total) * 100) : 0;
+          const mine = myVote === i;
+          return (
+            <button key={i} type="button" onClick={(e) => { e.stopPropagation(); vote(i); }}
+              className={`w-full text-left relative rounded-lg border overflow-hidden transition ${mine ? 'border-purple-500' : 'border-gray-200 dark:border-zinc-700 hover:border-purple-400'}`}>
+              <div className="absolute inset-y-0 left-0 bg-purple-500/15" style={{ width: `${pct}%` }} />
+              <div className="relative flex items-center justify-between px-2.5 py-1.5 text-[11px]">
+                <span className="font-bold flex items-center gap-1 truncate">{mine && <Check className="w-3 h-3 text-purple-600 shrink-0" />}{opt}</span>
+                <span className="font-mono text-gray-500 dark:text-gray-400 shrink-0 ml-2">{pct}%</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[9px] text-gray-400 mt-1.5">{total} vote{total > 1 ? 's' : ''} · appuie pour voter</p>
+    </div>
   );
 }
 
@@ -405,6 +463,16 @@ export default function MessagesView({
   // Mode « spoiler » (groupes uniquement) : le prochain message envoyé sera
   // masqué derrière une pastille « Spoil · Afficher » (façon Discord).
   const [spoilerMode, setSpoilerMode] = useState(false);
+  // Brouillon de SONDAGE (groupes) : question + options.
+  const [pollDraft, setPollDraft] = useState<{ q: string; options: string[] } | null>(null);
+  const submitPoll = () => {
+    if (!activeGroupId || !pollDraft) return;
+    const q = pollDraft.q.trim();
+    const o = pollDraft.options.map((x) => x.trim()).filter(Boolean);
+    if (!q || o.length < 2) { alert('Un sondage a besoin d’une question et d’au moins 2 options.'); return; }
+    onSendGroupMessage(activeGroupId, `[poll]${JSON.stringify({ q: q.slice(0, 200), o: o.slice(0, 6).map((x) => x.slice(0, 80)) })}`);
+    setPollDraft(null);
+  };
   // Autocomplétion des mentions @ (groupes).
   const [mentionActive, setMentionActive] = useState(false);
   const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
@@ -1439,6 +1507,48 @@ export default function MessagesView({
           {/* MODALE : DÉCOUVRIR DES GROUPES PUBLICS. Rendue via un PORTAL sur
               document.body pour être TOUJOURS au-dessus de la barre de navigation
               du bas (et jamais piégée par un ancêtre transformé/scrollable). */}
+          {/* MODALE DE CRÉATION DE SONDAGE (groupes). */}
+          {pollDraft && createPortal(
+            <div className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPollDraft(null)}>
+              <div className="w-full max-w-sm bg-white dark:bg-[#0E0E14] rounded-3xl border border-gray-150 dark:border-purple-900/20 shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 className="w-4 h-4 text-purple-600" />
+                  <h3 className="font-black text-sm text-gray-900 dark:text-white">Nouveau sondage</h3>
+                  <button onClick={() => setPollDraft(null)} className="ml-auto p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white"><X className="w-4 h-4" /></button>
+                </div>
+                <input
+                  value={pollDraft.q}
+                  onChange={(e) => setPollDraft({ ...pollDraft, q: e.target.value })}
+                  maxLength={200}
+                  autoFocus
+                  placeholder="Ta question…"
+                  className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-purple-400 mb-3"
+                />
+                <div className="space-y-2">
+                  {pollDraft.options.map((opt, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        value={opt}
+                        onChange={(e) => { const o = [...pollDraft.options]; o[i] = e.target.value; setPollDraft({ ...pollDraft, options: o }); }}
+                        maxLength={80}
+                        placeholder={`Option ${i + 1}`}
+                        className="flex-1 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-400"
+                      />
+                      {pollDraft.options.length > 2 && (
+                        <button onClick={() => setPollDraft({ ...pollDraft, options: pollDraft.options.filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {pollDraft.options.length < 6 && (
+                  <button onClick={() => setPollDraft({ ...pollDraft, options: [...pollDraft.options, ''] })} className="mt-2 text-[11px] font-bold text-purple-600 hover:text-purple-700">+ Ajouter une option</button>
+                )}
+                <button onClick={submitPoll} className="mt-4 w-full px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider transition">Créer le sondage</button>
+              </div>
+            </div>,
+            document.body,
+          )}
+
           {discoverOpen && createPortal(
             <div className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDiscoverOpen(false)}>
               <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl border border-gray-150 dark:border-purple-900/20 shadow-2xl max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -1678,7 +1788,7 @@ export default function MessagesView({
                         </p>
                       ) : (
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
-                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : maskSpoilers(group.lastMessage))) : 'Aucune discussion récente'}</span>
+                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage.startsWith('[poll]') ? '📊 Sondage' : maskSpoilers(group.lastMessage))) : 'Aucune discussion récente'}</span>
                         </p>
                       )}
 
@@ -1980,7 +2090,7 @@ export default function MessagesView({
                         {repliedMsg && (
                           <div className={`mb-1 px-2 py-1 rounded-lg border-l-2 text-left ${isSentByMe ? 'bg-white/15 border-white/60' : 'bg-purple-500/10 border-purple-500'}`}>
                             <p className={`text-[9px] font-black truncate ${isSentByMe ? 'opacity-90' : 'text-purple-600 dark:text-purple-400'}`}>{repliedMsg.senderId === currentUser.id ? 'Vous' : repliedMsg.senderName}</p>
-                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : (repliedMsg.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : maskSpoilers(repliedMsg.content)}</p>
+                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : (repliedMsg.content || '').startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : (repliedMsg.content || '').startsWith('[poll]') ? '📊 Sondage' : maskSpoilers(repliedMsg.content)}</p>
                           </div>
                         )}
 
@@ -2007,6 +2117,8 @@ export default function MessagesView({
                             isSentByMe={isSentByMe}
                             audioUrl={msg.content.match(/\|(https?:\/\/[^\]]+)\]/)?.[1]}
                           />
+                        ) : parsePollContent(msg.content) ? (
+                          (() => { const p = parsePollContent(msg.content)!; return <PollCard messageId={msg.id} question={p.q} options={p.o} />; })()
                         ) : (
                           <p className="text-xs leading-relaxed break-words text-left">
                             {renderMessageText(msg.content, true, groupRenderOpts)}
@@ -2350,15 +2462,25 @@ export default function MessagesView({
               {/* Bascule SPOILER (groupes uniquement, tous les membres) : le
                   prochain message part masqué derrière une pastille « Spoil ». */}
               {activeGroupId && !composerLocked && (
-                <button
-                  type="button"
-                  onClick={() => setSpoilerMode((v) => !v)}
-                  className={`mb-1.5 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${spoilerMode ? 'bg-zinc-700 text-white' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400'}`}
-                  title="Masquer le prochain message derrière un « Spoiler »"
-                >
-                  <EyeOff className="w-3.5 h-3.5 shrink-0" />
-                  {spoilerMode ? 'Le prochain message sera masqué (Spoiler)' : 'Marquer comme spoiler'}
-                </button>
+                <div className="mb-1.5 flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSpoilerMode((v) => !v)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${spoilerMode ? 'bg-zinc-700 text-white' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400'}`}
+                    title="Masquer le prochain message derrière un « Spoiler »"
+                  >
+                    <EyeOff className="w-3.5 h-3.5 shrink-0" />
+                    {spoilerMode ? 'Message masqué (Spoiler)' : 'Spoiler'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPollDraft({ q: '', options: ['', ''] })}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400 hover:text-purple-600 transition"
+                    title="Créer un sondage"
+                  >
+                    <BarChart3 className="w-3.5 h-3.5 shrink-0" /> Sondage
+                  </button>
+                </div>
               )}
 
               {/* Standard message input bar */}

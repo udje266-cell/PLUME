@@ -725,3 +725,20 @@ model PassageNote {
   @@unique([userId, chapterId, paragraphIndex])
   @@index([userId, storyId])
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// SONDAGES DE GROUPE. Le sondage EST un message de groupe dont le contenu
+// commence par « [poll] » suivi d'un JSON {q: question, o: [options]}. On ne
+// stocke ici que les VOTES (un par utilisateur et par message). Les tallies
+// sont recalcules a la demande.
+// ─────────────────────────────────────────────────────────────────────────
+model GroupPollVote {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  optionIndex Int
+  createdAt   DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+}

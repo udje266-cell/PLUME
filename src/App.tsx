@@ -920,6 +920,13 @@ export default function App() {
       setGroupMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
     });
 
+    // Sondage de groupe mis à jour (un membre a voté) : on relaie aux cartes de
+    // sondage ouvertes via un event fenêtre (mise à jour en direct).
+    socket.on('group_poll_updated', (payload: { messageId: string; tallies: number[]; total: number }) => {
+      if (!payload?.messageId) return;
+      window.dispatchEvent(new CustomEvent('plume:poll-updated', { detail: payload }));
+    });
+
     // Accusé de lecture de groupe (un membre a lu jusqu'à un certain horaire).
     socket.on('group_read', ({ groupId, userId, at }: { groupId: string; userId: string; at: string }) => {
       setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [userId]: at } }));
