@@ -5952,15 +5952,54 @@ export async function createServerInstance() {
       const readersByStory = new Map<string, number>();
       for (const r of readerRows) readersByStory.set(r.storyId, (readersByStory.get(r.storyId) || 0) + 1);
 
+      // TÉLÉMÉTRIE (Phase 0) : par chapitre, lecteurs qui COMMENCENT vs qui
+      // FINISSENT, et temps de lecture moyen. Permet le vrai « point de
+      // décrochage » (là où les lecteurs abandonnent).
+      const startersByCh = new Map<string, Set<string>>();
+      const finishersByCh = new Map<string, Set<string>>();
+      const dwellSumByCh = new Map<string, number>();
+      const dwellCntByCh = new Map<string, number>();
+      if (chapterIds.length) {
+        const evs = await prisma.readingEvent.findMany({
+          where: { chapterId: { in: chapterIds }, type: { in: ['read_start', 'read_end'] } },
+          select: { chapterId: true, userId: true, type: true, payload: true },
+          take: 200_000,
+        });
+        const addTo = (m: Map<string, Set<string>>, ch: string, uid: string) => { if (!m.has(ch)) m.set(ch, new Set()); m.get(ch)!.add(uid); };
+        for (const e of evs) {
+          if (!e.chapterId) continue;
+          if (e.type === 'read_start') addTo(startersByCh, e.chapterId, e.userId);
+          else if (e.type === 'read_end') {
+            const p: any = e.payload || {};
+            const pct = typeof p.percent === 'number' ? p.percent : 0;
+            const d = typeof p.dwellMs === 'number' ? p.dwellMs : 0;
+            const wpm = typeof p.wpm === 'number' ? p.wpm : 0;
+            const botLike = wpm > 1500 || (d < 800 && pct > 40);
+            if (pct >= 85) addTo(finishersByCh, e.chapterId, e.userId);
+            if (d > 0 && !botLike) {
+              dwellSumByCh.set(e.chapterId, (dwellSumByCh.get(e.chapterId) || 0) + d / 1000);
+              dwellCntByCh.set(e.chapterId, (dwellCntByCh.get(e.chapterId) || 0) + 1);
+            }
+          }
+        }
+      }
+
       const result = stories.map((s) => {
         const pub = s.chapters.filter((c) => c.isPublished);
-        const chapters = pub.map((c) => ({
-          id: c.id,
-          title: c.title,
-          order: c.order,
-          opens: c.views || 0,
-          fullReads: fullMap.get(c.id) || 0,
-        }));
+        const chapters = pub.map((c) => {
+          const dc = dwellCntByCh.get(c.id) || 0;
+          return {
+            id: c.id,
+            title: c.title,
+            order: c.order,
+            opens: c.views || 0,
+            fullReads: fullMap.get(c.id) || 0,
+            // Enrichissement télémétrie (0 tant que peu de données).
+            starters: startersByCh.get(c.id)?.size || 0,
+            finishers: finishersByCh.get(c.id)?.size || 0,
+            avgReadSec: dc > 0 ? Math.round((dwellSumByCh.get(c.id) || 0) / dc) : 0,
+          };
+        });
         const firstReads = chapters[0]?.fullReads || 0;
         const lastReads = chapters.length ? chapters[chapters.length - 1].fullReads : 0;
         // Complétion : parmi ceux qui ont VRAIMENT lu le début, combien vont au bout.

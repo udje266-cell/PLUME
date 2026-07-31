@@ -182,7 +182,7 @@ export default function WriteView({
 
   // Statistiques SERVEUR par chapitre (lectures complètes via ChapterRead +
   // taux de complétion) — chargées à l'ouverture de l'onglet Statistiques.
-  interface AuthorStatsChapter { id: string; title: string; order: number; opens: number; fullReads: number }
+  interface AuthorStatsChapter { id: string; title: string; order: number; opens: number; fullReads: number; starters?: number; finishers?: number; avgReadSec?: number }
   interface AuthorStatsStory { id: string; title: string; status: string; views: number; readers: number; completion: number; chapters: AuthorStatsChapter[] }
   const [authorStats, setAuthorStats] = useState<AuthorStatsStory[] | null>(null);
   // Saisie du titre d'un nouveau tome (atelier). Fermé par défaut : l'auteur
@@ -1359,7 +1359,25 @@ export default function WriteView({
                         </p>
                       </div>
                       {authorStats.filter((s) => s.chapters.length > 0).map((s) => {
-                        const maxReads = Math.max(1, ...s.chapters.map((c) => c.fullReads));
+                        // Base de la barre : lecteurs qui COMMENCENT le chapitre
+                        // (télémétrie) si dispo, sinon les lectures complètes.
+                        const hasTelemetry = s.chapters.some((c) => (c.starters || 0) > 0);
+                        const base = (c: AuthorStatsChapter) => hasTelemetry ? (c.starters || 0) : c.fullReads;
+                        const maxReads = Math.max(1, ...s.chapters.map(base));
+                        // Point de décrochage : plus forte chute de lecteurs entre
+                        // deux chapitres consécutifs (seulement si assez de monde).
+                        let dropIndex = -1; let worstDrop = 0;
+                        if (hasTelemetry) {
+                          for (let i = 1; i < s.chapters.length; i++) {
+                            const prev = s.chapters[i - 1].starters || 0;
+                            const cur = s.chapters[i].starters || 0;
+                            if (prev >= 3) {
+                              const drop = (prev - cur) / prev;
+                              if (drop > worstDrop && drop >= 0.25) { worstDrop = drop; dropIndex = i; }
+                            }
+                          }
+                        }
+                        const fmtSec = (sec: number) => sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec}s`;
                         return (
                           <div key={s.id} className="space-y-2">
                             <div className="flex items-center justify-between gap-2">
@@ -1369,23 +1387,37 @@ export default function WriteView({
                               </span>
                             </div>
                             <div className="space-y-1">
-                              {s.chapters.map((c, i) => (
-                                <div key={c.id} className="flex items-center gap-2" title={c.title}>
-                                  <span className="w-10 text-[9px] font-mono text-gray-400 text-right shrink-0">Ch. {i + 1}</span>
-                                  <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                                    <div className="h-full bg-purple-600 rounded-full transition-all" style={{ width: `${(c.fullReads / maxReads) * 100}%` }} />
+                              {s.chapters.map((c, i) => {
+                                const starters = c.starters || 0;
+                                const finishers = c.finishers || 0;
+                                const chCompletion = starters > 0 ? Math.round((finishers / starters) * 100) : null;
+                                const isDrop = i === dropIndex;
+                                return (
+                                  <div key={c.id} className="flex items-center gap-2" title={c.title}>
+                                    <span className="w-10 text-[9px] font-mono text-gray-400 text-right shrink-0">Ch. {i + 1}</span>
+                                    <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
+                                      <div className={`h-full rounded-full transition-all ${isDrop ? 'bg-amber-500' : 'bg-purple-600'}`} style={{ width: `${(base(c) / maxReads) * 100}%` }} />
+                                    </div>
+                                    <span className="w-24 text-[9px] font-mono text-gray-500 dark:text-gray-400 shrink-0 text-right">
+                                      {hasTelemetry
+                                        ? <>{starters}→{finishers}{chCompletion !== null ? ` · ${chCompletion}%` : ''}</>
+                                        : <>{c.fullReads} lecture{c.fullReads > 1 ? 's' : ''}</>}
+                                    </span>
+                                    {hasTelemetry && (c.avgReadSec || 0) > 0 && (
+                                      <span className="w-12 text-[9px] font-mono text-gray-400 shrink-0 text-right">{fmtSec(c.avgReadSec || 0)}</span>
+                                    )}
+                                    {isDrop && (
+                                      <span className="text-[8px] font-black uppercase text-amber-600 bg-amber-500/15 rounded px-1 py-0.5 shrink-0">décrochage</span>
+                                    )}
                                   </div>
-                                  <span className="w-16 text-[9px] font-mono text-gray-500 dark:text-gray-400 shrink-0 text-right">
-                                    {c.fullReads} lecture{c.fullReads > 1 ? 's' : ''}
-                                  </span>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         );
                       })}
                       <p className="text-[9px] text-gray-400 italic">
-                        Compte les lectures complètes (chapitre parcouru jusqu'au bout), pas les simples ouvertures — le suivi démarre à partir d'aujourd'hui.
+                        « démarrages → terminés » par chapitre + temps de lecture moyen (télémétrie récente). Le repère <span className="text-amber-600 font-bold">décrochage</span> marque le chapitre où le plus de lecteurs s'arrêtent. Sans assez de données, on affiche les lectures complètes.
                       </p>
                     </div>
                   )}
