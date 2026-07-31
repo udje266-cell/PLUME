@@ -1572,8 +1572,9 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         )}
 
-        {/* Floating verification badge */}
-        <div className="absolute bottom-4 left-5 flex items-center space-x-1.5 bg-purple-900/95 text-white font-extrabold text-[9px] px-3 py-1.5 rounded-lg uppercase tracking-wider select-none shadow-md backdrop-blur-xs">
+        {/* Badge de rôle — placé en HAUT-gauche : en bas, l'avatar centré (qui
+            déborde sur la couverture) le recouvrait à moitié (« Curateur Littér… »). */}
+        <div className="absolute top-4 left-4 flex items-center space-x-1.5 bg-purple-900/95 text-white font-extrabold text-[9px] px-3 py-1.5 rounded-lg uppercase tracking-wider select-none shadow-md backdrop-blur-xs">
           <BookMarked className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
           <span>Curateur Littéraire</span>
         </div>

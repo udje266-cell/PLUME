@@ -332,7 +332,7 @@ export default function ExplorerView({
           </div>
 
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 font-sans">Trier l'ordre</label>
+            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 font-sans">Trier par</label>
             <select
               id="explorer-sort-dropdown"
               value={sortBy}
@@ -492,10 +492,12 @@ export default function ExplorerView({
                   referrerPolicy="no-referrer"
                 />
 
-                {/* Floating genre pill */}
-                <div className="absolute top-2 left-2">
-                  <span className="text-[8px] px-2 py-0.5 font-bold uppercase rounded-md bg-purple-600 text-white text-center shadow-sm">
-                    {story.genre.split(' ')[0]}
+                {/* Floating genre pill — genre COMPLET (« Huis clos », pas « Huis »).
+                    Troncature propre par CSS si vraiment long, jamais coupée en
+                    plein mot par un split(' '). */}
+                <div className="absolute top-2 left-2 max-w-[62%]">
+                  <span className="block truncate text-[8px] px-2 py-0.5 font-bold uppercase rounded-md bg-purple-600 text-white shadow-sm">
+                    {story.genre}
                   </span>
                 </div>
 
