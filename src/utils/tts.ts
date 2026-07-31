@@ -138,7 +138,77 @@ export function speakText(text: string, opts: SpeakOpts): void {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// VOIX NEURONALE (ElevenLabs) via le backend.
+// Le serveur (/api/tts) synthetise l'audio avec la cle API (cote serveur) et
+// renvoie un mp3 que l'on joue ici. Repli automatique sur la voix native si
+// indisponible (pas de cle, quota epuise, reseau).
+// ═══════════════════════════════════════════════════════════════════════════
+
+let currentAudio: HTMLAudioElement | null = null;
+let neuralAvailable: boolean | null = null; // null = pas encore sonde
+
+// Sonde une seule fois : le backend a-t-il une voix neuronale configuree ?
+export async function neuralTtsAvailable(): Promise<boolean> {
+  if (neuralAvailable !== null) return neuralAvailable;
+  try {
+    const res = await fetch('/api/tts/health', { headers: { Accept: 'application/json' } });
+    if (!res.ok) { neuralAvailable = false; return false; }
+    const data = await res.json().catch(() => ({}));
+    neuralAvailable = !!data.available;
+  } catch {
+    neuralAvailable = false;
+  }
+  return neuralAvailable;
+}
+
+// Coupe la voix neuronale pour la session (quota epuise / erreur persistante)
+// afin de basculer proprement sur la voix native.
+function disableNeuralForSession() { neuralAvailable = false; }
+
+function stopCurrentAudio() {
+  if (currentAudio) {
+    try { currentAudio.pause(); currentAudio.src = ''; currentAudio.load(); } catch { /* ignore */ }
+    currentAudio = null;
+  }
+}
+
+// Lit UN passage avec la voix neuronale. En cas d'echec -> onerror (l'appelant
+// bascule sur la voix native pour ce passage).
+export function speakNeural(text: string, opts: SpeakOpts): void {
+  let settled = false;
+  const finishEnd = () => { if (!settled) { settled = true; opts.onend?.(); } };
+  const finishErr = () => { if (!settled) { settled = true; (opts.onerror || opts.onend)?.(); } };
+  if (!text || !text.trim()) { finishEnd(); return; }
+  const rate = Math.min(2, Math.max(0.5, opts.rate ?? 1));
+
+  fetch('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    body: JSON.stringify({ text }),
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        // 401/402/429 = cle invalide / quota epuise : on desactive le neuronal
+        // pour le reste de la session (repli natif).
+        if ([401, 402, 429].includes(res.status)) disableNeuralForSession();
+        throw new Error('tts ' + res.status);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.playbackRate = rate; // ElevenLabs rend a vitesse fixe -> on ajuste ici
+      currentAudio = audio;
+      const cleanup = () => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } if (currentAudio === audio) currentAudio = null; };
+      audio.onended = () => { cleanup(); finishEnd(); };
+      audio.onerror = () => { cleanup(); finishErr(); };
+      audio.play().catch(() => { cleanup(); finishErr(); });
+    })
+    .catch(() => finishErr());
+}
+
 export function ttsCancel(): void {
+  stopCurrentAudio();
   if (isNative()) { try { TextToSpeech.stop(); } catch { /* ignore */ } return; }
   if (webSpeechAvailable()) { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } }
 }

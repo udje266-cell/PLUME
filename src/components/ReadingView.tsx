@@ -48,7 +48,7 @@ import { getBookProgress, saveBookProgress, getScrollParent, buildParaMeta, book
 import { authHeaders } from '../utils/auth';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
-import { ttsSupported, loadVoices, pickFrenchVoice, speakText, ttsCancel } from '../utils/tts';
+import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, ttsCancel } from '../utils/tts';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
@@ -1144,10 +1144,16 @@ export default function ReadingView({
   const frVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechRateRef = useRef<number>(speechRate);
   useEffect(() => { speechRateRef.current = speechRate; }, [speechRate]);
+  // Voix neuronale « premium » (ElevenLabs) disponible cote serveur ?
+  const [neuralReady, setNeuralReady] = useState<boolean>(false);
+  const neuralReadyRef = useRef<boolean>(false);
+  useEffect(() => { neuralReadyRef.current = neuralReady; }, [neuralReady]);
 
   useEffect(() => {
     if (!ttsSupported()) return;
     loadVoices().then((vs) => { frVoiceRef.current = pickFrenchVoice(vs); }).catch(() => {});
+    // Sonde la voix neuronale (repli natif si indisponible).
+    neuralTtsAvailable().then(setNeuralReady).catch(() => {});
   }, []);
 
   const stopAudiobook = () => {
@@ -1157,7 +1163,7 @@ export default function ReadingView({
   };
 
   const speakFrom = (startIdx: number) => {
-    if (!ttsSupported()) return;
+    if (!ttsSupported() && !neuralReadyRef.current) return;
     ttsCancel();
     speakingRef.current = true;
     setIsSpeaking(true);
@@ -1184,11 +1190,23 @@ export default function ReadingView({
       speakIdxRef.current = i;
       setActiveParagraphIndex(i);
       scrollToParagraph(i);
-      speakText(chapParas[i].text, {
+      const advance = () => { if (speakingRef.current) speakOne(i + 1); };
+      const nativeSpeak = () => speakText(chapParas[i].text, {
         rate: speechRateRef.current,
         voice: frVoiceRef.current,
-        onend: () => { if (speakingRef.current) speakOne(i + 1); },
+        onend: advance,
       });
+      if (neuralReadyRef.current) {
+        // Voix neuronale « premium » ; repli automatique sur la voix native si
+        // ce passage echoue (quota epuise, reseau...).
+        speakNeural(chapParas[i].text, {
+          rate: speechRateRef.current,
+          onend: advance,
+          onerror: () => { if (speakingRef.current) nativeSpeak(); },
+        });
+      } else {
+        nativeSpeak();
+      }
     };
     speakOne(startIdx);
   };
@@ -1201,7 +1219,7 @@ export default function ReadingView({
       setIsSpeaking(false);
       return;
     }
-    if (!ttsSupported()) {
+    if (!ttsSupported() && !neuralReadyRef.current) {
       alert("La synthèse vocale n'est pas disponible sur cet appareil. Vérifie que la synthèse vocale (Google/Samsung TTS) est installée et activée dans les réglages Android.");
       return;
     }
@@ -1993,6 +2011,9 @@ export default function ReadingView({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">
                   {isSpeaking ? 'Lecture…' : 'Livre audio'}
                 </span>
+                {neuralReady && (
+                  <span className="text-[8px] font-black px-1 py-0.5 rounded bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white" title="Voix neuronale premium">HD</span>
+                )}
                 {/* Vitesse de lecture */}
                 <select
                   value={speechRate}

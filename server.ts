@@ -1224,6 +1224,90 @@ export async function createServerInstance() {
     message: 'Trop de créations en peu de temps. Patiente un moment.',
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // VOIX NEURONALE (livre audio « premium ») via ElevenLabs.
+  // La cle API reste cote serveur (ELEVENLABS_API_KEY). On synthetise un
+  // passage a la fois et on met en cache le mp3 (hash du texte + voix) pour ne
+  // PAS refacturer un passage deja lu. Sans cle configuree, la route repond que
+  // le service est indisponible et l'app retombe sur la voix native.
+  // ─────────────────────────────────────────────────────────────────────────
+  const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || '';
+  const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // "Rachel" (multilingue) par defaut
+  const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2';
+  const TTS_MAX_CHARS = 2000; // borne par requete (protege le quota)
+  // Cache LRU minimal en memoire (borne a ~200 passages).
+  const ttsCache = new Map<string, Buffer>();
+  const TTS_CACHE_MAX = 200;
+  const ttsCacheGet = (k: string): Buffer | undefined => {
+    const v = ttsCache.get(k);
+    if (v) { ttsCache.delete(k); ttsCache.set(k, v); } // rafraichit l'ordre LRU
+    return v;
+  };
+  const ttsCacheSet = (k: string, v: Buffer) => {
+    ttsCache.set(k, v);
+    if (ttsCache.size > TTS_CACHE_MAX) { const first = ttsCache.keys().next().value; if (first) ttsCache.delete(first); }
+  };
+  const ttsLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 120, // ~2/s : suffit pour lire en continu, borne les abus
+    message: 'Trop de requetes audio. Patiente un moment.',
+  });
+
+  // Le client sonde ceci pour savoir s'il doit proposer la voix neuronale.
+  app.get('/api/tts/health', requireAuth, (_req, res) => {
+    res.json({ available: !!ELEVEN_KEY });
+  });
+
+  app.post('/api/tts', requireAuth, ttsLimiter, async (req: any, res) => {
+    try {
+      if (!ELEVEN_KEY) return res.status(503).json({ error: 'Voix neuronale non configurée.' });
+      const raw = typeof req.body?.text === 'string' ? req.body.text : '';
+      const text = raw.trim().slice(0, TTS_MAX_CHARS);
+      if (!text) return res.status(400).json({ error: 'Texte vide.' });
+
+      const hash = crypto.createHash('sha256').update(`${ELEVEN_VOICE}|${ELEVEN_MODEL}|${text}`).digest('hex');
+      const cached = ttsCacheGet(hash);
+      if (cached) {
+        res.set('Content-Type', 'audio/mpeg');
+        res.set('X-TTS-Cache', 'hit');
+        return res.send(cached);
+      }
+
+      const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVEN_KEY,
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text,
+          model_id: ELEVEN_MODEL,
+          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true },
+        }),
+      });
+
+      if (!upstream.ok) {
+        // 401 (cle) / 402 (quota) / 429 (debit) : on relaie le code pour que
+        // l'app bascule proprement sur la voix native.
+        const status = [401, 402, 429].includes(upstream.status) ? upstream.status : 502;
+        let detail = '';
+        try { detail = (await upstream.text()).slice(0, 300); } catch { /* ignore */ }
+        console.error('[TTS] ElevenLabs', upstream.status, detail);
+        return res.status(status).json({ error: 'Synthèse vocale indisponible.' });
+      }
+
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      ttsCacheSet(hash, buf);
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('X-TTS-Cache', 'miss');
+      return res.send(buf);
+    } catch (error) {
+      console.error('[TTS] error', error);
+      return res.status(502).json({ error: 'Erreur de synthèse vocale.' });
+    }
+  });
+
   // Collecte des rapports de violation CSP (envoyes par le navigateur en mode
   // report-only). Parseur dedie (content-type application/csp-report), debit
   // borne, journalisation compacte. Aucune donnee sensible ; toujours 204.
