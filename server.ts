@@ -747,6 +747,120 @@ async function recomputeCertification(userId: string): Promise<void> {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTEUR DE RECOMMANDATION — Phase 1 : agrégation StoryStats.
+// Recalcule, pour chaque récit publié, un score de QUALITÉ DE LECTURE (0..1)
+// dominé par la rétention réelle (complétion + temps de lecture), à partir du
+// journal ReadingEvent. Best-effort, jamais bloquant. Lu ensuite par /api/feed.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Borne basse de l'intervalle de Wilson (95 %) : une complétion de 9/10 est
+// prometteuse mais incertaine ; Wilson la note prudemment tant que n est petit,
+// ce qui neutralise le « coup de chance » ET les faux lecteurs en petit volume.
+function wilsonLowerBound(pos: number, n: number): number {
+  if (n <= 0) return 0;
+  const z = 1.96;
+  const phat = pos / n;
+  const denom = 1 + (z * z) / n;
+  const centre = phat + (z * z) / (2 * n);
+  const margin = z * Math.sqrt((phat * (1 - phat) + (z * z) / (4 * n)) / n);
+  return Math.max(0, (centre - margin) / denom);
+}
+
+// Nombre minimal de lecteurs distincts pour FAIRE CONFIANCE à la rétention.
+// En dessous, /api/feed ignore storyScore et garde le classement historique.
+const RECO_MIN_STARTERS = 5;
+
+async function aggregateStoryStats(): Promise<number> {
+  const WINDOW_MS = 60 * 86_400_000;   // fenêtre d'analyse : 60 jours
+  const since = new Date(Date.now() - WINDOW_MS);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+
+  // Récits publiés + compteurs d'engagement existants (une requête).
+  const stories = await prisma.story.findMany({
+    where: { status: 'PUBLIE' },
+    select: {
+      id: true, reads: true, rating: true,
+      _count: { select: { likes: true, favorites: true, comments: true } },
+    },
+    take: 5000,
+  });
+  if (!stories.length) return 0;
+  const storyIds = new Set(stories.map((s) => s.id));
+
+  // Événements de lecture sur la fenêtre (bornés). On dédoublonne les lecteurs
+  // par récit en mémoire (pas de count-distinct simple en Prisma).
+  const events = await prisma.readingEvent.findMany({
+    where: { createdAt: { gte: since }, type: { in: ['read_start', 'complete', 'read_end'] } },
+    select: { storyId: true, userId: true, type: true, payload: true, createdAt: true },
+    take: 200_000,
+  });
+
+  const starters = new Map<string, Set<string>>();
+  const finishers = new Map<string, Set<string>>();
+  const dwellSum = new Map<string, number>();
+  const dwellCount = new Map<string, number>();
+  const velocity = new Map<string, number>();
+  const add = (m: Map<string, Set<string>>, sid: string, uid: string) => {
+    if (!m.has(sid)) m.set(sid, new Set());
+    m.get(sid)!.add(uid);
+  };
+  for (const e of events) {
+    if (!storyIds.has(e.storyId)) continue;
+    if (e.type === 'read_start') {
+      add(starters, e.storyId, e.userId);
+      if (e.createdAt >= sevenDaysAgo) velocity.set(e.storyId, (velocity.get(e.storyId) || 0) + 1);
+    } else if (e.type === 'complete') {
+      add(finishers, e.storyId, e.userId);
+    } else if (e.type === 'read_end') {
+      const p: any = e.payload;
+      const d = p && typeof p.dwellMs === 'number' ? p.dwellMs : 0;
+      if (d > 0) {
+        dwellSum.set(e.storyId, (dwellSum.get(e.storyId) || 0) + d / 1000);
+        dwellCount.set(e.storyId, (dwellCount.get(e.storyId) || 0) + 1);
+      }
+    }
+  }
+
+  const maxVelocity = Math.max(1, ...Array.from(velocity.values()));
+  const now = new Date();
+  let written = 0;
+
+  for (const s of stories) {
+    const nStart = starters.get(s.id)?.size || 0;
+    const nFinish = finishers.get(s.id)?.size || 0;
+    const completionRate = wilsonLowerBound(nFinish, Math.max(nStart, nFinish));
+    const dc = dwellCount.get(s.id) || 0;
+    const avgDwellSec = dc > 0 ? (dwellSum.get(s.id) || 0) / dc : 0;
+    const vel = velocity.get(s.id) || 0;
+
+    // Sous-scores normalisés 0..1.
+    // Temps de lecture : 90 s / chapitre ≈ lecture attentive → sature à 1.
+    const dwellNorm = Math.min(1, avgDwellSec / 90);
+    const velNorm = vel / maxVelocity;
+    // Engagement : log-normalisé (les favoris > commentaires > likes).
+    const eng = (s._count.likes) + 2 * (s._count.favorites) + 1.5 * (s._count.comments);
+    const engagementScore = Math.min(1, Math.log1p(eng) / Math.log1p(50));
+
+    // StoryScore : dominé par la RÉTENTION (complétion + temps réel), §5 du doc.
+    const storyScore =
+      0.45 * completionRate +
+      0.20 * dwellNorm +
+      0.20 * engagementScore +
+      0.15 * velNorm;
+
+    try {
+      await prisma.storyStats.upsert({
+        where: { storyId: s.id },
+        update: { starters: nStart, finishers: nFinish, completionRate, avgDwellSec, velocity: vel, engagementScore, storyScore, updatedAt: now },
+        create: { storyId: s.id, starters: nStart, finishers: nFinish, completionRate, avgDwellSec, velocity: vel, engagementScore, storyScore },
+      });
+      written++;
+    } catch { /* un récit ne doit pas casser tout le batch */ }
+  }
+  return written;
+}
+
 // ----- Système de niveaux (XP) -----
 // Barème validé (deux jauges séparées : lecteur / auteur).
 const XP = {
@@ -1282,6 +1396,18 @@ export async function createServerInstance() {
       // On ne renvoie jamais d'erreur bloquante : la telemetrie ne doit JAMAIS
       // degrader l'experience de lecture.
       res.json({ ok: false });
+    }
+  });
+
+  // Déclenchement MANUEL de l'agrégation StoryStats (admin). Utile pour tester
+  // sans attendre le cron horaire.
+  app.post('/api/admin/reco/aggregate', requireAuth, async (req: any, res) => {
+    if (roleFromPrisma(req.user.role) !== 'Administrateur') return res.status(403).json({ error: 'Action interdite.' });
+    try {
+      const n = await aggregateStoryStats();
+      res.json({ ok: true, updated: n });
+    } catch (e: any) {
+      res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
     }
   });
 
@@ -3050,6 +3176,18 @@ export async function createServerInstance() {
         orderBy: { createdAt: 'desc' },
         take: 500,
       });
+      // Rétention réelle (télémétrie, Phase 1) pour les récits candidats. On
+      // n'injecte le storyScore QUE si l'échantillon est suffisant (>= seuil),
+      // sinon le recommandeur garde son comportement historique (note bayésienne).
+      const statsRows = await prisma.storyStats.findMany({
+        where: { storyId: { in: dbStories.map((s: any) => s.id) } },
+        select: { storyId: true, storyScore: true, starters: true },
+      });
+      const retentionById = new Map<string, number>();
+      for (const st of statsRows) {
+        if (st.starters >= RECO_MIN_STARTERS) retentionById.set(st.storyId, st.storyScore);
+      }
+
       const stories = dbStories.map((s: any) => {
         const serialized: any = serializeStory(filterDraftChapters(s, undefined, false));
         return {
@@ -3058,6 +3196,9 @@ export async function createServerInstance() {
           publishDate: serialized.publishDate || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : undefined),
           likedBy: (s.likes || []).map((l: any) => l.userId),
           favoritedBy: (s.favorites || []).map((f: any) => f.userId),
+          // Signal de rétention réelle (0..1), injecté dans la brique « qualité »
+          // du recommandeur. Absent si pas assez de données -> comportement inchangé.
+          retentionScore: retentionById.get(s.id),
         };
       });
 
@@ -6024,6 +6165,17 @@ if (process.env.NODE_ENV !== 'test') {
     };
     purgeOldNotifications();
     setInterval(purgeOldNotifications, 24 * 60 * 60 * 1000).unref?.();
+
+    // MOTEUR DE RECOMMANDATION — agrégation StoryStats depuis la télémétrie.
+    // Premier passage 90 s après le démarrage (laisser le boot se stabiliser),
+    // puis toutes les heures. Best-effort : n'interrompt jamais le service.
+    const runAggregation = () => {
+      aggregateStoryStats()
+        .then((n) => { if (n) console.log(`[RECO] StoryStats recalculés : ${n} récits`); })
+        .catch((e) => console.warn('[RECO] agrégation échouée :', (e as any)?.message || e));
+    };
+    setTimeout(runAggregation, 90 * 1000).unref?.();
+    setInterval(runAggregation, 60 * 60 * 1000).unref?.();
 
     // Arrêt propre (redéploiements / autoscaling) : on cesse d'accepter de
     // nouvelles connexions puis on libère Prisma et Redis pour ne pas fuiter de

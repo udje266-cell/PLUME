@@ -8,6 +8,7 @@ import {
   recommendStories,
   isEligible,
   bayesianRating,
+  qualityScore,
   hotScore,
   coldStartBoost,
   DEFAULT_WEIGHTS,
@@ -99,6 +100,24 @@ describe('bayesianRating', () => {
     // La note peu lue est tirée vers la moyenne globale (3/5 = 0.6).
     expect(fewReads).toBeLessThan(0.8);
     expect(fewReads).toBeGreaterThan(0.6);
+  });
+});
+
+describe('qualityScore', () => {
+  const global = 3.5;
+  it('retombe exactement sur la note bayésienne sans télémétrie', () => {
+    const s = makeStory({ rating: 4, reads: 100 });
+    expect(qualityScore(s, global, 30)).toBeCloseTo(bayesianRating(s, global, 30), 10);
+  });
+  it('récompense une forte rétention réelle même avec une note moyenne', () => {
+    const base = makeStory({ rating: 3, reads: 100 });
+    const highRetention = makeStory({ rating: 3, reads: 100, retentionScore: 0.95 });
+    expect(qualityScore(highRetention, global, 30)).toBeGreaterThan(qualityScore(base, global, 30));
+  });
+  it('une rétention faible pénalise la qualité', () => {
+    const base = makeStory({ rating: 5, reads: 100 });
+    const lowRetention = makeStory({ rating: 5, reads: 100, retentionScore: 0.05 });
+    expect(qualityScore(lowRetention, global, 30)).toBeLessThan(qualityScore(base, global, 30));
   });
 });
 

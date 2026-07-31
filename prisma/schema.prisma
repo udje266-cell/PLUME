@@ -655,3 +655,22 @@ model ReadingEvent {
   @@index([userId, createdAt])
   @@index([type, createdAt])
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// AGREGATS PAR RECIT (Phase 1 recommandation). Recalcules en tache periodique
+// depuis ReadingEvent (+ compteurs d'engagement existants). Lu par /api/feed
+// pour injecter la RETENTION REELLE dans le classement. On ne fait confiance a
+// la retention que si l'echantillon est suffisant (starters >= seuil) ; sinon
+// le recommandeur garde son comportement historique (note bayesienne).
+// ─────────────────────────────────────────────────────────────────────────
+model StoryStats {
+  storyId        String   @id
+  starters       Int      @default(0)   // lecteurs distincts ayant commence (read_start)
+  finishers      Int      @default(0)   // lecteurs distincts ayant termine (complete)
+  completionRate Float    @default(0)   // borne basse de Wilson (finishers/starters)
+  avgDwellSec    Float    @default(0)   // temps reel moyen par chapitre lu
+  velocity       Float    @default(0)   // demarrages sur 7j (croissance recente)
+  engagementScore Float   @default(0)   // votes/favoris/commentaires ponderes, 0..1
+  storyScore     Float    @default(0)   // score de qualite de lecture final, 0..1
+  updatedAt      DateTime @updatedAt
+}

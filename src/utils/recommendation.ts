@@ -139,6 +139,24 @@ export function bayesianRating(story: Story, globalMean: number, smoothing: numb
 }
 
 /**
+ * Qualité d'un récit (0..1). Combine la note bayésienne (proxy) et, quand elle
+ * est disponible, la RÉTENTION RÉELLE issue de la télémétrie de lecture
+ * (complétion + temps de lecture) — le signal le plus honnête. Sans télémétrie
+ * fiable (`retentionScore` absent), on retombe exactement sur la note bayésienne
+ * → comportement historique préservé.
+ */
+export function qualityScore(story: Story, globalMean: number, smoothing: number): number {
+  const bayes = bayesianRating(story, globalMean, smoothing);
+  const retention = story.retentionScore;
+  if (typeof retention === 'number' && Number.isFinite(retention)) {
+    // La rétention domine (60 %) : c'est le cœur de la philosophie « qualité de
+    // lecture > popularité ». La note bayésienne complète (40 %).
+    return 0.6 * Math.max(0, Math.min(1, retention)) + 0.4 * bayes;
+  }
+  return bayes;
+}
+
+/**
  * Popularité « chaude » avec déclin temporel (style Hacker News / Reddit) :
  * un récit récent et engageant remonte, un vieux hit finit par redescendre,
  * ce qui fait tourner le contenu diffusé. Valeur brute (non bornée).
@@ -305,7 +323,7 @@ export function recommendStories(
       story,
       affinity: affinityRaw(story, taste),
       social: social.value,
-      quality: bayesianRating(story, globalMean, smoothing),
+      quality: qualityScore(story, globalMean, smoothing),
       popularity: hotScore(story, now, gravity),
       freshness: 1 / (daysSince + 1),
       coldStart: coldStartBoost(story, coldStartScale),

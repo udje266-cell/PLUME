@@ -122,6 +122,10 @@ export interface Story {
   cover: string;
   genre: string;
   genres?: string[];
+  // Rétention réelle (0..1) issue de la télémétrie de lecture (moteur de
+  // recommandation, Phase 1). Optionnel : absent tant que l'échantillon de
+  // lecteurs est trop faible pour être fiable.
+  retentionScore?: number;
   category: string;
   ambiance: string;
   format: string;
