@@ -503,7 +503,8 @@ export default function ExplorerView({
 
                 {story.ageRating && story.ageRating !== 'all' && (
                   <div className="absolute top-2 right-2">
-                    <span className="text-[8px] px-2 py-0.5 font-black uppercase rounded-md bg-purple-950/90 text-white text-center shadow-sm border border-purple-500/25">
+                    {/* Âge : chip discret (l'accent violet est réservé au genre). */}
+                    <span className="text-[8px] px-1.5 py-0.5 font-bold rounded-md bg-black/45 text-white/90 backdrop-blur-[2px]">
                       {story.ageRating}+
                     </span>
                   </div>

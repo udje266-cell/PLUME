@@ -1822,30 +1822,34 @@ const user = freshViewedUser || freshCurrentUser;
           if (!displaysRead && !displaysWritten) return null;
 
           return (
-            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-4 rounded-2xl text-left space-y-3 shadow-xs select-none animation-fade-in">
+            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-3.5 rounded-2xl text-left space-y-2.5 shadow-xs select-none animation-fade-in">
               <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-500 tracking-wider">
                 <BookOpen className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
                 <span>Activité Littéraire</span>
               </div>
-              
-              <div className={`grid ${displaysRead && displaysWritten ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
-                {displaysRead && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 p-3 rounded-2xl text-center flex flex-col justify-center">
-                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest leading-none">Livres lus</span>
-                    <span className="font-serif text-lg font-black text-purple-600 dark:text-purple-400 mt-1">
-                      {booksReadCount}
-                    </span>
+
+              {(() => {
+                const both = displaysRead && displaysWritten;
+                // Une seule stat : ligne compacte (label + valeur). Deux stats :
+                // tuiles côte à côte. Évite une grande carte vide pour un chiffre.
+                const tile = (label: string, value: number) => both ? (
+                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 p-3 rounded-2xl text-center flex flex-col justify-center">
+                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest leading-none">{label}</span>
+                    <span className="font-serif text-lg font-black text-purple-600 dark:text-purple-400 mt-1">{value}</span>
                   </div>
-                )}
-                {displaysWritten && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 p-3 rounded-2xl text-center flex flex-col justify-center">
-                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest leading-none">Livres écrits</span>
-                    <span className="font-serif text-lg font-black text-purple-600 dark:text-purple-400 mt-1">
-                      {booksWrittenCount}
-                    </span>
+                ) : (
+                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 py-2.5 px-3.5 rounded-xl flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest">{label}</span>
+                    <span className="font-serif text-xl font-black text-purple-600 dark:text-purple-400 leading-none">{value}</span>
                   </div>
-                )}
-              </div>
+                );
+                return (
+                  <div className={both ? 'grid grid-cols-2 gap-3' : ''}>
+                    {displaysRead && tile('Livres lus', booksReadCount)}
+                    {displaysWritten && tile('Livres écrits', booksWrittenCount)}
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
