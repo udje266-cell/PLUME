@@ -567,18 +567,49 @@ async function friendIdSetOf(userId: string): Promise<Set<string>> {
 // tant que celle-ci n'a pas accepte la conversation (facon TikTok).
 const MESSAGE_REQUEST_LIMIT = 3;
 
-// ------- Assistant d'ecriture IA (Google Gemini) -------
-// Actif UNIQUEMENT si GEMINI_API_KEY est definie (variable d'env Render).
-// Sinon l'endpoint renvoie 503 {unavailable:true} et le client bascule
-// automatiquement sur le moteur d'ecriture local (hors-ligne).
+// ------- Assistant d'ecriture IA (DeepSeek, repli Gemini) -------
+// Fournisseur PRIORITAIRE : DeepSeek (API compatible OpenAI) si DEEPSEEK_API_KEY
+// est definie. A defaut, repli sur Gemini si GEMINI_API_KEY est definie. Si
+// aucune cle : l'endpoint renvoie 503 {unavailable:true} et le client bascule
+// sur le moteur d'ecriture local (hors-ligne).
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const AI_PROVIDER: 'deepseek' | 'gemini' | 'none' = DEEPSEEK_API_KEY ? 'deepseek' : (GEMINI_API_KEY ? 'gemini' : 'none');
+const AI_CONFIGURED = AI_PROVIDER !== 'none';
+const AI_MODEL = AI_PROVIDER === 'deepseek' ? DEEPSEEK_MODEL : GEMINI_MODEL;
 
-async function callGemini(systemPrompt: string, userText: string, maxTokens = 1024): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+// Appel IA unifie. Renvoie le texte genere (chaine). Leve en cas d'erreur.
+async function callAI(systemPrompt: string, userText: string, maxTokens = 1024): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 22000);
   try {
+    // ── DeepSeek (compatible OpenAI : /chat/completions) ──
+    if (AI_PROVIDER === 'deepseek') {
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${DEEPSEEK_API_KEY}` },
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          temperature: 0.7,
+          max_tokens: maxTokens,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userText },
+          ],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`DeepSeek ${r.status}: ${body.slice(0, 300)}`);
+      }
+      const data: any = await r.json();
+      return String(data?.choices?.[0]?.message?.content || '').trim();
+    }
+    // ── Repli Gemini ──
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -600,6 +631,8 @@ async function callGemini(systemPrompt: string, userText: string, maxTokens = 10
     clearTimeout(timer);
   }
 }
+// Alias de compatibilite (anciens appels).
+const callGemini = callAI;
 
 // Consignes systeme par mode : le francais litteraire, sans meta-bavardage.
 const AI_PROMPTS: Record<string, { sys: string; max: number }> = {
@@ -913,7 +946,7 @@ async function computeTrustScores(): Promise<number> {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ANALYSE IA DE CONTENU (Phase 3) — themes / mots-cles / emotion / rythme.
-// Un appel Gemini par recit (si GEMINI_API_KEY configuree), en tache differee.
+// Un appel IA par recit (DeepSeek si configure), en tache differee.
 // Sert la recommandation « cold-start » (similarite de contenu quand un recit
 // n'a pas encore de lecteurs). Sans cle : no-op silencieux.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -929,7 +962,7 @@ function parseJsonLoose(text: string): any {
 }
 
 async function analyzeStoryContent(storyId: string): Promise<boolean> {
-  if (!GEMINI_API_KEY) return false;
+  if (!AI_CONFIGURED) return false;
   const story = await prisma.story.findUnique({
     where: { id: storyId },
     select: { id: true, title: true, description: true, genre: true, chapters: { where: { isPublished: true }, orderBy: { order: 'asc' }, take: 1, select: { content: true } } },
@@ -954,8 +987,8 @@ async function analyzeStoryContent(storyId: string): Promise<boolean> {
     const narration = typeof j.narration === 'string' ? j.narration.slice(0, 40) : null;
     await prisma.storyContentAI.upsert({
       where: { storyId: story.id },
-      update: { themes, keywords, emotion, pacing, narration, model: GEMINI_MODEL, updatedAt: new Date() },
-      create: { storyId: story.id, themes, keywords, emotion, pacing, narration, model: GEMINI_MODEL },
+      update: { themes, keywords, emotion, pacing, narration, model: AI_MODEL, updatedAt: new Date() },
+      create: { storyId: story.id, themes, keywords, emotion, pacing, narration, model: AI_MODEL },
     });
     return true;
   } catch (e) {
@@ -966,7 +999,7 @@ async function analyzeStoryContent(storyId: string): Promise<boolean> {
 
 // Analyse quelques recits publies encore non analyses (borne pour le quota).
 async function analyzePendingContent(maxPerRun = 5): Promise<number> {
-  if (!GEMINI_API_KEY) return 0;
+  if (!AI_CONFIGURED) return 0;
   const analyzed = await prisma.storyContentAI.findMany({ select: { storyId: true } });
   const done = new Set(analyzed.map((a) => a.storyId));
   const candidates = await prisma.story.findMany({
@@ -1543,7 +1576,7 @@ export async function createServerInstance() {
   });
   app.post('/api/admin/reco/analyze', requireAuth, async (req: any, res) => {
     if (roleFromPrisma(req.user.role) !== 'Administrateur') return res.status(403).json({ error: 'Action interdite.' });
-    if (!GEMINI_API_KEY) return res.status(503).json({ error: 'Analyse IA non configurée (GEMINI_API_KEY).' });
+    if (!AI_CONFIGURED) return res.status(503).json({ error: 'Analyse IA non configurée (DEEPSEEK_API_KEY).' });
     try { res.json({ ok: true, analyzed: await analyzePendingContent(10) }); }
     catch (e: any) { res.status(500).json({ error: String(e?.message || e).slice(0, 200) }); }
   });
@@ -6190,8 +6223,8 @@ export async function createServerInstance() {
           detail: 'notifications push (FCM/Web Push)' },
         { key: 'webrtcTurn', severity: 'optional', ok: has(env.TURN_URLS),
           detail: has(env.TURN_URLS) ? 'serveur TURN configure' : 'appels possiblement KO en reseau restreint' },
-        { key: 'gemini', severity: 'optional', ok: has(env.GEMINI_API_KEY),
-          detail: has(env.GEMINI_API_KEY) ? 'assistant IA configure' : 'fonction IA desactivee' },
+        { key: 'ia', severity: 'optional', ok: !!(env.DEEPSEEK_API_KEY || env.GEMINI_API_KEY),
+          detail: env.DEEPSEEK_API_KEY ? 'assistant IA : DeepSeek' : (env.GEMINI_API_KEY ? 'assistant IA : Gemini (repli)' : 'fonction IA desactivee') },
       ];
 
       const readyToPublish = checks.filter((c) => c.severity === 'critical').every((c) => c.ok);
@@ -6477,15 +6510,15 @@ export async function createServerInstance() {
   // Resultat mis en cache 60 s pour eviter tout abus (1 vrai appel/minute max).
   let aiHealthCache: { at: number; body: any } | null = null;
   app.get('/api/ai/health', async (_req, res) => {
-    if (!GEMINI_API_KEY) return res.json({ configured: false, ok: false, model: GEMINI_MODEL });
+    if (!AI_CONFIGURED) return res.json({ configured: false, ok: false, provider: AI_PROVIDER, model: AI_MODEL });
     const now = Date.now();
     if (aiHealthCache && now - aiHealthCache.at < 60000) return res.json(aiHealthCache.body);
     let body: any;
     try {
       const sample = await callGemini('Reponds uniquement par le mot: PONG', 'ping', 16);
-      body = { configured: true, ok: !!sample, model: GEMINI_MODEL, sample: (sample || '').slice(0, 40) };
+      body = { configured: true, ok: !!sample, provider: AI_PROVIDER, model: AI_MODEL, sample: (sample || '').slice(0, 40) };
     } catch (e: any) {
-      body = { configured: true, ok: false, model: GEMINI_MODEL, error: String(e?.message || '').slice(0, 200) };
+      body = { configured: true, ok: false, provider: AI_PROVIDER, model: AI_MODEL, error: String(e?.message || '').slice(0, 200) };
     }
     aiHealthCache = { at: now, body };
     res.json(body);
@@ -6495,7 +6528,7 @@ export async function createServerInstance() {
   // cle n'est configuree -> le client bascule sur le moteur local hors-ligne.
   const lastAiTimes = new Map<string, number>();
   app.post('/api/ai/assist', requireAuth, async (req: any, res) => {
-    if (!GEMINI_API_KEY) return res.status(503).json({ error: 'Assistant IA indisponible.', unavailable: true });
+    if (!AI_CONFIGURED) return res.status(503).json({ error: 'Assistant IA indisponible.', unavailable: true });
     const mode = String(req.body?.mode || '');
     const conf = AI_PROMPTS[mode];
     if (!conf) return res.status(400).json({ error: 'Mode IA inconnu.' });
@@ -6669,7 +6702,7 @@ if (process.env.NODE_ENV !== 'test') {
 
     // Analyse IA de contenu (Phase 3) : quelques récits par heure, si Gemini
     // est configuré (sinon no-op). Étalé pour respecter le quota.
-    if (GEMINI_API_KEY) {
+    if (AI_CONFIGURED) {
       const runContentAI = () => {
         analyzePendingContent(5)
           .then((n) => { if (n) console.log(`[RECO-AI] récits analysés : ${n}`); })

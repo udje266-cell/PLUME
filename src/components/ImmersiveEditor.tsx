@@ -17,11 +17,11 @@ import { Story, Chapter } from '../types';
 import { useAndroidBack } from '../utils/backButton';
 import { authHeaders } from '../utils/auth';
 
-// Assistant d'ecriture en priorite LOCAL. On tente le serveur (Gemini) avec un
+// Assistant d'ecriture en priorite LOCAL. On tente le serveur (DeepSeek) avec un
 // TIMEOUT court ; a la moindre indisponibilite (quota/429, erreur, lenteur,
 // reseau), on renvoie null -> l'appelant bascule SILENCIEUSEMENT sur le moteur
 // local (aucun blocage, aucune erreur affichee). Ainsi le volet fonctionne
-// toujours, meme sans cle Gemini valide.
+// toujours, meme sans cle IA valide.
 async function requestAI(mode: string, text: string): Promise<string | null> {
   try {
     const controller = new AbortController();
@@ -528,7 +528,7 @@ export default function ImmersiveEditor({
   const [wordCount, setWordCount] = useState(() => plainTextOf(chapter?.content || '').split(/\s+/).filter(Boolean).length);
 
   // Assistant d'ecriture. Titres, resume, reecriture et suite passent par la
-  // vraie IA (Gemini via le serveur) quand une cle est configuree ; sinon repli
+  // vraie IA (DeepSeek via le serveur) quand une cle est configuree ; sinon repli
   // automatique sur le moteur LOCAL hors-ligne (decoupage, typographie, titres,
   // analyse, resume). Reecriture et « continuer » necessitent l'IA.
   const [aiOpen, setAiOpen] = useState(false);
@@ -722,7 +722,7 @@ export default function ImmersiveEditor({
 
   const currentEditorText = () => htmlToTextWithBreaks(editorRef.current?.innerHTML || '').trim();
 
-  // Decoupage en paragraphes : IA (Gemini) si disponible, sinon moteur local.
+  // Decoupage en paragraphes : IA (DeepSeek) si disponible, sinon moteur local.
   const runAIParagraphs = async () => {
     const text = currentEditorText();
     const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
@@ -773,7 +773,7 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Nettoyage typographique : IA (Gemini) si disponible, sinon moteur local.
+  // Nettoyage typographique : IA (DeepSeek) si disponible, sinon moteur local.
   const runAITypo = async () => {
     const text = currentEditorText();
     setAiMode('typo');
@@ -816,7 +816,7 @@ export default function ImmersiveEditor({
     wakeChrome();
   };
 
-  // Suggestions de titre : vraie IA (Gemini) si disponible, sinon moteur local.
+  // Suggestions de titre : vraie IA (DeepSeek) si disponible, sinon moteur local.
   const runAITitle = async () => {
     const text = currentEditorText();
     setAiMode('title');
@@ -883,7 +883,7 @@ export default function ImmersiveEditor({
     }
   };
 
-  // Resume : vraie IA (Gemini, resume redige) si disponible, sinon extractif local.
+  // Resume : vraie IA (DeepSeek, resume redige) si disponible, sinon extractif local.
   const runSummary = async () => {
     const text = currentEditorText();
     setAiMode('summary');
