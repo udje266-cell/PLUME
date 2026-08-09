@@ -585,11 +585,42 @@ async function callAI(systemPrompt: string, userText: string, maxTokens = 1024):
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 22000);
   try {
-    // ── DeepSeek (compatible OpenAI : /chat/completions) ──
+    // ── DeepSeek ──
+    // 1) Responses API (format OpenAI « responses » : instructions + input,
+    //    texte lu dans output_text). 2) Repli sur /chat/completions si le
+    //    modele/endpoint ne l'accepte pas (404/400) — les deux restent servis.
     if (AI_PROVIDER === 'deepseek') {
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${DEEPSEEK_API_KEY}` };
+      const rr = await fetch('https://api.deepseek.com/responses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${DEEPSEEK_API_KEY}` },
+        headers,
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          instructions: systemPrompt,
+          input: userText,
+          temperature: 0.7,
+          max_output_tokens: maxTokens,
+        }),
+        signal: ctrl.signal,
+      });
+      if (rr.ok) {
+        const d: any = await rr.json();
+        // output_text quand il est fourni ; sinon on reconstruit depuis output[].
+        const direct = typeof d?.output_text === 'string' ? d.output_text : '';
+        if (direct.trim()) return direct.trim();
+        const parts: string[] = [];
+        for (const item of (Array.isArray(d?.output) ? d.output : [])) {
+          for (const c of (Array.isArray(item?.content) ? item.content : [])) {
+            if (typeof c?.text === 'string') parts.push(c.text);
+          }
+        }
+        const joined = parts.join('').trim();
+        if (joined) return joined;
+      }
+      // Repli : API de chat classique (compatible OpenAI).
+      const rc = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers,
         body: JSON.stringify({
           model: DEEPSEEK_MODEL,
           temperature: 0.7,
@@ -601,11 +632,11 @@ async function callAI(systemPrompt: string, userText: string, maxTokens = 1024):
         }),
         signal: ctrl.signal,
       });
-      if (!r.ok) {
-        const body = await r.text().catch(() => '');
-        throw new Error(`DeepSeek ${r.status}: ${body.slice(0, 300)}`);
+      if (!rc.ok) {
+        const body = await rc.text().catch(() => '');
+        throw new Error(`DeepSeek ${rc.status}: ${body.slice(0, 300)}`);
       }
-      const data: any = await r.json();
+      const data: any = await rc.json();
       return String(data?.choices?.[0]?.message?.content || '').trim();
     }
     // ── Repli Gemini ──

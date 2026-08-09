@@ -134,6 +134,8 @@ interface ReadingViewProps {
   onViewProfile?: (userId: string) => void;
   // Ouvre un autre récit en lecture (section « Les lecteurs ont aussi aimé »).
   onSelectStory?: (story: Story) => void;
+  // Chapitre d'entrée choisi depuis la fiche d'œuvre (prioritaire sur la reprise).
+  initialChapterIndex?: number;
 }
 
 type ReadingTheme = 'light' | 'sepia' | 'dark' | 'dimmed';
@@ -404,6 +406,7 @@ export default function ReadingView({
   story,
   onBack,
   onSelectStory,
+  initialChapterIndex,
   currentUser,
   onToggleFeatured,
   onFollowAuthor,
@@ -435,6 +438,10 @@ export default function ReadingView({
   // Reprise PAR LIVRE : on restaure le chapitre exact où l'utilisateur s'était
   // arrêté pour CE récit (et non le dernier livre lu, toutes œuvres confondues).
   const [activeChapterIndex, setActiveChapterIndex] = useState<number>(() => {
+    // Chapitre explicitement choisi sur la fiche d'œuvre : il prime.
+    if (typeof initialChapterIndex === 'number' && initialChapterIndex >= 0 && initialChapterIndex < story.chapters.length) {
+      return initialChapterIndex;
+    }
     try {
       const saved = getBookProgress(currentUser.id, story.id);
       if (saved && saved.chapterIndex >= 0 && saved.chapterIndex < story.chapters.length) {
@@ -1151,6 +1158,9 @@ export default function ReadingView({
   // et on s'y replace — à la ligne près. Le local, plus précis et plus frais,
   // garde toujours la priorité quand il existe.
   useEffect(() => {
+    // Chapitre choisi explicitement sur la fiche d'œuvre : il prime sur toute
+    // reprise (locale ou serveur) — sinon on renverrait le lecteur ailleurs.
+    if (typeof initialChapterIndex === 'number') return;
     if (getBookProgress(currentUser.id, story.id)) return; // le local prime
     let cancelled = false;
     const timers: any[] = [];
@@ -2467,6 +2477,7 @@ export default function ReadingView({
               </p>
             </div>
           )}
+
 
           {/* Chapter headers — direction design : UN seul label (au lieu de trois
               lignes de majuscules mono) + le titre serif mis en avant, et on

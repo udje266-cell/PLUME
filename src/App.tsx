@@ -53,6 +53,8 @@ import { calculateAge, isUserAgeAllowed } from './utils/age';
 import { authHeaders as sharedAuthHeaders, setAuthToken, getAuthToken, restoreAuthToken } from './utils/auth';
 import { API_BASE } from './utils/api';
 import { applyStatusBarTheme } from './utils/native';
+import { getBookProgress } from './utils/readingProgress';
+import StoryDetailView from './components/StoryDetailView';
 import { ensureWebPush } from './utils/pwa';
 import { playNotificationSound, showAppNotification, setUnreadBadge, isNotifCategoryEnabled, type NotifType, type NotifCategory } from './utils/notify';
 import { generateCoverDataUri } from './utils/coverImage';
@@ -1336,6 +1338,10 @@ export default function App() {
 
   const [activeFilter, setActiveFilter] = useState<{ type: string; value: string } | null>(null);
   const [selectedStoryForReading, setSelectedStoryForReading] = useState<Story | null>(null);
+  // Fiche d'oeuvre (synopsis + sommaire) affichee avant d'entrer dans le texte.
+  const [selectedStoryForDetail, setSelectedStoryForDetail] = useState<Story | null>(null);
+  // Chapitre choisi depuis la fiche (prioritaire sur la reprise sauvegardee).
+  const [startChapterIndex, setStartChapterIndex] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [viewedUser, setViewedUser] = useState<User | null>(null);
 
@@ -1405,7 +1411,8 @@ export default function App() {
       if (ev.defaultPrevented) return true;
       // 2. Sinon, comportement global.
       if (isSidebarOpen) { setIsSidebarOpen(false); return true; }
-      if (selectedStoryForReading) { setSelectedStoryForReading(null); return true; }
+      if (selectedStoryForReading) { setSelectedStoryForReading(null); setStartChapterIndex(null); return true; }
+      if (selectedStoryForDetail) { setSelectedStoryForDetail(null); return true; }
       if (viewedUser) { setViewedUser(null); return true; }
       // Conversation ouverte en plein écran : on revient à la LISTE des
       // messages (comme WhatsApp), pas à l'accueil.
@@ -3587,7 +3594,10 @@ export default function App() {
       .catch(e => console.error('[PLUME] Erreur de notation :', e));
   };
 
-  const handleSelectStoryForReading = (story: Story) => {
+  // Ouvre un récit. Par défaut on présente d'abord la FICHE (synopsis +
+  // sommaire) ; si la lecture est déjà commencée, on reprend directement dans
+  // le texte. `force` permet d'entrer dans la lecture depuis la fiche.
+  const handleSelectStoryForReading = (story: Story, opts?: { force?: boolean }) => {
     const age = calculateAge(currentUser?.birthDate);
     if (!isUserAgeAllowed(age, story.ageRating) && story.authorId !== currentUser?.id) {
       alert(`Accès interdit. Cette œuvre est classée ${story.ageRating === 'all' || !story.ageRating ? 'Tout public' : story.ageRating + ' ans et plus'} et vous avez ${age} ans.`);
@@ -3595,6 +3605,18 @@ export default function App() {
     }
     const freshStory = stories.find((s) => s.id === story.id) || story;
     const viewedStory = handleRecordStoryView(freshStory.id) || freshStory;
+
+    if (!opts?.force) {
+      const prog = getBookProgress(currentUser?.id, viewedStory.id);
+      const alreadyStarted = !!prog && ((prog.chapterIndex || 0) > 0 || (prog.percent || 0) > 0);
+      if (!alreadyStarted) {
+        // Première ouverture : on montre la fiche (synopsis + chapitres/tomes).
+        setSelectedStoryForDetail(viewedStory);
+        setSelectedStoryForReading(null);
+        return;
+      }
+    }
+    setSelectedStoryForDetail(null);
     setSelectedStoryForReading(viewedStory);
 
     // Charge la note réelle (moyenne + ma note) pour cette histoire.
@@ -3822,7 +3844,8 @@ export default function App() {
                 <ReadingView
                   key={selectedStoryForReading.id}
                   story={selectedStoryForReading}
-                  onBack={() => setSelectedStoryForReading(null)}
+                  initialChapterIndex={startChapterIndex ?? undefined}
+                  onBack={() => { setSelectedStoryForReading(null); setStartChapterIndex(null); }}
                   onSelectStory={handleSelectStoryForReading}
                   currentUser={currentUser!}
                   onToggleFeatured={handleToggleStoryFeatured}
@@ -3849,6 +3872,22 @@ export default function App() {
                   onToggleCompletedStories={handleToggleCompletedStories}
                   onToggleReadLater={handleToggleReadLater}
                   onViewProfile={handleViewUserProfile}
+                />
+              ) : selectedStoryForDetail ? (
+                /* FICHE D'ŒUVRE : synopsis + sommaire, avant d'entrer dans le texte. */
+                <StoryDetailView
+                  key={selectedStoryForDetail.id}
+                  story={selectedStoryForDetail}
+                  currentUser={currentUser!}
+                  onBack={() => setSelectedStoryForDetail(null)}
+                  onViewProfile={handleViewUserProfile}
+                  isFavorited={favorites.includes(selectedStoryForDetail.id)}
+                  onToggleFavorite={handleToggleFavorite}
+                  readChapters={readChapters}
+                  onStartReading={(chapterIndex) => {
+                    setStartChapterIndex(chapterIndex);
+                    handleSelectStoryForReading(selectedStoryForDetail, { force: true });
+                  }}
                 />
               ) : (
                 /* STANDARD DIRECT VIEW SWITCHERS */
