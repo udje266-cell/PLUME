@@ -4429,7 +4429,10 @@ export async function createServerInstance() {
         })
       );
 
-      res.json(conversationsWithUnread);
+      // Conversation « fantome » (l'autre participant a supprime son compte) et
+      // vide : inutile de l'afficher.
+      res.json(conversationsWithUnread.filter((c: any) =>
+        c.participants.some((p: any) => p.id !== req.user.id) || (c.messages && c.messages.length > 0)));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la récupération des conversations' });
@@ -4485,18 +4488,27 @@ export async function createServerInstance() {
         return res.status(403).json({ error: 'Action interdite' });
       }
 
-      // Borné aux 500 derniers messages (chargés du plus récent au plus ancien,
-      // puis remis dans l'ordre) : une vieille conversation ne pèse plus des Mo.
-      const messages = await prisma.message.findMany({
-        where: { conversationId: req.params.id },
+      // Pagination : ?paged=1&limit=N&before=<ISO> renvoie { messages, hasMore }
+      // (page de messages plus anciens que `before`). Sans `paged`, ancien
+      // format (tableau des 500 derniers) pour les clients non mis a jour.
+      const paged = req.query.paged === '1';
+      const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || (paged ? 80 : 500)), 10) || 80));
+      const beforeDate = req.query.before ? new Date(String(req.query.before)) : null;
+      const where: any = { conversationId: req.params.id };
+      if (beforeDate && !isNaN(beforeDate.getTime())) where.createdAt = { lt: beforeDate };
+      const rows = await prisma.message.findMany({
+        where,
         include: {
           sender: { select: SAFE_USER_SELECT }
         },
         orderBy: { createdAt: 'desc' },
-        take: 500,
+        take: limit + 1,
       });
+      const hasMore = rows.length > limit;
+      const messages = rows.slice(0, limit).reverse();
 
-      res.json(messages.reverse());
+      if (paged) return res.json({ messages, hasMore });
+      res.json(messages);
     } catch (error) {
       console.error(`[CONVERSATION] erreur accès - conversationId: ${req.params.id}:`, error);
       res.status(500).json({ error: 'Erreur lors de la récupération des messages' });
@@ -4873,14 +4885,22 @@ export async function createServerInstance() {
       const group = await prisma.readingGroup.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
       if (!group) return res.status(404).json({ error: 'Groupe introuvable' });
       if (!group.members.some((m) => m.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
-      // Borné aux 500 derniers (même logique que les conversations 1-à-1).
-      const messages = await prisma.groupMessage.findMany({
-        where: { groupId: req.params.id },
+      // Pagination identique aux conversations 1-a-1 (?paged=1&limit&before).
+      const paged = req.query.paged === '1';
+      const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || (paged ? 80 : 500)), 10) || 80));
+      const beforeDate = req.query.before ? new Date(String(req.query.before)) : null;
+      const where: any = { groupId: req.params.id };
+      if (beforeDate && !isNaN(beforeDate.getTime())) where.createdAt = { lt: beforeDate };
+      const rows = await prisma.groupMessage.findMany({
+        where,
         include: { sender: { select: SAFE_USER_SELECT }, reactions: true },
         orderBy: { createdAt: 'desc' },
-        take: 500,
+        take: limit + 1,
       });
-      res.json(messages.reverse().map((m: any) => serializeGroupMessage(m, req.user.id)));
+      const hasMore = rows.length > limit;
+      const messages = rows.slice(0, limit).reverse().map((m: any) => serializeGroupMessage(m, req.user.id));
+      if (paged) return res.json({ messages, hasMore });
+      res.json(messages);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors du chargement des messages du groupe.' });

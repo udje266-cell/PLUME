@@ -136,6 +136,18 @@ function parseGroupCode(href: string): string | null {
   return null;
 }
 
+// Fusionne deux listes de messages (dedoublonnees par id, la version la plus
+// recente d'un meme message l'emporte) triees du plus ancien au plus recent.
+function mergeMessageLists(a: Message[], b: Message[]): Message[] {
+  const map = new Map<string, Message>();
+  [...a, ...b].forEach((m) => {
+    if (!m || !m.id) return;
+    map.set(m.id, { ...(map.get(m.id) || {}), ...m } as Message);
+  });
+  const ts = (m: Message) => new Date(m.date || m.createdAt || 0).getTime();
+  return Array.from(map.values()).sort((x, y) => ts(x) - ts(y));
+}
+
 export default function App() {
 
   // Custom State for Floating Premium Achievements Toasts
@@ -222,6 +234,9 @@ export default function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
+  // Messages plus anciens disponibles cote serveur, par conversation / groupe.
+  const [convHasMore, setConvHasMore] = useState<Record<string, boolean>>({});
+  const [groupHasMore, setGroupHasMore] = useState<Record<string, boolean>>({});
   const activeConversationIdRef = React.useRef(activeConversationId);
   React.useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -324,13 +339,30 @@ export default function App() {
       const data: ReadingGroup[] = await res.json();
       setGroups(data);
       // Messages des groupes chargés EN PARALLELE (au lieu d'une boucle séquentielle).
-      const lists = await Promise.all(data.map(async (g) => {
+      const pages = await Promise.all(data.map(async (g) => {
         try {
-          const mres = await fetch(`/api/groups/${g.id}/messages`, { headers: authHeaders() });
-          return mres.ok ? (await mres.json() as GroupMessage[]) : [];
-        } catch { return []; }
+          const mres = await fetch(`/api/groups/${g.id}/messages?paged=1&limit=100`, { headers: authHeaders() });
+          if (!mres.ok) return { id: g.id, messages: [] as GroupMessage[], hasMore: false };
+          const body = await mres.json();
+          return { id: g.id, messages: (body.messages || []) as GroupMessage[], hasMore: !!body.hasMore };
+        } catch { return { id: g.id, messages: [] as GroupMessage[], hasMore: false }; }
       }));
-      setGroupMessages(lists.flat());
+      // On CONSERVE les pages plus anciennes deja chargees (et les envois en
+      // cours) au lieu d'ecraser tout l'historique a chaque rafraichissement.
+      setGroupMessages((prev) => pages.flatMap((p) => {
+        const oldest = p.messages.length ? new Date(p.messages[0].date).getTime() : Infinity;
+        const known = new Set(p.messages.map((m) => m.id));
+        const kept = prev.filter((m) => m.groupId === p.id && !known.has(m.id)
+          && (String(m.id).startsWith('gmsg_temp_') || new Date(m.date).getTime() < oldest));
+        return [...kept, ...p.messages];
+      }));
+      setGroupHasMore((prev) => {
+        const next = { ...prev };
+        // Premier chargement seulement : ensuite, c'est le chargement des pages
+        // anciennes qui fait foi (sinon on reafficherait le bouton a tort).
+        pages.forEach((p) => { if (next[p.id] === undefined) next[p.id] = p.hasMore; });
+        return next;
+      });
       // Etat de lecture par membre (accuses de reception groupe).
       try {
         const rr = await fetch('/api/groups/reads', { headers: authHeaders() });
@@ -529,6 +561,9 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, currentUser?.id, currentUser?.isVerified]);
 
+  // La liste des conversations ne renvoie que le DERNIER message de chacune :
+  // on le FUSIONNE avec l'historique deja charge (sinon chaque rafraichissement
+  // effacait les anciens messages du fil ouvert).
   const fetchConversationsList = React.useCallback(() => {
     fetch('/api/conversations', { headers: authHeaders() })
       .then(res => {
@@ -536,17 +571,50 @@ export default function App() {
       })
       .then(fetched => {
         if (fetched) {
-          setConversations(fetched.map((c: any) => ({
-            ...c,
-            messages: (c.messages || []).map((m: any) => ({
-              ...m,
-              date: m.createdAt
-            }))
-          })));
+          setConversations(prev => fetched.map((c: any) => {
+            const fresh = (c.messages || []).map((m: any) => ({ ...m, date: m.createdAt }));
+            const existing = prev.find(p => p.id === c.id);
+            return { ...c, messages: mergeMessageLists(existing?.messages || [], fresh) };
+          }));
         }
       })
       .catch(err => console.error(err));
   }, [isAuthenticated, currentUser?.id]);
+
+  const loadOlderConversationMessages = async (conversationId: string) => {
+    const conv = conversations.find(c => c.id === conversationId);
+    const oldest = conv?.messages?.[0];
+    const before = oldest ? (oldest.createdAt || oldest.date) : '';
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages?paged=1&limit=60${before ? `&before=${encodeURIComponent(before)}` : ''}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const older = (data.messages || []).map((m: any) => ({ ...m, date: m.createdAt }));
+      setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, messages: mergeMessageLists(c.messages, older) } : c));
+      setConvHasMore(prev => ({ ...prev, [conversationId]: !!data.hasMore }));
+    } catch (e) {
+      console.error('[PLUME] Erreur chargement anciens messages :', e);
+    }
+  };
+
+  const loadOlderGroupMessages = async (groupId: string) => {
+    const list = groupMessages.filter(m => m.groupId === groupId)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const before = list[0]?.date || '';
+    try {
+      const res = await fetch(`/api/groups/${groupId}/messages?paged=1&limit=60${before ? `&before=${encodeURIComponent(before)}` : ''}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const older: GroupMessage[] = data.messages || [];
+      setGroupMessages(prev => {
+        const known = new Set(prev.map(m => m.id));
+        return [...older.filter(m => !known.has(m.id)), ...prev];
+      });
+      setGroupHasMore(prev => ({ ...prev, [groupId]: !!data.hasMore }));
+    } catch (e) {
+      console.error('[PLUME] Erreur chargement anciens messages du groupe :', e);
+    }
+  };
 
 
   const getLocalUserEdits = (): Record<string, Partial<User>> => {
@@ -1354,7 +1422,21 @@ export default function App() {
       setViewedUser(target);
       setSelectedStoryForReading(null); // Leave reading mode when switching to a profile
       setActiveTab('profile');
+      return;
     }
+    // Absent de l'annuaire local (liste bornee) : on le charge depuis le serveur.
+    if (!userId || userId.startsWith('deleted_')) return;
+    fetch(`/api/users/${encodeURIComponent(userId)}`, { headers: authHeaders() })
+      .then(res => (res.ok ? res.json() : null))
+      .then((u: User | null) => {
+        if (!u || !u.id) return;
+        setAllUsers(prev => (prev.some(x => x.id === u.id) ? prev : [...prev, u]));
+        if ((u as any).stats) hydrateUserStats(u.id, (u as any).stats);
+        setViewedUser(u);
+        setSelectedStoryForReading(null);
+        setActiveTab('profile');
+      })
+      .catch(() => {});
   };
 
   // Ouvre l'élément pertinent depuis l'onglet Notifications.
@@ -1604,32 +1686,29 @@ export default function App() {
     fetchApiData();
   }, []);
 
-  // Load full messages when selecting a conversation
+  // Charge l'historique recent quand on ouvre une conversation. Relance aussi
+  // quand la conversation apparait dans la liste (ouverte avant d'etre chargee :
+  // l'historique recu etait jete et jamais re-applique).
+  const activeConvLoaded = conversations.some(c => c.id === activeConversationId);
   useEffect(() => {
-    if (!activeConversationId) return;
+    if (!activeConversationId || !activeConvLoaded) return;
+    const convId = activeConversationId;
 
-    fetch(`/api/conversations/${activeConversationId}/messages`, { headers: authHeaders() })
+    fetch(`/api/conversations/${convId}/messages?paged=1&limit=80`, { headers: authHeaders() })
       .then(res => {
         if (res.ok) return res.json();
       })
-      .then(fetchedMessages => {
-        if (fetchedMessages) {
-          setConversations(prev => prev.map(c => {
-            if (c.id === activeConversationId) {
-              return {
-                ...c,
-                messages: fetchedMessages.map((m: any) => ({
-                  ...m,
-                  date: m.createdAt
-                }))
-              };
-            }
-            return c;
-          }));
+      .then(data => {
+        if (data) {
+          const fetched = (Array.isArray(data) ? data : (data.messages || [])).map((m: any) => ({ ...m, date: m.createdAt }));
+          setConversations(prev => prev.map(c => c.id === convId
+            ? { ...c, messages: mergeMessageLists(c.messages || [], fetched) }
+            : c));
+          setConvHasMore(prev => (prev[convId] === undefined ? { ...prev, [convId]: !Array.isArray(data) && !!data.hasMore } : prev));
         }
       })
       .catch(err => console.error('[PLUME] Erreur chargement messages conversation:', err));
-  }, [activeConversationId]);
+  }, [activeConversationId, activeConvLoaded]);
 
   // Synchronizers to local storage for navigation preferences and session state
   useEffect(() => {
@@ -3069,7 +3148,8 @@ export default function App() {
               requestMessagesLeft: isPendingRequester && typeof c.requestMessagesLeft === 'number'
                 ? Math.max(0, c.requestMessagesLeft - 1)
                 : c.requestMessagesLeft,
-              messages: c.messages.map(m => m.id === tempMsgId ? { ...savedMsg, date: savedMsg.createdAt } : m)
+              // Dedoublonne si le message definitif est deja arrive (rafraichissement).
+              messages: mergeMessageLists(c.messages.filter(m => m.id !== tempMsgId), [{ ...savedMsg, date: savedMsg.createdAt }])
             };
           }
           return c;
@@ -3954,6 +4034,10 @@ export default function App() {
                       friendIds={serverFriendIds}
                       conversations={conversations}
                       setConversations={setConversations}
+                      convHasMore={convHasMore}
+                      groupHasMore={groupHasMore}
+                      onLoadOlderConversation={loadOlderConversationMessages}
+                      onLoadOlderGroup={loadOlderGroupMessages}
                       onStartCall={handleStartCall}
                       onlineUserIds={onlineUserIds}
                       typingUserIds={typingUserIds}

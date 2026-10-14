@@ -292,6 +292,11 @@ interface MessagesViewProps {
   friendIds?: string[];
   conversations: Conversation[];
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
+  // Pagination de l'historique (messages plus anciens).
+  convHasMore?: Record<string, boolean>;
+  groupHasMore?: Record<string, boolean>;
+  onLoadOlderConversation?: (conversationId: string) => Promise<void>;
+  onLoadOlderGroup?: (groupId: string) => Promise<void>;
   onSendMessage: (conversationId: string, content: string, replyToId?: string | null) => void;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
@@ -417,6 +422,10 @@ export default function MessagesView({
   friendIds,
   conversations,
   setConversations,
+  convHasMore,
+  groupHasMore,
+  onLoadOlderConversation,
+  onLoadOlderGroup,
   onSendMessage,
   onStartCall,
   onlineUserIds,
@@ -929,10 +938,29 @@ export default function MessagesView({
   // active. On ne retombe PLUS sur un utilisateur au hasard (`allUsers[...]`) :
   // cela affichait « une conversation avec X au hasard » quand la conversation
   // ciblee n'etait pas (encore) chargee. Repli de type-safety : soi-meme.
-  const interlocutor =
-    activeConv?.participants?.find(p => p.id !== currentUser.id)
-    ?? activeConv?.participants?.[0]
-    ?? currentUser;
+  //
+  // Si l'autre participant n'existe plus (compte supprime), on affiche un
+  // « Compte supprimé » neutre au lieu de retomber sur SOI-MEME : c'etait la
+  // cause du meme nom (le sien) repete sur plusieurs discussions.
+  const resolvePartner = (conv?: Conversation | null): User => {
+    const other = conv?.participants?.find(p => p.id !== currentUser.id);
+    if (!other) {
+      return {
+        ...currentUser,
+        id: `deleted_${conv?.id || 'none'}`,
+        username: 'Compte supprimé',
+        avatar: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#a1a1aa"/><circle cx="20" cy="15" r="7" fill="#fff"/><path d="M6 36c2-8 8-11 14-11s12 3 14 11" fill="#fff"/></svg>'),
+        isVerified: false,
+        bio: '',
+      } as User;
+    }
+    if (other.username) return other;
+    // Participant incomplet : on complete depuis l'annuaire.
+    const known = allUsers.find(u => u.id === other.id);
+    return known ? { ...known, ...other, username: known.username, avatar: other.avatar || known.avatar } : { ...other, username: 'Utilisateur' };
+  };
+  const interlocutor = activeConv ? resolvePartner(activeConv) : currentUser;
+  const partnerIsGhost = !!activeConv && interlocutor.id.startsWith('deleted_');
   const activeGroup = groups.find(g => g.id === activeGroupId);
 
   // Role de l'utilisateur dans le groupe actif + helpers de moderation (epingle,
@@ -1164,6 +1192,7 @@ export default function MessagesView({
     // Appel audio réel (WebRTC) géré globalement par App via onStartCall.
     if (!interlocutor) return;
     if (interlocutor.id === currentUser.id) { alert('Vous ne pouvez pas vous appeler vous-même.'); return; }
+    if (partnerIsGhost) { alert('Ce compte a été supprimé.'); return; }
     onStartCall({ id: interlocutor.id, username: interlocutor.username, avatar: interlocutor.avatar });
   };
 
@@ -1260,6 +1289,32 @@ export default function MessagesView({
     return release;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
+
+  // ANCIENS MESSAGES : bouton en haut du fil. On garde la position de lecture
+  // (les messages s'ajoutent AU-DESSUS sans faire sauter l'ecran).
+  const threadHasMore = activeGroupId ? !!groupHasMore?.[activeGroupId] : !!(activeConversationId && convHasMore?.[activeConversationId]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const olderAnchorRef = useRef<number | null>(null);
+  const loadOlder = async () => {
+    const container = scrollContainerRef.current;
+    if (loadingOlder) return;
+    if (container) olderAnchorRef.current = container.scrollHeight - container.scrollTop;
+    setLoadingOlder(true);
+    try {
+      if (activeGroupId) await onLoadOlderGroup?.(activeGroupId);
+      else if (activeConversationId) await onLoadOlderConversation?.(activeConversationId);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container && olderAnchorRef.current !== null) {
+      container.scrollTop = container.scrollHeight - olderAnchorRef.current;
+    }
+    olderAnchorRef.current = null;
+  }, [activeThreadCount]);
+  useEffect(() => { olderAnchorRef.current = null; }, [threadKey]);
 
   // NOUVEAU message pendant qu'on lit : on ne descend que si l'utilisateur etait
   // deja en bas (sinon on le laisse tranquille). Ignore pendant l'epinglage initial.
@@ -1668,12 +1723,12 @@ export default function MessagesView({
             {activeTab === 'chats' && conversations.filter((conv) => {
               const q = convSearch.trim().toLowerCase();
               if (!q) return true;
-              const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
+              const partner = resolvePartner(conv);
               const last = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
               return (partner.username || '').toLowerCase().includes(q)
                 || (!!last && !last.deletedForEveryone && !parseSticker(last.content) && (last.content || '').toLowerCase().includes(q));
             }).map((conv) => {
-              const partner = conv.participants.find(p => p.id !== currentUser.id) || conv.participants[0] || currentUser;
+              const partner = resolvePartner(conv);
               const isActive = conv.id === activeConversationId && !activeGroupId;
               const lastMsg = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
               const unreadCount = conv.unreadCount || 0;
@@ -1697,7 +1752,7 @@ export default function MessagesView({
                     <img
                       src={partner.avatar}
                       alt={partner.username}
-                      onClick={(e) => { e.stopPropagation(); onViewProfile?.(partner.id); }}
+                      onClick={(e) => { e.stopPropagation(); if (!partner.id.startsWith('deleted_')) onViewProfile?.(partner.id); }}
                       className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100 dark:ring-zinc-800 cursor-pointer hover:ring-purple-500/50"
                       referrerPolicy="no-referrer"
                     />
@@ -1880,7 +1935,7 @@ export default function MessagesView({
                     <img
                       src={interlocutor.avatar}
                       alt={interlocutor.username}
-                      onClick={() => onViewProfile?.(interlocutor.id)}
+                      onClick={() => { if (!partnerIsGhost) onViewProfile?.(interlocutor.id); }}
                       className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-zinc-800 shrink-0 cursor-pointer hover:border-purple-500"
                       referrerPolicy="no-referrer"
                     />
@@ -1891,7 +1946,7 @@ export default function MessagesView({
 
                   <div className="text-left min-w-0">
                     <h4
-                      onClick={() => onViewProfile?.(interlocutor.id)}
+                      onClick={() => { if (!partnerIsGhost) onViewProfile?.(interlocutor.id); }}
                       className="text-xs font-serif font-black text-gray-900 dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
                     >
                       <span>{interlocutor.username}</span>
@@ -2020,6 +2075,18 @@ export default function MessagesView({
 
           {/* ACTIVE CHAT WORKSPACE AREA */}
           <div ref={scrollContainerRef} className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto z-10 space-y-3.5 overscroll-contain" style={{ ...chatBgStyle, WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', willChange: 'scroll-position' }}>
+            {threadHasMore && activeThreadCount > 0 && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={loadOlder}
+                  disabled={loadingOlder}
+                  className="px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-zinc-900/90 border border-gray-200 dark:border-zinc-800 text-[11px] font-bold text-purple-600 dark:text-purple-300 shadow-sm hover:bg-purple-50 dark:hover:bg-zinc-800 disabled:opacity-60 transition"
+                >
+                  {loadingOlder ? 'Chargement…' : 'Charger les messages précédents'}
+                </button>
+              </div>
+            )}
             {activeGroupId ? (
               // Group Thread messaging
               activeGroupMessages.length === 0 ? (
@@ -2648,7 +2715,13 @@ export default function MessagesView({
                   <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">Membres ({activeGroup?.members.length || 0})</h4>
                   <div className="space-y-1.5">
                     {(activeGroup?.members || []).map((mid) => {
-                      const m = mid === currentUser.id ? currentUser : allUsers.find((u) => u.id === mid);
+                      // Annuaire, sinon fiche membre du groupe (roster) : un membre
+                      // absent de l'annuaire local ne disparait plus de la liste.
+                      const r = activeGroup?.roster?.find((x) => x.userId === mid);
+                      const m = mid === currentUser.id
+                        ? currentUser
+                        : (allUsers.find((u) => u.id === mid)
+                          || (r ? ({ id: mid, username: r.username || 'Membre', avatar: r.avatar, isVerified: !!r.isVerified } as User) : null));
                       if (!m) return null;
                       return (
                         <button key={mid} onClick={() => onViewProfile?.(m.id)} className="w-full flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-900 text-left transition">
@@ -2680,7 +2753,7 @@ export default function MessagesView({
                 </div>
                 {interlocutor.bio && <p className="text-[11px] text-gray-500 dark:text-gray-300 leading-relaxed italic">« {interlocutor.bio} »</p>}
                 <button
-                  onClick={() => onViewProfile?.(interlocutor.id)}
+                  onClick={() => { if (!partnerIsGhost) onViewProfile?.(interlocutor.id); }}
                   className="w-full py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[11px] font-black uppercase tracking-wider transition"
                 >
                   Voir le profil
