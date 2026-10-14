@@ -1518,10 +1518,13 @@ export default function MessagesView({
       {/* WhatsApp Layout Uniform Container (no delimiting box) */}
       <div
         ref={messagingCardRef}
-        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] lg:h-[calc(100dvh-150px)] lg:max-h-[920px] md:shadow-2xl relative z-10">
+        className="bg-white dark:bg-black md:border md:border-gray-100 md:dark:border-zinc-900 md:rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 [grid-template-rows:minmax(0,1fr)] h-[calc(100dvh-var(--plume-msg-top,56px)-var(--plume-nav-h,76px))] min-h-[360px] md:h-[700px] md:min-h-[580px] lg:h-[calc(100dvh-150px)] lg:max-h-[920px] md:shadow-2xl relative z-10">
 
         {/* LEFT COMPARTMENT: CHAT LISTINGS */}
-        <div className={`md:col-span-4 ${infoPaneOpen ? 'xl:col-span-3' : ''} bg-white dark:bg-black flex flex-col border-r border-gray-100 dark:border-zinc-900 ${
+        {/* h-full + min-h-0 + overflow-hidden : la colonne reste a la hauteur de
+            l'ecran et c'est la LISTE qui defile (sinon elle debordait, coupee
+            par la grille, et l'ecran semblait bloque). */}
+        <div className={`md:col-span-4 ${infoPaneOpen ? 'xl:col-span-3' : ''} bg-white dark:bg-black flex flex-col h-full min-h-0 overflow-hidden border-r border-gray-100 dark:border-zinc-900 ${
           mobileShowThread ? 'hidden md:flex' : 'flex'
         }`}>
           {/* Header with simply 'Messagerie' + sleek Action buttons */}
@@ -1715,7 +1718,7 @@ export default function MessagesView({
           </div>
 
           {/* CONTACT & GROUPS DECK */}
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100/60 dark:divide-zinc-900 bg-white dark:bg-black">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-gray-100/60 dark:divide-zinc-900 bg-white dark:bg-black" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
             
             {/* Solo Discussions Deck View. L'aperçu et la recherche ignorent
                 les messages « supprimés pour moi » : sinon un message masqué

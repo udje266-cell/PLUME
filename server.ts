@@ -4250,7 +4250,14 @@ export async function createServerInstance() {
   const lastMessageTimes = new Map<string, number>();
 
   // Conversations & Messages
+  // Verrou par paire de participants : plusieurs taps rapides sur « Message »
+  // lancaient des creations EN PARALLELE, chacune ne voyant pas encore l'autre
+  // -> conversations vides en double. On serialise donc les creations d'une
+  // meme paire (la 2e retrouve alors la conversation creee par la 1re).
+  const conversationCreateLocks = new Map<string, Promise<void>>();
   app.post('/api/conversations', requireAuth, async (req: any, res) => {
+    let releaseLock: () => void = () => {};
+    let lockKey = '';
     try {
       const { participantIds } = req.body;
 
@@ -4259,7 +4266,17 @@ export async function createServerInstance() {
       }
 
       // Ensure current user is in participants
-      const targetIds = Array.from(new Set([req.user.id, ...participantIds]));
+      const targetIds = Array.from(new Set([req.user.id, ...participantIds.map((x: any) => String(x))]));
+      // Une conversation avec soi-meme seulement n'a pas de sens.
+      if (targetIds.length < 2) {
+        return res.status(400).json({ error: 'Impossible de démarrer une conversation avec soi-même.' });
+      }
+
+      lockKey = [...targetIds].sort().join('|');
+      const previous = conversationCreateLocks.get(lockKey);
+      const current = new Promise<void>((resolve) => { releaseLock = resolve; });
+      conversationCreateLocks.set(lockKey, current);
+      if (previous) await previous.catch(() => {});
 
       // Verify that all users exist
       const users = await prisma.user.findMany({
@@ -4293,14 +4310,23 @@ export async function createServerInstance() {
             }
           },
           include: {
-            participants: { select: SAFE_USER_SELECT }
-          }
+            participants: { select: SAFE_USER_SELECT },
+            _count: { select: { messages: true } },
+          },
+          // S'il existe des doublons : celle qui a des messages, puis la plus
+          // recente (la meme que celle affichee dans la liste).
+          orderBy: { updatedAt: 'desc' },
         });
 
-        existingConversation = userConversations.find(conv => {
+        const matches = userConversations.filter(conv => {
           const ids = conv.participants.map(p => p.id);
           return ids.length === 2 && targetIds.every(id => ids.includes(id));
         });
+        const best = matches.find((c: any) => c._count?.messages > 0) || matches[0];
+        if (best) {
+          const { _count, ...rest } = best as any;
+          existingConversation = rest;
+        }
       }
 
       if (existingConversation) {
@@ -4345,6 +4371,14 @@ export async function createServerInstance() {
     } catch (error: any) {
       console.error(`[CONVERSATION] erreur création :`, error);
       res.status(500).json({ error: `Erreur lors de la création de la conversation : ${error.message || 'erreur serveur'}` });
+    } finally {
+      releaseLock();
+      if (lockKey && conversationCreateLocks.get(lockKey)) {
+        // Nettoyage : on ne garde le verrou que s'il appartient encore a une
+        // requete en attente plus recente.
+        const pending = conversationCreateLocks.get(lockKey);
+        pending?.then(() => { if (conversationCreateLocks.get(lockKey) === pending) conversationCreateLocks.delete(lockKey); });
+      }
     }
   });
 
@@ -4431,8 +4465,22 @@ export async function createServerInstance() {
 
       // Conversation « fantome » (l'autre participant a supprime son compte) et
       // vide : inutile de l'afficher.
-      res.json(conversationsWithUnread.filter((c: any) =>
-        c.participants.some((p: any) => p.id !== req.user.id) || (c.messages && c.messages.length > 0)));
+      const visible = conversationsWithUnread.filter((c: any) =>
+        c.participants.some((p: any) => p.id !== req.user.id) || (c.messages && c.messages.length > 0));
+      // Doublons 1-a-1 VIDES avec la meme personne (crees par des taps
+      // rapides) : on n'en garde qu'une. Une conversation qui contient des
+      // messages n'est jamais masquee.
+      const keyOf = (c: any) => c.participants.length === 2
+        ? c.participants.map((p: any) => p.id).sort().join('|') : '';
+      const withMessages = new Set(visible.filter((c: any) => c.messages?.length && keyOf(c)).map(keyOf));
+      const seenEmpty = new Set<string>();
+      res.json(visible.filter((c: any) => {
+        const k = keyOf(c);
+        if (!k || c.messages?.length) return true;
+        if (withMessages.has(k) || seenEmpty.has(k)) return false;
+        seenEmpty.add(k);
+        return true;
+      }));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la récupération des conversations' });

@@ -3272,7 +3272,17 @@ export default function App() {
     }
   };
 
-  const handleStartConversation = async (participantIds: string[]): Promise<Conversation> => {
+  // Un seul appel de creation a la fois par destinataire (anti double-tap).
+  const startConvInflightRef = React.useRef<Record<string, Promise<Conversation>>>({});
+  const handleStartConversation = (participantIds: string[]): Promise<Conversation> => {
+    const key = [...participantIds].sort().join('|');
+    const inflight = startConvInflightRef.current[key];
+    if (inflight) return inflight;
+    const p = doStartConversation(participantIds).finally(() => { delete startConvInflightRef.current[key]; });
+    startConvInflightRef.current[key] = p;
+    return p;
+  };
+  const doStartConversation = async (participantIds: string[]): Promise<Conversation> => {
     const targetUserId = participantIds.find(id => id !== currentUser?.id);
     if (currentUser?.id?.startsWith("user_") || (targetUserId && targetUserId.startsWith("user_"))) {
       console.error("[PLUME ERROR] Un ID commence par 'user_' ou correspond à un compte de démonstration interdit.");
