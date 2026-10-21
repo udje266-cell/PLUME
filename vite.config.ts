@@ -16,6 +16,11 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    test: {
+      // Les skills d'agent (.agents/, .claude/) embarquent leurs propres tests :
+      // ils ne font pas partie de l'appli.
+      exclude: ['**/node_modules/**', '**/dist/**', '.agents/**', '.claude/**'],
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
