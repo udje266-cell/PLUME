@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>PLUME — promo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+/*@@CSS@@*/
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="92"
+      data-width="1080"
+      data-height="1920"
+    >
+      <!-- ============ FOND (persistant) ============ -->
+      <div id="bg" class="layer">
+        <div id="glow-a" class="glow"></div>
+        <div id="glow-b" class="glow"></div>
+        <div id="glow-c" class="glow"></div>
+        <svg id="ghosts" class="layer" viewBox="0 0 1080 1920" aria-hidden="true">
+          <text id="g-histoire" class="ghost" x="-40" y="1500">histoire</text>
+          <text id="g-plume" class="ghost" x="-60" y="1640">plume</text>
+          <text id="g-decouvrir" class="ghost" x="-30" y="1830">découvrir</text>
+          <text id="g-explorer" class="ghost" x="-30" y="1830">explorer</text>
+          <text id="g-choisir" class="ghost" x="-30" y="1830">choisir</text>
+          <text id="g-lire" class="ghost" x="-30" y="1830">écouter</text>
+          <text id="g-ecrire" class="ghost" x="-30" y="1830">écrire</text>
+          <text id="g-ensemble" class="ghost" x="-30" y="1830">ensemble</text>
+          <text id="g-progresser" class="ghost" x="-30" y="1830">progresser</text>
+        </svg>
+        <div id="rings" class="layer"></div>
+      </div>
+
+      <!-- ============ S1 — la plume écrit ============ -->
+      <div id="s1" class="layer">
+        <div id="s1-kicker" class="kicker">Une histoire en 7 chapitres</div>
+        <div id="s1-cam" class="layer">
+          <div id="s1-line1" class="s1-line1">Il était une fois…</div>
+          <div id="s1-line2" class="s1-line2">
+            <span class="w">une</span>
+            <span class="w accent">plume.</span>
+          </div>
+          <svg id="s1-swash" class="layer" viewBox="0 0 1080 1920" aria-hidden="true">
+            <defs>
+              <linearGradient id="swash-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#7C3AED" />
+                <stop offset="1" stop-color="#EC4899" />
+              </linearGradient>
+            </defs>
+            <path
+              id="s1-swash-path"
+              d="M104 1052 C 260 1010, 420 1080, 560 1040 S 820 990, 960 1030 C 1000 1042, 1010 1060, 985 1072"
+              fill="none"
+              stroke="url(#swash-grad)"
+              stroke-width="9"
+              stroke-linecap="round"
+            />
+          </svg>
+          <div id="s1-sparks" class="layer"></div>
+        </div>
+        <div id="s1-feather-wrap" class="feather-tip">
+          <div id="s1-feather-wobble"><div class="feather-svg feather-220"></div></div>
+        </div>
+      </div>
+
+      <!-- ============ S2 — logo ============ -->
+      <div id="s2" class="layer">
+        <div id="s2-shock" class="shock"></div>
+        <div id="s2-rays" class="rays"></div>
+        <div id="s2-mark" class="mark-center"><div class="feather-svg feather-320 glowing"></div></div>
+        <div id="s2-word" class="wordmark">
+          <span>P</span><span>L</span><span>U</span><span>M</span><span>E</span>
+          <div id="s2-sheen" class="sheen"></div>
+        </div>
+        <div id="s2-tag" class="tagline">
+          <span class="tw">Lis.</span><span class="tw">Écris.</span><span class="tw accent">Partage.</span>
+        </div>
+      </div>
+
+      <!-- ============ STAGE — téléphone héros (14 s → 78 s) ============ -->
+      <div id="stage" class="layer">
+        <div id="headlines" class="layer"></div>
+        <div id="sats-back" class="layer"></div>
+        <div id="phone-cam">
+          <div id="phone-float">
+            <div id="phone">
+              <div id="phone-body"></div>
+              <div id="screen">
+                <div id="scr-splash" class="scr"><div class="feather-svg feather-200 white"></div></div>
+                <div id="scr-home" class="scr"></div>
+                <div id="scr-explore" class="scr"></div>
+                <div id="scr-detail" class="scr"></div>
+                <div id="scr-read" class="scr"></div>
+                <div id="scr-write" class="scr"></div>
+                <div id="scr-chat" class="scr"></div>
+                <div id="scr-trophy" class="scr"></div>
+                <div id="ui-overlay" class="layer"></div>
+              </div>
+              <div id="island"></div>
+              <div id="phone-glare"></div>
+            </div>
+          </div>
+        </div>
+        <div id="sats-front" class="layer"></div>
+        <div id="taps" class="layer"></div>
+      </div>
+
+      <!-- ============ S10 — final ============ -->
+      <div id="s10" class="layer">
+        <div id="s10-words" class="layer"></div>
+        <div id="fan" class="layer"></div>
+        <div id="s10-lock" class="layer">
+          <div id="s10-mark" class="mark-center end"><div class="feather-svg feather-280 glowing"></div></div>
+          <div id="s10-word" class="wordmark end">
+            <span>P</span><span>L</span><span>U</span><span>M</span><span>E</span>
+            <div id="s10-sheen" class="sheen"></div>
+          </div>
+          <div id="s10-tag" class="tagline end">
+            <span class="tw">Lis.</span><span class="tw">Écris.</span><span class="tw accent">Partage.</span>
+          </div>
+          <div id="s10-pill" class="store-pill">
+            <span class="store-ico"></span>
+            <span class="store-txt"><span class="store-small">Disponible sur</span><span class="store-big">Android</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ FX ============ -->
+      <div id="flash" class="layer"></div>
+      <svg id="grain" class="layer" viewBox="0 0 1080 1920" aria-hidden="true">
+        <filter id="grain-f">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="1080" height="1920" filter="url(#grain-f)" />
+      </svg>
+      <div id="fade-out" class="layer"></div>
+
+      <audio
+        id="soundtrack"
+        src="assets/audio/soundtrack.mp3"
+        data-start="0"
+        data-duration="92"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+    </div>
+
+    <script>
+/*@@UI@@*/
+    </script>
+    <script>
+/*@@TL@@*/
+    </script>
+  </body>
+</html>

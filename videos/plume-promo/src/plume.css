@@ -1,0 +1,150 @@
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-400.woff2") format("woff2"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-600.woff2") format("woff2"); font-weight: 600; font-style: normal; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-900.woff2") format("woff2"); font-weight: 900; font-style: normal; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-400-italic.woff2") format("woff2"); font-weight: 400; font-style: italic; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-600-italic.woff2") format("woff2"); font-weight: 600; font-style: italic; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-900-italic.woff2") format("woff2"); font-weight: 900; font-style: italic; }
+@font-face { font-family: "Inter"; src: url("fonts/inter-400.woff2") format("woff2"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Inter"; src: url("fonts/inter-600.woff2") format("woff2"); font-weight: 600; font-style: normal; }
+@font-face { font-family: "Inter"; src: url("fonts/inter-700.woff2") format("woff2"); font-weight: 700; font-style: normal; }
+
+:root {
+  --ink: #140b22;
+  --ink-deep: #0d0717;
+  --fg: #f5f0ff;
+  --fg-2: #b9a8da;
+  --violet: #7c3aed;
+  --violet-2: #a78bfa;
+  --pink: #ec4899;
+  --ui-text: #1d1530;
+  --ui-muted: #625a78;
+  --ui-line: #ebe6f5;
+  --ui-soft: #f4f0fb;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: var(--ink); }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--ink); color: var(--fg); font-family: "Inter", sans-serif; }
+.layer { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; }
+svg.layer { overflow: visible; }
+
+/* ---------- fond ---------- */
+#bg { background: radial-gradient(1200px 1500px at 50% 45%, #1d1033 0%, #140b22 55%, #0d0717 100%); }
+.glow { position: absolute; border-radius: 50%; will-change: transform, opacity; }
+#glow-a { left: -260px; top: 120px; width: 1100px; height: 1100px; background: radial-gradient(circle, rgba(124, 58, 237, 0.55) 0%, rgba(124, 58, 237, 0.18) 38%, rgba(124, 58, 237, 0) 70%); }
+#glow-b { left: 360px; top: 980px; width: 1000px; height: 1000px; background: radial-gradient(circle, rgba(219, 39, 119, 0.38) 0%, rgba(219, 39, 119, 0.12) 40%, rgba(219, 39, 119, 0) 70%); }
+#glow-c { left: 80px; top: 500px; width: 920px; height: 920px; opacity: 0; background: radial-gradient(circle, rgba(67, 56, 202, 0.55) 0%, rgba(67, 56, 202, 0.15) 42%, rgba(67, 56, 202, 0) 70%); }
+.ghost { font-family: "Source Serif 4", serif; font-style: italic; font-weight: 900; font-size: 300px; fill: #f5f0ff; opacity: 0; letter-spacing: -0.04em; }
+#grain { opacity: 0.07; mix-blend-mode: overlay; pointer-events: none; z-index: 40; }
+#flash { z-index: 50; background: radial-gradient(circle at 50% 46%, #ffffff 0%, #e9d5ff 30%, #a78bfa 62%, #7c3aed 100%); opacity: 0; visibility: hidden; }
+#fade-out { z-index: 60; background: var(--ink-deep); opacity: 0; visibility: hidden; }
+#rings .ring { position: absolute; left: 540px; top: 1170px; width: 700px; height: 700px; margin: -350px 0 0 -350px; border-radius: 50%; border: 3px solid rgba(167, 139, 250, 0.55); opacity: 0; }
+
+/* ---------- plume (SVG injectée) ---------- */
+.feather-svg svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.feather-220 { width: 220px; height: 220px; }
+.feather-200 { width: 200px; height: 200px; }
+.feather-280 { width: 280px; height: 280px; }
+.feather-320 { width: 320px; height: 320px; }
+.glowing svg { filter: drop-shadow(0 0 28px rgba(236, 72, 153, 0.55)) drop-shadow(0 0 60px rgba(124, 58, 237, 0.6)); }
+.feather-tip { position: absolute; left: 0; top: 0; width: 1px; height: 1px; visibility: hidden; }
+/* la pointe de la plume est en (172, 14) dans une boîte de 220 → on décale le dessin */
+.feather-tip .feather-svg { position: absolute; left: -172px; top: -16px; filter: drop-shadow(0 0 18px rgba(236, 72, 153, 0.6)) drop-shadow(0 0 40px rgba(124, 58, 237, 0.7)); }
+#s1-feather-wobble { position: absolute; left: 0; top: 0; width: 1px; height: 1px; }
+
+/* ---------- S1 ---------- */
+#s1 { z-index: 2; }
+.kicker { position: absolute; left: 100px; top: 560px; font-family: "JetBrains Mono", monospace; font-size: 26px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--violet-2); }
+.s1-line1 { position: absolute; left: 100px; top: 640px; width: 900px; font-family: "Source Serif 4", serif; font-style: italic; font-weight: 600; font-size: 98px; line-height: 1.15; color: var(--fg); white-space: nowrap; }
+.s1-line2 { position: absolute; left: 100px; top: 820px; width: 940px; height: 210px; font-family: "Source Serif 4", serif; font-weight: 900; font-size: 176px; line-height: 1.1; letter-spacing: -0.035em; color: var(--fg); white-space: nowrap; overflow: hidden; }
+.s1-line2 .w { display: inline-block; }
+.accent { color: #c4b5fd; font-style: italic; }
+#s1-sparks .spark { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: radial-gradient(circle, #ffffff 0%, #f0abfc 45%, rgba(236, 72, 153, 0) 72%); opacity: 0; }
+
+/* ---------- S2 ---------- */
+#s2 { z-index: 3; visibility: hidden; }
+.mark-center { position: absolute; left: 380px; top: 560px; width: 320px; height: 320px; }
+.mark-center.end { left: 400px; top: 520px; width: 280px; height: 280px; }
+.shock { position: absolute; left: 540px; top: 720px; width: 900px; height: 900px; margin: -450px 0 0 -450px; border-radius: 50%; border: 6px solid rgba(240, 171, 252, 0.8); opacity: 0; }
+.rays { position: absolute; left: 540px; top: 720px; width: 0; height: 0; }
+.rays .ray { position: absolute; left: -3px; top: -620px; width: 6px; height: 360px; border-radius: 3px; background: linear-gradient(180deg, rgba(240, 171, 252, 0) 0%, rgba(240, 171, 252, 0.9) 100%); transform-origin: 3px 620px; opacity: 0; }
+.wordmark { position: absolute; left: 0; top: 960px; width: 1080px; text-align: center; font-family: "Montserrat", sans-serif; font-weight: 700; font-size: 150px; letter-spacing: 0.24em; padding-left: 0.24em; color: var(--fg); overflow: hidden; height: 190px; line-height: 190px; }
+.wordmark span { display: inline-block; }
+.wordmark.end { top: 860px; font-size: 136px; height: 172px; line-height: 172px; }
+.sheen { position: absolute; top: 0; left: -300px; width: 220px; height: 100%; background: linear-gradient(100deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 100%); mix-blend-mode: overlay; transform: skewX(-18deg); opacity: 0; }
+.tagline { position: absolute; left: 0; top: 1220px; width: 1080px; display: flex; justify-content: center; gap: 34px; font-family: "Source Serif 4", serif; font-style: italic; font-weight: 600; font-size: 86px; color: var(--fg); }
+.tagline .tw { display: inline-block; }
+.tagline.end { top: 1080px; font-size: 76px; gap: 28px; }
+
+/* ---------- STAGE / téléphone ---------- */
+#stage { z-index: 4; visibility: hidden; }
+#phone-cam { position: absolute; left: 220px; top: 520px; width: 640px; height: 1300px; }
+#phone-float { position: absolute; inset: 0; }
+#phone { position: absolute; inset: 0; }
+#phone-body { position: absolute; inset: 0; border-radius: 96px; background: linear-gradient(160deg, #2b2040 0%, #160f24 55%, #241a36 100%); box-shadow: 0 0 0 3px #4a3b66, inset 0 0 0 3px #3a2e52, 0 70px 140px rgba(4, 1, 10, 0.65), 0 0 120px rgba(124, 58, 237, 0.25); }
+#screen { position: absolute; left: 16px; top: 16px; width: 608px; height: 1268px; border-radius: 80px; overflow: hidden; background: #ffffff; }
+#island { position: absolute; left: 234px; top: 36px; width: 172px; height: 46px; border-radius: 23px; background: #08050d; z-index: 30; }
+#phone-glare { position: absolute; left: 16px; top: 16px; width: 608px; height: 1268px; border-radius: 80px; background: linear-gradient(125deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 32%, rgba(255, 255, 255, 0) 100%); pointer-events: none; z-index: 31; }
+.scr { position: absolute; left: 0; top: 0; width: 608px; height: 1268px; background: #ffffff; color: var(--ui-text); font-family: "Inter", sans-serif; overflow: hidden; visibility: hidden; }
+#scr-splash { background: #7c3aed; display: flex; align-items: center; justify-content: center; }
+#ui-overlay { width: 608px; height: 1268px; z-index: 20; }
+
+/* barre d'état */
+.status { position: absolute; left: 0; top: 0; width: 608px; height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 14px 54px 0 62px; font-size: 22px; font-weight: 700; color: var(--ui-text); z-index: 5; }
+.status .st-ico { display: flex; gap: 8px; align-items: center; }
+.status .bat { width: 36px; height: 18px; border-radius: 5px; border: 2px solid currentColor; position: relative; }
+.status .bat::after { content: ""; position: absolute; left: 2px; top: 2px; width: 24px; height: 10px; border-radius: 2px; background: currentColor; }
+.status .sig { display: flex; gap: 3px; align-items: flex-end; height: 18px; }
+.status .sig i { display: block; width: 5px; background: currentColor; border-radius: 1px; }
+.dark .status { color: #ece6f7; }
+
+/* icônes */
+.ico { display: inline-block; width: 30px; height: 30px; flex: none; }
+.ico svg { display: block; width: 100%; height: 100%; }
+
+/* barre de navigation */
+.nav { position: absolute; left: 0; bottom: 0; width: 608px; height: 136px; background: #ffffff; border-top: 2px solid var(--ui-line); display: flex; justify-content: space-around; align-items: flex-start; padding: 18px 10px 0; }
+.nav .it { width: 104px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 17px; font-weight: 600; color: #6b6380; }
+.nav .it.on { color: var(--violet); }
+.nav .fab-wrap { position: relative; top: -44px; }
+.nav .fab { width: 92px; height: 92px; border-radius: 50%; background: var(--violet); display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 26px rgba(124, 58, 237, 0.45), 0 0 0 7px #ffffff; }
+.nav .fab .feather-svg { width: 50px; height: 50px; }
+.nav .fab-label { font-size: 17px; font-weight: 700; letter-spacing: 0.08em; color: #6b6380; margin-top: 8px; text-align: center; }
+
+/* couvertures */
+.cover { position: absolute; border-radius: 14px; overflow: hidden; color: #ffffff; box-shadow: 0 14px 30px rgba(20, 8, 40, 0.28); }
+.cover .cv-motif { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.cover .cv-title { position: absolute; left: 9%; right: 9%; bottom: 17%; font-family: "Source Serif 4", serif; font-weight: 900; line-height: 1.02; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+.cover .cv-author { position: absolute; left: 9%; bottom: 7%; font-family: "Inter", sans-serif; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.92); }
+.cover .cv-band { position: absolute; left: 9%; top: 8%; width: 22%; height: 3px; background: rgba(255, 255, 255, 0.85); }
+
+/* titres de section (stage) */
+.hl { position: absolute; left: 90px; top: 150px; width: 920px; visibility: hidden; }
+.hl .lab { font-family: "JetBrains Mono", monospace; font-size: 26px; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase; color: var(--violet-2); height: 40px; overflow: hidden; }
+.hl .lab span { display: inline-block; }
+.hl .lab .num { color: #f0abfc; }
+.hl .ln { display: block; overflow: hidden; height: 108px; font-family: "Source Serif 4", serif; font-weight: 900; font-size: 94px; line-height: 108px; letter-spacing: -0.03em; color: var(--fg); white-space: nowrap; }
+.hl .ln > span { display: inline-block; }
+.hl .ln .it { font-style: italic; color: #d8b4fe; }
+.hl .sub { position: absolute; left: 0; top: 280px; height: 56px; overflow: hidden; width: 920px; font-family: "Source Serif 4", serif; font-style: italic; font-weight: 400; font-size: 44px; line-height: 56px; color: var(--fg-2); }
+.hl .sub > span { display: block; position: absolute; left: 0; top: 0; white-space: nowrap; }
+
+/* satellites */
+.sat { position: absolute; will-change: transform; }
+.tap { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 5px solid rgba(255, 255, 255, 0.95); background: rgba(167, 139, 250, 0.35); opacity: 0; }
+.tap-dot { position: absolute; left: 0; top: 0; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.45); opacity: 0; }
+
+/* ---------- S10 ---------- */
+#s10 { z-index: 5; visibility: hidden; }
+.bigword { position: absolute; left: 90px; font-family: "Source Serif 4", serif; font-weight: 900; font-size: 150px; line-height: 1; letter-spacing: -0.04em; color: var(--fg); white-space: nowrap; }
+.bigword.accent { color: #d8b4fe; font-style: italic; }
+.mini-phone { position: absolute; width: 640px; height: 1300px; }
+.mini-phone .mp-body { position: absolute; inset: 0; border-radius: 96px; background: linear-gradient(160deg, #2b2040 0%, #160f24 55%, #241a36 100%); box-shadow: 0 0 0 3px #4a3b66, 0 60px 120px rgba(4, 1, 10, 0.6); }
+.mini-phone .mp-screen { position: absolute; left: 16px; top: 16px; width: 608px; height: 1268px; border-radius: 80px; overflow: hidden; background: #ffffff; }
+.mini-phone .mp-screen .scr { visibility: visible; }
+.mini-phone .mp-island { position: absolute; left: 234px; top: 36px; width: 172px; height: 46px; border-radius: 23px; background: #08050d; }
+.store-pill { position: absolute; left: 300px; top: 1250px; width: 480px; height: 124px; border-radius: 62px; background: #f5f0ff; color: #140b22; display: flex; align-items: center; gap: 22px; padding: 0 44px; box-shadow: 0 20px 60px rgba(124, 58, 237, 0.45); }
+.store-ico { width: 64px; height: 64px; flex: none; }
+.store-txt { display: flex; flex-direction: column; line-height: 1.05; }
+.store-small { font-family: "Inter", sans-serif; font-size: 24px; font-weight: 600; color: #4c3f6b; }
+.store-big { font-family: "Montserrat", sans-serif; font-size: 48px; font-weight: 700; letter-spacing: 0.02em; }
