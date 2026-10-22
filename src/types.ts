@@ -181,6 +181,8 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   unreadCount?: number;
+  isPinned?: boolean;
+  pinnedAt?: string | null;
   // L'autre participant m'a bloqué : le composer est verrouillé (message
   // neutre) au lieu de laisser envoyer pour un rejet serveur garanti.
   blockedByPartner?: boolean;

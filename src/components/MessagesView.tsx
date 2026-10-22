@@ -1,4 +1,5 @@
 import LiveReadingProgress from './LiveReadingProgress';
+import MessagesInbox from './MessagesInbox';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -327,6 +328,7 @@ interface MessagesViewProps {
   groupReads?: Record<string, Record<string, string>>;
   onMarkGroupRead?: (groupId: string) => void;
   onChatFullscreen?: (open: boolean) => void;
+  onVisibleConversationChange?: (id: string | null) => void;
   onUpdateGroup?: (groupId: string, data: { name?: string; description?: string; avatar?: string }) => void;
   onAddGroupMembers?: (groupId: string, memberIds: string[]) => void;
   onRemoveGroupMember?: (groupId: string, userId: string) => void;
@@ -456,6 +458,7 @@ export default function MessagesView({
   groupReads,
   onMarkGroupRead,
   onChatFullscreen,
+  onVisibleConversationChange,
   onUpdateGroup,
   onAddGroupMembers,
   onRemoveGroupMember,
@@ -750,6 +753,7 @@ export default function MessagesView({
   useEffect(() => {
     const openGroup = (gid: string) => {
       setActiveTab('groups');
+      setActiveConversationId('');
       setActiveGroupId(gid);
       setMobileShowThread(true);
     };
@@ -771,7 +775,6 @@ export default function MessagesView({
   }, []);
 
   // Recherche dans la liste des discussions / groupes.
-  const [convSearch, setConvSearch] = useState('');
   // Mobile ? (uniquement sur changement de point de rupture → stable, ne se
   // declenche PAS a l'ouverture du clavier). Sert au plein ecran de la discussion.
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
@@ -1143,36 +1146,32 @@ export default function MessagesView({
     }
   }, [activeConversationId]);
 
-  // Real-time messages read endpoint trigger on conversation activation.
-  // Rejoue aussi au RETOUR au premier plan : un message arrivé pendant que
-  // l'onglet était caché n'est marqué lu qu'une fois la discussion revue
-  // (App ne pose plus d'accusé de lecture quand l'app est en arrière-plan).
+  const visibleConversation = !activeGroupId && (!isMobile || mobileShowThread) ? activeConversationId : '';
   useEffect(() => {
-    if (!activeConversationId) return;
-    const markRead = () => {
-      fetch('/api/messages/read', {
-        method: 'PUT',
-        // Auth via token mémoire (en-tête) et/ou cookie httpOnly.
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ conversationId: activeConversationId })
-      }).catch(e => console.error(e));
+    onVisibleConversationChange?.(visibleConversation || null);
+    return () => onVisibleConversationChange?.(null);
+  }, [visibleConversation, onVisibleConversationChange]);
 
-      setConversations(prev => prev.map(c => {
-        if (c.id === activeConversationId) {
-          return {
-            ...c,
-            unreadCount: 0,
-            messages: c.messages.map(m => m.senderId !== currentUser.id ? { ...m, isRead: true } : m)
-          };
-        }
-        return c;
-      }));
+  // Only acknowledge a visible DM, and only clear the badge after server success.
+  useEffect(() => {
+    if (!visibleConversation) return;
+    let cancelled = false;
+    const markRead = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const response = await fetch('/api/messages/read', { method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ conversationId: visibleConversation }) });
+        if (!response.ok || cancelled) return;
+        setConversations(previous => previous.map(conversation => conversation.id === visibleConversation ? {
+          ...conversation, unreadCount: 0, messages: conversation.messages.map(message => message.senderId !== currentUser.id ? { ...message, isRead: true } : message)
+        } : conversation));
+      } catch { /* Retain unread badges while disconnected. */ }
     };
-    markRead();
-    const onVisible = () => { if (document.visibilityState === 'visible') markRead(); };
+    void markRead();
+    const onVisible = () => { if (document.visibilityState === 'visible') void markRead(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [activeConversationId, currentUser.id, setConversations]);
+    window.addEventListener('online', onVisible);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('online', onVisible); };
+  }, [visibleConversation, currentUser.id, setConversations]);
 
   // Voice Note recording dynamic timer
   useEffect(() => {
@@ -1207,9 +1206,14 @@ export default function MessagesView({
 
   // Ouverture d'un groupe → on le marque comme LU (accuses de reception groupe).
   useEffect(() => {
-    if (activeGroupId) onMarkGroupRead?.(activeGroupId);
+    if (!activeGroupId || (isMobile && !mobileShowThread)) return;
+    const markRead = () => { if (document.visibilityState === 'visible') onMarkGroupRead?.(activeGroupId); };
+    markRead();
+    document.addEventListener('visibilitychange', markRead);
+    window.addEventListener('online', markRead);
+    return () => { document.removeEventListener('visibilitychange', markRead); window.removeEventListener('online', markRead); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroupId, activeGroupMessages.length]);
+  }, [activeGroupId, activeGroupMessages.length, isMobile, mobileShowThread]);
 
   // Un message de groupe est « lu par tous » si chaque AUTRE membre a un dernier
   // accuse de lecture posterieur a la date du message.
@@ -1525,44 +1529,9 @@ export default function MessagesView({
         {/* h-full + min-h-0 + overflow-hidden : la colonne reste a la hauteur de
             l'ecran et c'est la LISTE qui defile (sinon elle debordait, coupee
             par la grille, et l'ecran semblait bloque). */}
-        <div className={`md:col-span-4 ${infoPaneOpen ? 'xl:col-span-3' : ''} bg-white dark:bg-black flex flex-col h-full min-h-0 overflow-hidden border-r border-gray-100 dark:border-zinc-900 ${
+        <div className={`md:col-span-4 ${infoPaneOpen ? 'xl:col-span-3' : ''} bg-white dark:bg-[#0e1120] flex flex-col h-full min-h-0 overflow-hidden border-r border-gray-100 dark:border-zinc-900 ${
           mobileShowThread ? 'hidden md:flex' : 'flex'
         }`}>
-          {/* Header with simply 'Messagerie' + sleek Action buttons */}
-          <div className="px-5 py-2.5 bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center">
-            <h2 className="text-base font-serif font-black tracking-tight text-gray-900 dark:text-white uppercase">
-              Messagerie
-            </h2>
-            
-            {/* Quick interactive shortcuts centered on user intents */}
-            <div className="flex items-center space-x-1">
-              <button
-                type="button"
-                onClick={() => setIsNewChatOpen(true)}
-                className="p-1.5 hover:bg-purple-100/60 dark:hover:bg-purple-950/20 rounded-full text-purple-600 dark:text-purple-400 font-bold transition flex items-center justify-center"
-                title="Écrire un nouveau message"
-              >
-                <PlusCircle className="w-4.5 h-4.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsNewGroupOpen(true)}
-                className="p-1.5 hover:bg-purple-100/60 dark:hover:bg-purple-950/20 rounded-full text-purple-600 dark:text-purple-400 font-bold transition flex items-center justify-center"
-                title="Créer un groupe de lecture"
-              >
-                <Users className="w-4.5 h-4.5" />
-              </button>
-              <button
-                type="button"
-                onClick={openDiscover}
-                className="p-1.5 hover:bg-purple-100/60 dark:hover:bg-purple-950/20 rounded-full text-purple-600 dark:text-purple-400 font-bold transition flex items-center justify-center"
-                title="Découvrir des groupes publics"
-              >
-                <Compass className="w-4.5 h-4.5" />
-              </button>
-            </div>
-          </div>
-
           {/* MODALE : DÉCOUVRIR DES GROUPES PUBLICS. Rendue via un PORTAL sur
               document.body pour être TOUJOURS au-dessus de la barre de navigation
               du bas (et jamais piégée par un ancêtre transformé/scrollable). */}
@@ -1672,203 +1641,16 @@ export default function MessagesView({
             document.body,
           )}
 
-          {/* Symmetrical interactive Tabs with sleek indicator lines */}
-          <div className="flex bg-white dark:bg-black border-b border-gray-100 dark:border-zinc-900 text-xs font-semibold select-none">
-            <button 
-              type="button"
-              onClick={() => { setActiveTab('chats'); setActiveGroupId(null); }}
-              className={`flex-1 py-3 text-center transition-all border-b-2 font-serif uppercase tracking-wider text-[10px] ${
-                activeTab === 'chats' && !activeGroupId
-                  ? 'border-purple-600 text-[#7C3AED] dark:text-purple-400 font-black' 
-                  : 'border-transparent text-gray-500 hover:text-gray-950 dark:hover:text-zinc-200'
-              }`}
-            >
-              Discussions
-            </button>
-            <button 
-              type="button"
-              onClick={() => { setActiveTab('groups'); }}
-              className={`flex-1 py-3 text-center transition-all border-b-2 font-serif uppercase tracking-wider text-[10px] ${
-                activeTab === 'groups'
-                  ? 'border-purple-600 text-[#7C3AED] dark:text-purple-400 font-black' 
-                  : 'border-transparent text-gray-500 hover:text-gray-950 dark:hover:text-zinc-200'
-              }`}
-            >
-              Groupes de lecture ({groups.length})
-            </button>
-          </div>
-
-          {/* Search bar inside current listing */}
-          <div className="p-2 border-b border-gray-100 dark:border-zinc-900 bg-white dark:bg-black">
-            <div className="relative bg-gray-100/70 dark:bg-zinc-900 rounded-lg flex items-center px-3 py-1.5 border border-transparent">
-              <Search className="w-4 h-4 text-purple-400 dark:text-zinc-500 shrink-0 mr-2.5" />
-              <input
-                id="whatsapp-search-input"
-                type="text"
-                value={convSearch}
-                onChange={(e) => setConvSearch(e.target.value)}
-                placeholder={activeTab === 'chats' ? "Rechercher une discussion solo" : "Rechercher un groupe de lecture"}
-                className="w-full bg-transparent text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border-none outline-none focus:ring-0 p-0"
-              />
-              {convSearch && (
-                <button onClick={() => setConvSearch('')} className="ml-2 shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Effacer">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* CONTACT & GROUPS DECK */}
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-gray-100/60 dark:divide-zinc-900 bg-white dark:bg-black" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
-            
-            {/* Solo Discussions Deck View. L'aperçu et la recherche ignorent
-                les messages « supprimés pour moi » : sinon un message masqué
-                du fil réapparaissait en aperçu de conversation. */}
-            {activeTab === 'chats' && conversations.filter((conv) => {
-              // Discussion jamais commencée (aucun message) : masquée, sauf celle ouverte.
-              if (!conv.messages?.length && conv.id !== activeConversationId) return false;
-              const q = convSearch.trim().toLowerCase();
-              if (!q) return true;
-              const partner = resolvePartner(conv);
-              const last = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
-              return (partner.username || '').toLowerCase().includes(q)
-                || (!!last && !last.deletedForEveryone && !parseSticker(last.content) && (last.content || '').toLowerCase().includes(q));
-            }).map((conv) => {
-              const partner = resolvePartner(conv);
-              const isActive = conv.id === activeConversationId && !activeGroupId;
-              const lastMsg = [...conv.messages].reverse().find(m => !deletedForMe.has(m.id));
-              const unreadCount = conv.unreadCount || 0;
-
-              return (
-                <button
-                  key={conv.id}
-                  id={`chat-partner-select-${partner.id}`}
-                  onClick={() => {
-                    setActiveGroupId(null);
-                    setActiveConversationId(conv.id);
-                    setMobileShowThread(true);
-                  }}
-                  className={`w-full text-left p-3.5 flex items-center space-x-3 transition-all relative border-l-4 ${
-                    isActive 
-                      ? 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-600' 
-                      : 'border-transparent hover:bg-gray-50 dark:hover:bg-zinc-850/55'
-                  }`}
-                >
-                  <div className="relative shrink-0 select-none">
-                    <img
-                      src={partner.avatar}
-                      alt={partner.username}
-                      onClick={(e) => { e.stopPropagation(); if (!partner.id.startsWith('deleted_')) onViewProfile?.(partner.id); }}
-                      className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100 dark:ring-zinc-800 cursor-pointer hover:ring-purple-500/50"
-                      referrerPolicy="no-referrer"
-                    />
-                    {onlineUserIds.has(partner.id) && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full"></span>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center">
-                        {partner.username}
-                        {partner.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-mono">
-                        {lastMsg ? new Date(lastMsg.date || lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      {typingUserIds?.has(partner.id) ? (
-                        <p className="text-[11px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
-                          <Feather className="w-3.5 h-3.5 animate-feather-write" />
-                          <span>écrit…</span>
-                        </p>
-                      ) : (
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate pr-2 flex items-center space-x-1">
-                          {lastMsg?.senderId === currentUser.id && !lastMsg?.deletedForEveryone && (
-                            <span className="shrink-0"><MessageTicks isDelivered={lastMsg.isDelivered} isRead={lastMsg.isRead} muted /></span>
-                          )}
-                          <span className="truncate">{lastMsg ? (lastMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(lastMsg.content) ? '🪶 Sticker' : (lastMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : lastMsg.content)) : partner.bio || 'Aucun message de chat'}</span>
-                        </p>
-                      )}
-                      
-                      {unreadCount > 0 && (
-                        <span className="bg-purple-600 text-white font-black text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            {/* Reading Groups Deck View */}
-            {activeTab === 'groups' && groups.filter((group) => {
-              const q = convSearch.trim().toLowerCase();
-              return !q || (group.name || '').toLowerCase().includes(q);
-            }).map((group) => {
-              const isGroupActive = activeGroupId === group.id;
-              
-              return (
-                <button
-                  key={group.id}
-                  onClick={() => {
-                    setActiveGroupId(group.id);
-                    setMobileShowThread(true);
-                  }}
-                  className={`w-full text-left p-3.5 flex items-center space-x-3 transition-all relative border-l-4 ${
-                    isGroupActive 
-                      ? 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-600' 
-                      : 'border-transparent hover:bg-gray-50 dark:hover:bg-zinc-850/55'
-                  }`}
-                >
-                  <div className="relative shrink-0 select-none">
-                    <div className="w-11 h-11 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center border border-purple-505/20 text-purple-600 dark:text-purple-400 overflow-hidden">
-                      {group.avatar
-                        ? <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        : <BookOpen className="w-5 h-5 flex items-center justify-center" />}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <span className="text-xs font-serif font-black text-gray-900 dark:text-white truncate max-w-[140px] block">
-                        {group.name}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-mono">
-                        {group.lastMessageDate ? new Date(group.lastMessageDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      {groupTyping?.[group.id] ? (
-                        <p className="text-[10px] text-purple-600 dark:text-purple-400 truncate pr-2 flex items-center gap-1 font-bold italic">
-                          <Feather className="w-3 h-3 animate-feather-write" /> {groupTyping[group.id]} écrit…
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate pr-2">
-                          <span>{group.lastMessage ? (parseSticker(group.lastMessage) ? '🪶 Sticker' : (group.lastMessage.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : group.lastMessage.startsWith('[poll]') ? '📊 Sondage' : maskSpoilers(group.lastMessage))) : 'Aucune discussion récente'}</span>
-                        </p>
-                      )}
-
-                      {/* Badge « @ » : tu as été mentionné (façon WhatsApp). */}
-                      {!isGroupActive && groupMentionsMe(group.id, group.unreadCount || 0) && (
-                        <span className="bg-purple-600 text-white font-black text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0" title="Vous avez été mentionné">@</span>
-                      )}
-                      {/* Badge de non-lus (masqué sur le groupe déjà ouvert). */}
-                      {!isGroupActive && (group.unreadCount || 0) > 0 && (
-                        <span className="bg-purple-600 text-white font-black text-[9px] min-w-4.5 h-4.5 px-1 rounded-full flex items-center justify-center shrink-0">
-                          {(group.unreadCount || 0) > 99 ? '99+' : group.unreadCount}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <MessagesInbox user={currentUser} users={allUsers} conversations={conversations} groups={groups}
+            activeTab={activeTab} onChangeTab={tab => { setActiveTab(tab); if (tab === 'chats') setActiveGroupId(null); }}
+            activeConversationId={activeConversationId} activeGroupId={activeGroupId}
+            hiddenMessages={deletedForMe} onlineIds={onlineUserIds} typingIds={typingUserIds} groupTyping={groupTyping}
+            onViewProfile={onViewProfile} onNewChat={() => setIsNewChatOpen(true)} onNewGroup={() => setIsNewGroupOpen(true)} onDiscover={openDiscover}
+            mentionsMe={groupMentionsMe}
+            onSelectConversation={id => { setActiveGroupId(null); setActiveConversationId(id); setMobileShowThread(true); }}
+            onSelectGroup={id => { setActiveConversationId(''); setActiveTab('groups'); setActiveGroupId(id); setMobileShowThread(true); }}
+            onPinSaved={(id, isPinned, pinnedAt) => setConversations(previous => previous.map(conversation => conversation.id === id ? { ...conversation, isPinned, pinnedAt } : conversation))}
+          />
         </div>
 
         {/* RIGHT COMPARTMENT: ACTIVE CHAT THREAD WINDOW
@@ -2773,12 +2555,13 @@ export default function MessagesView({
       </div>
 
       {/* POPUP MODAL: WRITE A NEW DIRECT MESSAGE */}
-      {isNewChatOpen && (
+      {isNewChatOpen && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-[2147483000] flex items-center justify-center p-4 backdrop-blur-xs"
           onClick={() => setIsNewChatOpen(false)}
         >
           <div
+            role="dialog" aria-modal="true" aria-label="Nouvelle discussion" onKeyDown={event => { if (event.key === 'Escape') setIsNewChatOpen(false); }}
             className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2790,6 +2573,7 @@ export default function MessagesView({
               <button
                 type="button"
                 onClick={() => setIsNewChatOpen(false)}
+                aria-label="Fermer la nouvelle discussion"
                 className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full text-gray-400 dark:text-zinc-500 transition"
               >
                 <X className="w-5 h-5" />
@@ -2801,7 +2585,7 @@ export default function MessagesView({
                 <Search className="w-4 h-4 text-gray-400 shrink-0 mr-2" />
                 <input
                   type="text"
-                  placeholder="Rechercher un auteur par nom..."
+                  autoFocus aria-label="Rechercher un destinataire" placeholder="Rechercher un ami par pseudo…"
                   value={authorSearch}
                   onChange={(e) => setAuthorSearch(e.target.value)}
                   className="w-full bg-transparent text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 border-none outline-none focus:ring-0 p-0"
@@ -2858,27 +2642,29 @@ export default function MessagesView({
               })()}
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
 
       {/* POPUP MODAL: CREATE A READING GROUP */}
-      {isNewGroupOpen && (
+      {isNewGroupOpen && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-[2147483000] flex items-center justify-center p-4 backdrop-blur-xs"
           onClick={() => setIsNewGroupOpen(false)}
         >
           <div
+            role="dialog" aria-modal="true" aria-label="Créer un club de lecture" onKeyDown={event => { if (event.key === 'Escape') setIsNewGroupOpen(false); }}
             className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
               <h3 className="text-sm font-serif font-black text-gray-950 dark:text-gray-100 uppercase tracking-wider flex items-center space-x-1.5 select-none">
                 <Users className="w-5 h-5 text-purple-600" />
-                <span>Créer un groupe de lecture</span>
+                <span>Créer un club de lecture</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setIsNewGroupOpen(false)}
+                aria-label="Fermer la création du club"
                 className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full text-gray-400 dark:text-zinc-500 transition"
               >
                 <X className="w-5 h-5" />
@@ -2891,7 +2677,7 @@ export default function MessagesView({
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Passion Thriller, Club Victor Hugo, etc."
+                  autoFocus aria-label="Nom du club" placeholder="Ex: Passion Thriller, Club Victor Hugo, etc."
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   className="w-full bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-xs text-gray-805 dark:text-gray-100 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-650"
@@ -2985,7 +2771,7 @@ export default function MessagesView({
               </button>
             </form>
           </div>
-        </div>
+        </div>, document.body
       )}
 
       {/* MODALE : RÉGLAGES DU GROUPE (façon WhatsApp) */}

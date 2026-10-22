@@ -4445,6 +4445,7 @@ export async function createServerInstance() {
         },
         include: {
           participants: { select: SAFE_USER_SELECT },
+          pins: { where: { userId: req.user.id }, select: { createdAt: true } },
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -4471,7 +4472,8 @@ export async function createServerInstance() {
             where: {
               conversationId: conv.id,
               senderId: { not: req.user.id },
-              isRead: false
+              isRead: false,
+              deletedForEveryone: false
             }
           });
           // Demande de message : si JE suis l'initiateur d'une demande encore
@@ -4481,8 +4483,11 @@ export async function createServerInstance() {
             const sent = await prisma.message.count({ where: { conversationId: conv.id, senderId: req.user.id } });
             requestMessagesLeft = Math.max(0, MESSAGE_REQUEST_LIMIT - sent);
           }
+          const { pins, ...conversation } = conv;
           return {
-            ...conv,
+            ...conversation,
+            isPinned: pins.length > 0,
+            pinnedAt: pins[0]?.createdAt ?? null,
             unreadCount,
             blockedByPartner: conv.participants.some((p: any) => p.id !== req.user.id && blockerIds.has(p.id)),
             requestMessagesLeft,
@@ -4501,7 +4506,7 @@ export async function createServerInstance() {
         ? c.participants.map((p: any) => p.id).sort().join('|') : '';
       const withMessages = new Set(visible.filter((c: any) => c.messages?.length && keyOf(c)).map(keyOf));
       const seenEmpty = new Set<string>();
-      res.json(visible.filter((c: any) => {
+      res.set('Cache-Control', 'private, no-store').json(visible.filter((c: any) => {
         const k = keyOf(c);
         if (!k || c.messages?.length) return true;
         if (withMessages.has(k) || seenEmpty.has(k)) return false;
@@ -4511,6 +4516,25 @@ export async function createServerInstance() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la récupération des conversations' });
+    }
+  });
+
+  // Personal, idempotent pin. Even administrators must be a participant.
+  app.put('/api/conversations/:id/pin', requireAuth, async (req: any, res) => {
+    if (typeof req.body?.pinned !== 'boolean') return res.status(400).json({ error: 'État d’épinglage invalide.' });
+    try {
+      const conversation = await prisma.conversation.findFirst({ where: { id: req.params.id, participants: { some: { id: req.user.id } } }, select: { id: true } });
+      if (!conversation) return res.status(404).json({ error: 'Conversation introuvable.' });
+      const key = { userId: req.user.id, conversationId: conversation.id };
+      const pin = req.body.pinned
+        ? await prisma.conversationPin.upsert({ where: { userId_conversationId: key }, create: key, update: {} })
+        : (await prisma.conversationPin.deleteMany({ where: key }), null);
+      const result = { conversationId: conversation.id, isPinned: !!pin, pinnedAt: pin?.createdAt ?? null };
+      io.to(`user:${req.user.id}`).emit('conversation_pin_updated', result);
+      res.set('Cache-Control', 'private, no-store').json(result);
+    } catch (error) {
+      console.error('[INBOX] pin:', error);
+      res.status(500).json({ error: 'L’épinglage n’a pas pu être enregistré.' });
     }
   });
 

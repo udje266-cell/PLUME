@@ -239,10 +239,8 @@ export default function App() {
   // Messages plus anciens disponibles cote serveur, par conversation / groupe.
   const [convHasMore, setConvHasMore] = useState<Record<string, boolean>>({});
   const [groupHasMore, setGroupHasMore] = useState<Record<string, boolean>>({});
-  const activeConversationIdRef = React.useRef(activeConversationId);
-  React.useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
+  const visibleConversationIdRef = React.useRef('');
+  const handleVisibleConversationChange = React.useCallback((id: string | null) => { visibleConversationIdRef.current = id || ''; }, []);
   const [serverFriendIds, setServerFriendIds] = useState<string[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -453,11 +451,15 @@ export default function App() {
   };
 
   // Marque un groupe comme LU (accuses de reception groupe).
-  const handleMarkGroupRead = (groupId: string) => {
+  const handleMarkGroupRead = async (groupId: string) => {
     if (!currentUser) return;
-    setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [currentUser.id]: new Date().toISOString() } }));
-    setGroups((prev) => prev.map((g) => (g.id === groupId && g.unreadCount ? { ...g, unreadCount: 0 } : g)));
-    fetch(`/api/groups/${groupId}/read`, { method: 'PUT', headers: authHeaders() }).catch(() => {});
+    try {
+      const response = await fetch(`/api/groups/${groupId}/read`, { method: 'PUT', headers: authHeaders() });
+      if (!response.ok) return;
+      const { at } = await response.json();
+      setGroupReads(previous => ({ ...previous, [groupId]: { ...(previous[groupId] || {}), [currentUser.id]: at } }));
+      setGroups(previous => previous.map(group => group.id === groupId ? { ...group, unreadCount: 0 } : group));
+    } catch { /* Retain unread badges while disconnected. */ }
   };
 
   // ----- Gestion des groupes (façon WhatsApp) -----
@@ -832,7 +834,7 @@ export default function App() {
       joinRoom();
     }
 
-    socket.on('connect', () => { joinRoom(); window.dispatchEvent(new Event('plume:reading-progress')); });
+    socket.on('connect', () => { joinRoom(); fetchConversationsList(); window.dispatchEvent(new Event('plume:reading-progress')); });
 
     socket.on('new_notification', (notification: any) => {
       const mapped = mapServerNotification(notification);
@@ -900,13 +902,28 @@ export default function App() {
       ));
     });
 
+    socket.on('conversation_pin_updated', ({ conversationId, isPinned, pinnedAt }: { conversationId: string; isPinned: boolean; pinnedAt: string | null }) => {
+      setConversations(previous => previous.map(conversation => conversation.id === conversationId ? { ...conversation, isPinned, pinnedAt } : conversation));
+    });
+
     socket.on('new_message', (message: Message) => {
-      if (message.senderId === (currentUser?.id || '')) return;
+      // Keep the sender's other devices up to date too. The POST response merges
+      // by ID, so it cannot add a second persisted copy of this message.
+      if (message.senderId === (currentUser?.id || '')) {
+        setConversations(previous => {
+          if (!previous.some(conversation => conversation.id === message.conversationId)) { fetchConversationsList(); return previous; }
+          return previous.map(conversation => conversation.id === message.conversationId ? {
+            ...conversation, updatedAt: message.createdAt || message.date,
+            messages: mergeMessageLists(conversation.messages, [{ ...message, date: message.createdAt || message.date }])
+          } : conversation);
+        });
+        return;
+      }
 
       // Accusé de distribution (2 plumes blanches côté expéditeur).
       socket.emit('message_ack', { messageId: message.id, senderId: message.senderId });
 
-      const isCurrentActive = message.conversationId === activeConversationIdRef.current;
+      const isCurrentActive = message.conversationId === visibleConversationIdRef.current;
 
       // Son + notification système (si onglet en arrière-plan) pour un nouveau
       // message reçu, sauf si on est déjà dans la conversation au premier plan.
@@ -980,6 +997,7 @@ export default function App() {
     // Message modifié ou supprimé pour tout le monde (temps réel).
     socket.on('message_updated', (updated: Message) => {
       if (!updated?.id) return;
+      if (updated.deletedForEveryone) fetchConversationsList();
       setConversations((prev) => prev.map((c) => ({
         ...c,
         messages: c.messages.map((m) => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m),
@@ -1002,6 +1020,7 @@ export default function App() {
     // Accusé de lecture de groupe (un membre a lu jusqu'à un certain horaire).
     socket.on('group_read', ({ groupId, userId, at }: { groupId: string; userId: string; at: string }) => {
       setGroupReads((prev) => ({ ...prev, [groupId]: { ...(prev[groupId] || {}), [userId]: at } }));
+      if (userId === currentUser?.id) setGroups(previous => previous.map(group => group.id === groupId ? { ...group, unreadCount: 0 } : group));
     });
 
     // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
@@ -1160,6 +1179,7 @@ export default function App() {
       socket.off('new_notification');
       socket.off('conversation_created');
       socket.off('conversation_request_updated');
+      socket.off('conversation_pin_updated');
       socket.off('new_message');
       socket.off('messages_read');
       socket.off('user_followed');
@@ -3294,13 +3314,13 @@ export default function App() {
   // illimites ; refuser -> l'initiateur ne peut plus ecrire.
   const handleRespondToMessageRequest = async (conversationId: string, accept: boolean) => {
     const newStatus = accept ? 'ACCEPTED' : 'REJECTED';
-    // Optimiste : on met a jour immediatement l'etat local.
-    setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, requestStatus: newStatus as any } : c));
     try {
       const res = await fetch(`/api/conversations/${conversationId}/request/${accept ? 'accept' : 'reject'}`, {
         method: 'POST', headers: authHeaders(),
       });
-      if (!res.ok) {
+      if (res.ok) {
+        setConversations(previous => previous.map(conversation => conversation.id === conversationId ? { ...conversation, requestStatus: newStatus as any } : conversation));
+      } else {
         let msg = 'La demande n’a pas pu être traitée.';
         try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
         alert(msg);
@@ -4131,6 +4151,7 @@ export default function App() {
                       groupReads={groupReads}
                       onMarkGroupRead={handleMarkGroupRead}
                       onChatFullscreen={setChatFullscreen}
+                      onVisibleConversationChange={handleVisibleConversationChange}
                       onUpdateGroup={handleUpdateGroup}
                       onAddGroupMembers={handleAddGroupMembers}
                       onRemoveGroupMember={handleRemoveGroupMember}

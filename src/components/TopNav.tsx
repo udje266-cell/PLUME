@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, Compass, PenTool, MessageSquare, Trophy, ShieldCheck, Search, Bell, Sun, Moon, LibraryBig } from 'lucide-react';
 import { User, AppNotification } from '../types';
-import Logo from './Logo';
+import HeaderLogo from './HeaderLogo';
 import { VerifiedBadge } from './VerifiedBadge';
 
 type Tab = 'home' | 'explore' | 'library' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
@@ -85,8 +85,8 @@ export default function TopNav({
     <header className="hidden lg:flex sticky top-0 z-40 h-16 items-center border-b border-gray-150 dark:border-purple-900/15 bg-white/95 dark:bg-black/95 backdrop-blur-md">
       <div className="w-full max-w-none mx-auto px-6 lg:px-10 xl:px-16 flex items-center gap-6">
         {/* Logo */}
-        <button onClick={() => go('home')} className="shrink-0 flex items-center cursor-pointer" aria-label="Accueil">
-          <Logo size="sm" />
+        <button onClick={() => go('home')} className="shrink-0 h-11 flex items-center cursor-pointer" aria-label="Accueil">
+          <HeaderLogo />
         </button>
 
         {/* Liens de navigation */}

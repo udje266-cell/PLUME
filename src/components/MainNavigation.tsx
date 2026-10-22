@@ -27,8 +27,7 @@ import {
   Feather, LibraryBig, BookOpen
 } from 'lucide-react';
 import { User, UserRole, AppNotification } from '../types';
-import logoPlume from '../../assets/logo-plume.png';
-import logoPlumeDark from '../../assets/logo-plume-dark.png';
+import HeaderLogo from './HeaderLogo';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MainNavigationProps {
@@ -147,8 +146,8 @@ export default function MainNavigation({
           
           <div className="flex items-center gap-1">
             {activeTab !== 'home' && activeTab !== 'library' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Filtres de la bibliothèque" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
-            <button aria-label="Accueil PLUME" onClick={() => onChangeTab('home')} className="relative h-[44px] w-[128px] overflow-hidden shrink-0">
-              <img src={darkMode ? logoPlumeDark : logoPlume} alt="PLUME" className="absolute left-[-71px] top-[-65px]" style={{ width: 280, maxWidth: 'none' }} />
+            <button aria-label="Accueil PLUME" onClick={() => onChangeTab('home')} className="h-11 w-[104px] flex items-center shrink-0">
+              <HeaderLogo />
             </button>
           </div>
 

@@ -93,6 +93,7 @@ model User {
   comments          Comment[]
   commentReplies    CommentReply[]
   conversations     Conversation[] @relation("UserConversations")
+  conversationPins  ConversationPin[]
   messages          Message[]
   readingGroups     ReadingGroup[] @relation("GroupMembers")
   createdGroups     ReadingGroup[] @relation("GroupCreator")
@@ -255,6 +256,7 @@ model Conversation {
   id           String    @id @default(cuid())
   participants User[]    @relation("UserConversations")
   messages     Message[]
+  pins         ConversationPin[]
   // Demande de message facon TikTok : entre deux personnes NON amies, l'initiateur
   // ne peut envoyer que quelques messages tant que le destinataire n'a pas accepte.
   // NONE = pas de restriction (amis, ou deja accepte) ; PENDING = en attente ;
@@ -263,6 +265,18 @@ model Conversation {
   requesterId   String?  // l'initiateur soumis a la limite tant que PENDING
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// An inbox pin belongs to one participant; it never changes the other inbox.
+model ConversationPin {
+  userId         String
+  conversationId String
+  createdAt      DateTime @default(now())
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, conversationId])
+  @@index([conversationId])
 }
 
 model Message {
