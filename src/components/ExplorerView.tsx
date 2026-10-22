@@ -245,10 +245,10 @@ export default function ExplorerView({
       <div className="pb-4 border-b border-gray-100 dark:border-purple-900/15">
         <h2 className="font-sans font-black text-lg tracking-tight text-gray-950 dark:text-white flex items-center space-x-2">
           <BookOpen className="w-5 h-5 text-purple-600" />
-          <span>Bibliothèque</span>
+          <span>Explorer</span>
         </h2>
         <p className="text-[11px] text-gray-400 mt-1">
-          Barre de recherche intelligente, genres précis et sauvegarde de filtres.
+          Toutes les œuvres de PLUME : cherche, filtre par genre et garde tes filtres préférés.
         </p>
       </div>
 
@@ -292,7 +292,7 @@ export default function ExplorerView({
           <input
             id="explorer-search-field"
             type="text"
-            placeholder="Rechercher un titre, un profil, un mot-clé, un tag..."
+            placeholder="Titre, auteur, mot-clé, tag…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 rounded-xl pl-9 pr-8 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-600 text-gray-900 dark:text-white"

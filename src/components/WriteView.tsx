@@ -580,7 +580,7 @@ export default function WriteView({
         })()
       ) : isCreatingStory ? (
         /* Create or Edit Book / Story Panel overlay screen */
-        <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/20 rounded-2xl p-6 md:p-8 max-w-2xl mx-auto shadow-xl text-left animation-fade-in">
+        <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/20 rounded-2xl p-6 md:p-8 max-w-2xl mx-auto shadow-xl text-left animate-fade-in">
           <div className="border-b border-gray-100 dark:border-gray-800 pb-4 mb-6">
             <h2 className="text-xl font-bold text-gray-850 dark:text-[#F5F5F5] font-sans flex items-center space-x-2">
               <BookOpen className="w-5 h-5 text-purple-600" />
@@ -1116,8 +1116,8 @@ export default function WriteView({
                           id={`btn-publish-chapter-${chapter.id}`}
                           onClick={() => {
                             if (window.confirm(story.status === 'Publié'
-                              ? 'Mettre ce chapitre en ligne ? Il deviendra visible des lecteurs et vos abonnes seront notifies.'
-                              : 'Publier ce chapitre ? (L\'oeuvre elle-meme n\'est pas encore publiee : publiez-la pour qu\'elle apparaisse.)')) {
+                              ? 'Mettre ce chapitre en ligne ? Il deviendra visible des lecteurs et vos abonnés seront notifiés.'
+                              : 'Publier ce chapitre ? (L\'œuvre elle-même n\'est pas encore publiée : publiez-la pour qu\'elle apparaisse.)')) {
                               onUpdateChapter(story.id, chapter.id, { isPublished: true });
                             }
                           }}
@@ -1280,7 +1280,7 @@ export default function WriteView({
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     
                     {/* Global Reads */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lectures</span>
                         <Eye className="w-4 h-4 text-[#7C3AED]" />
@@ -1292,7 +1292,7 @@ export default function WriteView({
                     </div>
  
                     {/* Lecteurs uniques */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Vues</span>
                         <Compass className="w-4 h-4 text-[#7C3AED]" />
@@ -1304,10 +1304,9 @@ export default function WriteView({
                     </div>
 
                     {/* Taux de complétion */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lectures / vues</span>
-                        <span className="text-[9px] bg-purple-500/10 text-[#7C3AED] rounded px-1.5 py-0.5 font-bold font-mono">{readRatio}%</span>
                       </div>
                       <div>
                         <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{readRatio}%</p>
@@ -1316,7 +1315,7 @@ export default function WriteView({
                     </div>
 
                     {/* Favoris */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Favoris</span>
                         <BookMarked className="w-4 h-4 text-purple-600" />
@@ -1330,7 +1329,7 @@ export default function WriteView({
                     </div>
 
                     {/* Commentaires */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Commentaires</span>
                         <FileText className="w-4 h-4 text-purple-600" />
@@ -1342,7 +1341,7 @@ export default function WriteView({
                     </div>
 
                     {/* Croissance Abonnés */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Abonnés</span>
                         <Users className="w-4 h-4 text-purple-600" />
@@ -1545,8 +1544,8 @@ export default function WriteView({
                                   {story.status}
                                 </span>
                               </div>
-                              <div className="absolute top-2 right-2">
-                                <span className="text-[8.5px] px-2 py-0.5 rounded-md font-black bg-black/60 text-white shadow-xs backdrop-blur-xs">
+                              <div className="absolute bottom-2 right-2">
+                                <span className="text-[8.5px] px-2 py-0.5 rounded-md font-black bg-black/60 text-white shadow-xs backdrop-blur-xs whitespace-nowrap">
                                   {!story.ageRating || story.ageRating === 'all' ? 'Tout public' : `${story.ageRating}+`}
                                 </span>
                               </div>
@@ -1659,20 +1658,20 @@ export default function WriteView({
                                   <button
                                     id={`edit-story-meta-${story.id}`}
                                     onClick={() => handleOpenEditStory(story)}
-                                    className="h-8.5 rounded-xl border border-gray-150 dark:border-zinc-800 text-[11px] font-bold text-gray-805 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5"
+                                    className="h-8.5 min-w-0 px-1 whitespace-nowrap rounded-xl border border-gray-150 dark:border-zinc-800 text-[11px] font-bold text-gray-805 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5"
                                     title="Modifier les options du livre"
                                   >
-                                    <Edit className="w-3.5 h-3.5 text-gray-500" />
+                                    <Edit className="w-3.5 h-3.5 text-gray-500 shrink-0 max-[380px]:hidden" />
                                     <span>Modifier</span>
                                   </button>
 
                                   <button
                                     id={`manage-chapters-studio-${story.id}`}
                                     onClick={() => setManagingStoryChapters(story)}
-                                    className="h-8.5 bg-purple-500/10 hover:bg-purple-500/15 text-[#7C3AED] dark:text-purple-300 text-[11px] font-bold border border-purple-500/10 rounded-xl transition duration-150 flex items-center justify-center gap-1.5"
+                                    className="h-8.5 min-w-0 px-1 whitespace-nowrap bg-purple-500/10 hover:bg-purple-500/15 text-[#7C3AED] dark:text-purple-300 text-[11px] font-bold border border-purple-500/10 rounded-xl transition duration-150 flex items-center justify-center gap-1.5"
                                     title="Gérer les chapitres du livre"
                                   >
-                                    <FileText className="w-3.5 h-3.5" />
+                                    <FileText className="w-3.5 h-3.5 shrink-0 max-[380px]:hidden" />
                                     <span>Chapitres</span>
                                   </button>
                                 </div>
@@ -1707,7 +1706,7 @@ export default function WriteView({
 
       {/* Dynamic premium confirmation delete modal */}
       {storyToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animation-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in font-sans">
           <div className="bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
             <div className="text-center space-y-4">
               <div className="w-12 h-12 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center mx-auto mb-2 border border-purple-500/15">

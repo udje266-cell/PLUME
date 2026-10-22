@@ -454,7 +454,7 @@ export default function AuthView({ onLoginSuccess, onRegisterSuccess }: AuthView
         <div className="flex justify-center items-center mb-2">
           <Logo size="2xl" showText={true} />
         </div>
-        <p className="text-xs text-paragraph-muted text-gray-500 dark:text-zinc-400 font-sans tracking-wide">
+        <p className="text-xs text-gray-500 dark:text-zinc-400 font-sans tracking-wide">
           Lisez, écrivez, partagez — votre imaginaire prend vie.
         </p>
       </div>

@@ -120,13 +120,34 @@ img, video, canvas, svg {
   background: #000000;
 }
 
+/* Pas de `forwards` : l'état final vaut l'état normal, et une animation qui
+   reste « remplie » crée un contexte d'empilement permanent (Chrome/WebView) qui
+   faisait passer les fenêtres modales des pages SOUS la barre de navigation. */
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
+  animation: fadeIn 0.25s ease-out;
 }
+
+/* Animations utilisées par l'app mais jamais définies (elles ne jouaient pas). */
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  15% { opacity: 1; transform: translateY(-20px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-180px) scale(1); }
+}
+.animate-scale-up { animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-slide-down { animation: slideDown 0.22s ease-out; }
+.animate-float-up { animation: floatUp 1.6s ease-out forwards; }
 
 /* Accusés « plume » : petites animations amusantes pour les statuts de message. */
 @keyframes featherIn {

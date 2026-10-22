@@ -45,7 +45,12 @@ export default function LiveReadingProgress({ userId, storyId, groupId, embedded
       window.removeEventListener('online', schedule);
     };
   }, [userId, storyId, groupId]);
-  return <section aria-label={embedded ? "Progression partagée" : "Lecture en direct"} className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-xs space-y-2 max-h-44 overflow-y-auto">
+  // Dans un club, personne ne lit : une seule ligne discrète au lieu d'un
+  // bandeau explicatif qui mangeait le haut de la discussion.
+  // Dans le lecteur : rien à montrer tant que personne d'autre ne lit ce livre.
+  if (storyId && !userId && !groupId && !rows.length) return null;
+  if (groupId && !failed && !rows.length) return <p role="status" className="shrink-0 px-4 py-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 bg-purple-50/60 dark:bg-purple-950/10 border-b border-purple-500/10">📖 Lecture en direct · personne ne lit en ce moment</p>;
+  return <section aria-label={embedded ? "Progression partagée" : "Lecture en direct"} className={`shrink-0 p-3 ${groupId ? 'border-b border-purple-500/10' : 'rounded-xl'} bg-purple-50 dark:bg-purple-950/20 text-xs space-y-2 max-h-44 overflow-y-auto`}>
     {!embedded && <p className="font-bold">Lecture en direct</p>}
     {failed ? <p>Connexion interrompue. Nouvelle tentative automatique.</p> : !rows.length ?
       <p className="text-zinc-500">Aucune lecture partagée ces 5 dernières minutes. Le partage dépend de la visibilité des lectures dans les paramètres du profil.</p> :

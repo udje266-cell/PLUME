@@ -1058,7 +1058,10 @@ export default function ReadingView({
     {
       const saved = getBookProgress(currentUser.id, story.id);
       const hasPara = saved && typeof saved.paragraphIndex === 'number' && saved.paragraphIndex > 0;
-      if (saved && (hasPara || saved.scrollRatio > 0.01)) {
+      // Un AUTRE chapitre choisi dans le sommaire : on l'ouvre en haut, la
+      // position sauvegardée concerne un autre chapitre.
+      const otherChapter = saved && typeof initialChapterIndex === 'number' && initialChapterIndex !== saved.chapterIndex;
+      if (saved && !otherChapter && (hasPara || saved.scrollRatio > 0.01)) {
         restoring = true;
         const apply = () => {
           // Reprise AU PARAGRAPHE si connu ; repli sur l'ancien ratio de pixels.
@@ -2818,7 +2821,7 @@ export default function ReadingView({
                 </div>
               ) : (
                 drawerComments.map((com) => (
-                  <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2shadow-xs">
+                  <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2 shadow-xs">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <img

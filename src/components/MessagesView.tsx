@@ -107,7 +107,7 @@ function tokenizeInline(text: string, keyPrefix = '', opts: InlineOpts = {}): Re
       out.push(
         <span
           key={`${keyPrefix}sto-${key++}`}
-          className={`inline-flex items-center gap-1 align-middle rounded-md px-1.5 py-0.5 text-[11px] font-bold bg-purple-600/15 text-purple-700 dark:text-purple-300 ${opts.onStory ? 'cursor-pointer hover:bg-purple-600/25' : ''}`}
+          className={`inline-flex items-center gap-1 align-middle rounded-md px-1.5 py-0.5 text-[11px] font-bold bg-purple-400/25 text-inherit ${opts.onStory ? 'cursor-pointer hover:bg-purple-600/25' : ''}`}
           onClick={opts.onStory ? (e) => { e.stopPropagation(); opts.onStory!(title); } : undefined}
           role={opts.onStory ? 'button' : undefined}
           title={title}
@@ -848,7 +848,7 @@ export default function MessagesView({
           lastStatus = res.status;
           // 401 = jeton invalide (inutile de reessayer) ; on sort avec erreur.
           if (res.status === 401) {
-            setDiscoverError('Session expiree. Reconnecte-toi puis reessaie.');
+            setDiscoverError('Session expirée. Reconnecte-toi puis réessaie.');
             setPublicGroups([]);
             return;
           }
@@ -866,7 +866,7 @@ export default function MessagesView({
       // Toutes les tentatives ont echoue.
       setDiscoverError(
         lastStatus >= 500 || lastStatus === 0
-          ? 'Le serveur se reveille (mise en veille apres inactivite). Patiente ~30 s puis appuie sur Reessayer.'
+          ? 'Le serveur se réveille (mise en veille après inactivité). Patiente ~30 s puis appuie sur Réessayer.'
           : `Impossible de charger les groupes publics (code ${lastStatus}). Reessaie.`
       );
       setPublicGroups([]);

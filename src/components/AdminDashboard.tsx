@@ -401,7 +401,7 @@ export default function AdminDashboard({
                         <span>{user.isVerified ? 'Retirer certification' : 'Certifier (Auteur)'}</span>
                       </button>
                     ) : (
-                      <span className="text-[10px] text-gray-400 italic px-2">Certification réservée aux auteurs</span>
+                      <span className="min-w-0 text-[10px] text-gray-400 italic px-2">Certification réservée aux auteurs</span>
                     )}
 
                     {/* Suspension / réactivation (jamais soi-même ni un autre admin) */}
@@ -410,7 +410,7 @@ export default function AdminDashboard({
                         <button
                           id={`unban-user-btn-${user.id}`}
                           onClick={() => onUnbanUser(user.id)}
-                          className="p-1.5 px-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/20 hover:bg-emerald-500/20 rounded-lg transition cursor-pointer flex items-center space-x-1.5"
+                          className="shrink-0 whitespace-nowrap p-1.5 px-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/20 hover:bg-emerald-500/20 rounded-lg transition cursor-pointer flex items-center space-x-1.5"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           <span>Réactiver</span>
@@ -423,7 +423,7 @@ export default function AdminDashboard({
                               onBanUser(user.id);
                             }
                           }}
-                          className="p-1.5 px-3 text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-950/20 hover:bg-purple-500/20 rounded-lg transition cursor-pointer"
+                          className="shrink-0 whitespace-nowrap p-1.5 px-3 text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-950/20 hover:bg-purple-500/20 rounded-lg transition cursor-pointer"
                         >
                           Bannir
                         </button>

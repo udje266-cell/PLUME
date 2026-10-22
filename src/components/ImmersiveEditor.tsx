@@ -744,7 +744,7 @@ export default function ImmersiveEditor({
         : segmentIntoParagraphs(text);
       setAiParas(paras);
       setAiNote(paras.length <= 1
-        ? "Le texte forme deja un seul bloc coherent : aucun decoupage supplementaire n'a ete trouve."
+        ? "Le texte forme déjà un seul bloc cohérent : aucun découpage supplémentaire n'a été trouvé."
         : `${paras.length} paragraphes proposes${ai ? ' par l’IA' : ''} a partir de ${words} mots.`);
     } catch (e: any) {
       const paras = segmentIntoParagraphs(text);
@@ -795,7 +795,7 @@ export default function ImmersiveEditor({
       } else {
         const { text: cleaned, changes } = cleanFrenchTypography(text);
         setAiTypo(cleaned);
-        setAiNote(changes === 0 ? "Rien a corriger : ta typographie est deja impeccable." : `${changes} correction(s) de ponctuation / espaces / majuscules.`);
+        setAiNote(changes === 0 ? "Rien à corriger : ta typographie est déjà impeccable." : `${changes} correction(s) de ponctuation / espaces / majuscules.`);
       }
     } catch (e: any) {
       const { text: cleaned } = cleanFrenchTypography(text);

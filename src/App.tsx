@@ -91,6 +91,9 @@ function mapServerNotificationType(type: string): AppNotification['type'] {
     // Demande d'adhesion a un groupe : porte un groupId → le clic ouvre le
     // groupe (l'admin y approuve la demande via Reglages → Demandes en attente).
     GROUP_REQUEST: 'message',
+    // Signalements reçus par les admins : œuvre (ouvre l'œuvre) / problème technique (ouvre le profil de l'auteur du rapport).
+    STORY_REPORT: 'comment',
+    SUPPORT_REPORT: 'follow',
   };
   return map[type] || 'follow';
 }
@@ -1671,6 +1674,11 @@ export default function App() {
         applyList(st.currentlyReading || [], 'currently', readUserScopedValue<string[]>(getCurrentlyReadingStorageKey(me.id), 'plume_currently_reading', []), setCurrentlyReading);
         applyList(st.completedStories || [], 'completed', readUserScopedValue<string[]>(getCompletedStorageKey(me.id), 'plume_completed', []), setCompletedStories);
         applyList(st.readLater || [], 'later', readUserScopedValue<string[]>(getReadLaterStorageKey(me.id), 'plume_read_later', []), setReadLater);
+        // Récits commencés hors listes explicites : « En cours », comme dans la
+        // Bibliothèque (sinon le profil affichait une étagère vide).
+        const listed = new Set<string>([...(st.completedStories || []), ...(st.readLater || [])]);
+        const startedIds = (st.started || []).filter((id: string) => !listed.has(id));
+        if (startedIds.length) setCurrentlyReading(prev => Array.from(new Set([...prev, ...startedIds])));
 
         // Chapitres réellement lus : UNION serveur + local (un fait acquis ne se
         // « dé-lit » pas), et on pousse au serveur ceux qu'il ne connaît pas.
