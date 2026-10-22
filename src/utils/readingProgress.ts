@@ -47,6 +47,9 @@ export function saveBookProgress(
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(keyFor(userId), JSON.stringify(all));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('plume:book-progress', { detail: { userId, storyId } }));
+    }
   } catch {
     /* ignore */
   }

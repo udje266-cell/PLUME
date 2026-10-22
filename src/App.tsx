@@ -3750,8 +3750,8 @@ export default function App() {
     }`}>
       
       {/* Background ambient lighting blur spots (desktop only) */}
-      <div className="hidden md:block absolute -left-16 -top-16 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
-      <div className="hidden md:block absolute -right-16 -bottom-16 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
+      <div className="hidden md:block absolute left-0 top-0 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
+      <div className="hidden md:block absolute right-0 bottom-0 w-96 h-96 rounded-full bg-purple-600/5 blur-3xl pointer-events-none" />
 
       {/* Bandeau HORS-LIGNE : visible en haut dès que le réseau tombe. */}
       {isOffline && (
@@ -4023,7 +4023,7 @@ export default function App() {
                       onOpenDiscussion={handleOpenDiscussion}
                       onViewProfile={handleViewUserProfile}
                       onOpenLibrary={(query) => {
-                        if (query) setActiveFilter({ type: 'search', value: query });
+                        setActiveFilter(query ? { type: 'search', value: query } : null);
                         setActiveTab('explore');
                       }}
                       onStartWriting={() => setActiveTab(currentUser?.role !== 'Lecteur' ? 'write' : 'profile')}

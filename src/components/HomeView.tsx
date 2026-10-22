@@ -4,41 +4,17 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  BookOpen,
-  Download,
-  Trash2, 
-  Heart, 
-  Star, 
-  Share2, 
-  TrendingUp, 
-  Sparkles, 
-  Clock, 
-  UserPlus,
-  Users,
-  UserCheck, 
-  FileText, 
-  Eye, 
-  MessageCircle, 
-  Compass,
-  Copy,
-  Search,
-  PenTool,
-  Send,
-  X as CloseIcon,
-  Check,
-  Play
-} from 'lucide-react';
-import { User, Story, Chapter } from '../types';
+import { BookOpen, Download, Trash2, Heart, Star, Clock, Users, Eye, Compass, Copy, Search, X as CloseIcon, Check, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { User, Story } from '../types';
 import { getDownloadedBooks, removeDownload } from '../utils/offline';
 import { optimizedImage } from '../utils/imageUrl';
-import { Skeleton } from './Skeleton';
 import { VerifiedBadge } from './VerifiedBadge';
 import { recommendStories, hotScore, weightsForDiscovery, explorationRatioForDiscovery, ScoredStory } from '../utils/recommendation';
 import { authHeaders } from '../utils/auth';
 import { storyShareUrl, shareStoryNative, openShareIntent, ShareNetwork } from '../utils/share';
 import { WhatsAppIcon, FacebookIcon, XTwitterIcon, TelegramIcon } from './BrandIcons';
-import { wordsOf, storyMinutes, formatMinutes } from '../utils/readingTime';
+import { localGreeting } from '../utils/greeting';
+import { getBookProgress } from '../utils/readingProgress';
 import { generateCoverDataUri } from '../utils/coverImage';
 
 /** Formate un compteur de façon compacte : 1234 → « 1,2 k », 1500000 → « 1,5 M ». */
@@ -74,17 +50,13 @@ export default function HomeView({
   lastReadProgress,
   onSelectStory,
   onToggleFavorite,
-  onFollowAuthor,
-  onOpenDiscussion,
   onViewProfile,
   onOpenLibrary,
-  onStartWriting
 }: HomeViewProps) {
 
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [copied, setCopied] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [discoverTab, setDiscoverTab] = useState<'tendances' | 'nouveautes' | 'recommandes'>('tendances');
 
   // Livres téléchargés (disponibles hors ligne). Se met à jour quand on
   // télécharge / retire un livre ailleurs dans l'app.
@@ -95,40 +67,12 @@ export default function HomeView({
     return () => window.removeEventListener('plume-offline-changed', refresh);
   }, []);
 
-  // Suggestions de personnes aux goûts proches (PLUME = aussi pour se faire des amis).
-  const [suggestedPeople, setSuggestedPeople] = useState<(User & { sharedGenres?: string[] })[]>([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingSuggestions(true);
-    fetch('/api/suggestions/people', { headers: authHeaders() })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => { if (!cancelled && Array.isArray(data)) setSuggestedPeople(data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoadingSuggestions(false); });
-    return () => { cancelled = true; };
-    // Recalcule quand l'utilisateur change ou suit/défollow (following évolue).
-  }, [currentUser.id, (currentUser.following || []).length]);
-
-  // Curseur « découverte ↔ pertinence » du fil « Pour toi » (0 = pertinence, 1 =
-  // découverte). Persisté par utilisateur pour respecter le choix du lecteur.
-  const discoveryStorageKey = `plume_feed_discovery_${currentUser.id}`;
-  const [discovery, setDiscovery] = useState<number>(() => {
+  const discovery = useMemo(() => {
     try {
-      const v = parseFloat(localStorage.getItem(discoveryStorageKey) || '');
-      return isNaN(v) ? 0.5 : Math.min(1, Math.max(0, v));
-    } catch {
-      return 0.5;
-    }
-  });
-  const updateDiscovery = (value: number) => {
-    setDiscovery(value);
-    try {
-      localStorage.setItem(discoveryStorageKey, String(value));
-    } catch {
-      /* stockage indisponible : on garde juste l'état en mémoire */
-    }
-  };
+      const value = Number.parseFloat(localStorage.getItem(`plume_feed_discovery_${currentUser.id}`) || '');
+      return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5;
+    } catch { return 0.5; }
+  }, [currentUser.id]);
 
   // Repli d'image : une couverture morte (URL cassee) est remplacee par une
   // couverture generee localement (titre + degrade) au lieu d'une icone cassee.
@@ -142,54 +86,33 @@ export default function HomeView({
   // Filter out published and safe stories
   const publishedStories = stories.filter(s => s.status === 'Publié' && !s.isFlagged);
 
-  // 1. "Continuer la lecture" calculations
-  // Get all stories that have at least one read chapter OR matched in lastReadProgress
-  const ongoingStories = publishedStories.filter(story => {
-    const hasReadChapter = story.chapters.some(ch => readChapters.includes(ch.id));
-    const isLastRead = lastReadProgress?.storyId === story.id;
-    return hasReadChapter || isLastRead;
-  });
+  // Keep the card current when progress changes in this window or another tab.
+  const [, refreshProgress] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshProgress(value => value + 1);
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === `plume_book_progress_${currentUser.id}`) refresh();
+    };
+    const onProgress = (event: Event) => {
+      if ((event as CustomEvent).detail?.userId === currentUser.id) refresh();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('plume:book-progress', onProgress);
+    return () => { window.removeEventListener('storage', onStorage); window.removeEventListener('plume:book-progress', onProgress); };
+  }, [currentUser.id]);
 
-  // Vrai état : a-t-on au moins une lecture en cours ?
-  const hasOngoing = ongoingStories.length > 0;
-  // S'il n'y a aucune lecture commencée, on ne ment pas avec un faux « Chapitre 1 · 0% » :
-  // on propose honnêtement quelques récits à COMMENCER (section relabellisée plus bas).
-  const displayOngoing = hasOngoing ? ongoingStories : publishedStories.slice(0, 6);
-
-  // Calculate read progress percentages and last read dates
-  const getStoryProgressInfo = (story: Story) => {
-    const storyChs = story.chapters;
-    if (storyChs.length === 0) return { percent: 0, lastRead: 'Non commencé' };
-    
-    const readCount = storyChs.filter(ch => readChapters.includes(ch.id)).length;
-    const percent = Math.round((readCount / storyChs.length) * 100);
-
-    // On ne dispose pas d'horodatage de lecture par histoire : on affiche donc
-    // un libellé d'état réel plutôt qu'une fausse date.
-    const isLastRead = lastReadProgress?.storyId === story.id;
-    let lastRead: string;
-    if (isLastRead) lastRead = "À l'instant";
-    else if (readCount > 0) lastRead = 'En cours';
-    else lastRead = 'À découvrir';
-
-    return { percent, lastRead };
-  };
-
-  // Carte « Reprendre » : LE dernier chapitre ouvert, avec temps de lecture
-  // restant estimé (~220 mots/min). Un geste pour replonger exactement où on
-  // s'était arrêté — sans avoir à retrouver le livre soi-même.
+  // Resume from the actual saved position, not the number of chapters opened.
   const resumeInfo = (() => {
-    if (!lastReadProgress) return null;
-    const story = publishedStories.find((s) => s.id === lastReadProgress.storyId);
-    if (!story || story.chapters.length === 0) return null;
-    const rawIdx = story.chapters.findIndex((c) => c.id === lastReadProgress.chapterId);
-    const idx = rawIdx >= 0 ? rawIdx : 0;
-    const { percent } = getStoryProgressInfo(story);
-    if (percent >= 100) return null; // livre terminé : rien à reprendre
-    const wordsLeft = story.chapters.slice(idx).reduce((sum, c) => sum + wordsOf(c.content || ''), 0);
-    const minutes = Math.max(1, Math.round(wordsLeft / 220));
-    const timeLabel = formatMinutes(minutes).replace('~', '');
-    return { story, chapterIndex: idx, chapterTitle: story.chapters[idx]?.title || '', percent, timeLabel };
+    const savedStories = publishedStories.map(story => ({ story, progress: getBookProgress(currentUser.id, story.id) }))
+      .filter(item => item.progress && item.progress.percent < 100 && item.story.chapters.length)
+      .sort((a, b) => new Date(b.progress!.updatedAt).getTime() - new Date(a.progress!.updatedAt).getTime());
+    const recent = savedStories[0];
+    const story = recent?.story || publishedStories.find(s => s.id === lastReadProgress?.storyId);
+    if (!story?.chapters.length) return null;
+    if (!recent && (getBookProgress(currentUser.id, story.id)?.percent ?? 0) >= 100) return null;
+    const chapterIndex = recent ? Math.min(story.chapters.length - 1, Math.max(0, recent.progress!.chapterIndex))
+      : Math.max(0, story.chapters.findIndex(c => c.id === lastReadProgress?.chapterId));
+    return { story, chapterIndex, percent: recent?.progress?.percent ?? 0 };
   })();
 
   // 2. "Pour toi" — diffusion personnalisée via l'algorithme de recommandation
@@ -247,10 +170,6 @@ export default function HomeView({
     return publishedStories.slice().sort((a, b) => hotScore(b, now, 1.5) - hotScore(a, now, 1.5));
   }, [publishedStories]);
 
-  // 4. "Nouveautés"
-  const newsStories = publishedStories.slice()
-    .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
-
   // Texte d'accroche partagé avec le récit.
   const shareTextFor = (story: Story) => `« ${story.title} » de ${story.authorName} sur PLUME`;
 
@@ -281,41 +200,37 @@ export default function HomeView({
     { name: 'Telegram', network: 'telegram', color: 'bg-[#26A5E4]', Icon: TelegramIcon },
   ];
 
+  const [greeting, setGreeting] = useState(() => localGreeting());
+  const [genreFilter, setGenreFilter] = useState('Tout');
+  const [resumeMenu, setResumeMenu] = useState(false);
+  useEffect(() => {
+    const refresh = () => setGreeting(localGreeting());
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
+  const featuredStory = publishedStories.find(s => s.featured) || trendingStories[0];
+  const genres = ['Tout', ...Array.from(new Set(publishedStories.flatMap(s => s.genres?.length ? s.genres : [s.genre]).filter(Boolean))).slice(0, 6)];
+  const recommended = displayForYou.map(item => item.story).filter(s => s.status === 'Publié' && !s.isFlagged);
+  const candidates = recommended.length ? recommended : trendingStories;
+  const rankedCatalog = [...candidates, ...trendingStories.filter(story => !candidates.some(candidate => candidate.id === story.id))];
+  const forYou = genreFilter === 'Tout' ? candidates : rankedCatalog.filter(s => [s.genre, ...(s.genres || [])].includes(genreFilter));
+  const visibleBooks = forYou.slice(0, 9);
+  const cover = (story: Story, width = 360) => optimizedImage(story.cover, width) || generateCoverDataUri(story.title);
+
   return (
-    <div className="px-4 pt-2 space-y-6 animate-fade-in text-left select-none pb-28 lg:px-10 xl:px-16 lg:pb-10">
-      
-      {/* En-tête : recherche DIRECTE (livres + comptes) sur l'accueil. */}
-      <header className="pb-1">
-        <form
-          onSubmit={(e) => e.preventDefault()}
-          className="relative"
-        >
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5 pointer-events-none" />
-          <textarea
-            rows={1}
-            value={searchText}
-            onChange={(e) => {
-              setSearchText(e.target.value);
-              e.currentTarget.style.height = 'auto';
-              e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 96) + 'px';
-            }}
-            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-            placeholder="Rechercher un livre, un auteur, un genre…"
-            className="w-full resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-purple-500/40 rounded-2xl pl-10 pr-9 py-2.5 text-xs text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500/30 transition leading-snug scrollbar-none"
-          />
-          {searchText && (
-            <button
-              type="button"
-              onClick={() => setSearchText('')}
-              className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-              aria-label="Effacer"
-            >
-              <CloseIcon className="w-4 h-4" />
-            </button>
-          )}
+    <div className="home-redesign mx-auto w-full max-w-6xl px-[18px] pt-2 pb-8 text-left text-[#191329] dark:text-zinc-100 sm:px-7 lg:px-10 lg:pt-7">
+      <header className="mb-4">
+        <h1 className="font-serif text-[clamp(21px,5.1vw,32px)] font-bold tracking-[-0.035em] leading-tight">
+          {greeting.message}, <span className="break-words">@{currentUser.username.replace(/^@/, '')}</span> <span className="whitespace-nowrap">{greeting.emoji}</span>
+        </h1>
+        <p className="mt-1 text-[14px] sm:text-base text-zinc-500 dark:text-zinc-400">Une nouvelle histoire vous attend.</p>
+        <form role="search" onSubmit={e => { e.preventDefault(); if (searchText.trim()) onOpenLibrary?.(searchText.trim()); }} className="relative mt-3">
+          <Search className="pointer-events-none absolute left-3.5 top-3 h-5 w-5 text-zinc-400" />
+          <input type="search" aria-label="Rechercher un livre ou un auteur" value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Un livre, un auteur, un univers…" className="h-11 w-full rounded-[18px] bg-[#f3f3f7] dark:bg-zinc-900 pl-11 pr-4 text-[13px] placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-purple-500/50" />
         </form>
       </header>
-
       {/* RÉSULTATS DE RECHERCHE (livres + comptes) — remplacent le fil tant
           qu'une requête est saisie. */}
       {(() => {
@@ -398,57 +313,70 @@ export default function HomeView({
         );
       })()}
 
-      {/* Le fil d'accueil complet n'apparaît que HORS recherche. */}
-      {!searchText.trim() && (
-      <div className="space-y-6">
 
-      {/* SECTION: À LA UNE (mises en avant par l'administration) */}
-      {(() => {
-        const featuredStories = stories.filter((s) => s && s.featured && s.status === 'Publié');
-        const featuredUsers = allUsers.filter((u) => u && u.featured && u.id !== currentUser.id);
-        if (!featuredStories.length && !featuredUsers.length) return null;
-        return (
-          <section className="space-y-3">
-            <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/40 dark:border-amber-900/20">
-              <h3 className="font-extrabold text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center space-x-1.5">
-                <Sparkles className="w-3.5 h-3.5 fill-amber-500/20" />
-                <span>À la une</span>
-              </h3>
-              <span className="text-[9px] font-mono text-amber-600 bg-amber-500/10 px-2 py-1 rounded-full uppercase font-bold">Sélection</span>
+      {!searchText.trim() && <div className="space-y-4 sm:space-y-7">
+        {resumeInfo && <section id="resume-reading-card" aria-label="Reprendre ma lecture">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-[15px] font-bold sm:text-lg"><Clock className="h-5 w-5 text-purple-600" />Reprendre ma lecture</h2>
+            <button aria-label="Voir ma bibliothèque" onClick={() => onViewProfile?.(currentUser.id)} className="p-1"><ChevronRight className="h-5 w-5 text-zinc-500" /></button>
+          </div>
+          <div className="relative flex items-center gap-3 rounded-[19px] bg-[#f6f0fd] dark:bg-purple-950/30 p-3 sm:gap-5 sm:p-4">
+            <button onClick={() => onSelectStory(resumeInfo.story)} aria-label={`Reprendre ${resumeInfo.story.title}`} className="shrink-0">
+              <img src={cover(resumeInfo.story, 180)} alt={resumeInfo.story.title} onError={onCoverError(resumeInfo.story.title)} className="h-[82px] w-[58px] rounded-lg object-cover shadow-sm sm:h-28 sm:w-20" />
+            </button>
+            <div className="min-w-0 flex-1 self-center">
+              <h3 className="line-clamp-2 pr-5 font-serif text-base font-bold leading-tight sm:text-xl">{resumeInfo.story.title}</h3>
+              <p className="mt-1 truncate text-xs text-zinc-500">{resumeInfo.story.authorName}</p>
+              <p className="mt-2 text-[11px] sm:text-xs">Chapitre {resumeInfo.chapterIndex + 1} <span className="px-1">·</span> {Math.round(resumeInfo.percent)} %</p>
+              <div role="progressbar" aria-label="Progression de lecture" aria-valuenow={Math.round(resumeInfo.percent)} aria-valuemin={0} aria-valuemax={100} className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-purple-200/60 dark:bg-purple-900">
+                <div className="h-full rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-500" style={{ width: `${resumeInfo.percent}%` }} />
+              </div>
             </div>
+            <button onClick={() => onSelectStory(resumeInfo.story)} className="mt-5 flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-[#a600f5] px-3 py-3 text-[11px] font-semibold text-white shadow-sm hover:brightness-110 sm:px-5 sm:text-sm"><BookOpen className="h-4 w-4" />Reprendre</button>
+            <button aria-label="Options de la lecture" aria-expanded={resumeMenu} onClick={() => setResumeMenu(!resumeMenu)} className="absolute right-3 top-2 p-1 text-zinc-400"><MoreHorizontal className="h-5 w-5" /></button>
+            {resumeMenu && <><button aria-label="Fermer les options" className="fixed inset-0 z-10 cursor-default" onClick={() => setResumeMenu(false)} /><div className="absolute right-3 top-10 z-20 rounded-xl border border-zinc-100 bg-white p-1.5 text-xs shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+              <button className="block w-full rounded-lg p-2 text-left hover:bg-purple-50 dark:hover:bg-zinc-800" onClick={() => { onToggleFavorite(resumeInfo.story.id); setResumeMenu(false); }}>{favorites.includes(resumeInfo.story.id) ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
+              <button className="block w-full rounded-lg p-2 text-left hover:bg-purple-50 dark:hover:bg-zinc-800" onClick={() => { void handleShareStory(resumeInfo.story); setResumeMenu(false); }}>Partager ce récit</button>
+            </div></>}
+          </div>
+        </section>}
 
-            {featuredStories.length > 0 && (
-              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none lg:grid lg:grid-cols-5 lg:gap-4 lg:space-x-0 lg:overflow-visible">
-                {featuredStories.map((story) => (
-                  <div key={story.id} className="w-40 flex-shrink-0 lg:w-auto">
-                    <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer ring-2 ring-amber-400/40">
-                      <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <span className="absolute top-1 left-1 text-[8px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded uppercase shadow flex items-center gap-0.5"><Sparkles className="w-2.5 h-2.5" />À la une</span>
-                    </div>
-                    <h4 onClick={() => onSelectStory(story)} className="mt-1.5 text-xs font-black text-gray-950 dark:text-gray-50 line-clamp-1 cursor-pointer hover:text-purple-600">{story.title}</h4>
-                    <p className="text-[10px] text-gray-400 line-clamp-1">Par {story.authorName}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+        {featuredStory && <section aria-label="À la une">
+          <h2 className="mb-2 flex items-center gap-2 text-[15px] font-bold sm:text-lg"><Star className="h-5 w-5 fill-purple-600 text-purple-600" />À la une</h2>
+          <div className="relative isolate flex min-h-[174px] overflow-hidden rounded-[19px] bg-[#221034] shadow-md sm:min-h-[260px] lg:min-h-[320px]">
+            <img src={cover(featuredStory, 1200)} alt="" aria-hidden="true" className="absolute inset-0 -z-20 h-full w-full scale-110 object-cover opacity-60 blur-[2px]" onError={onCoverError(featuredStory.title)} />
+            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#190d30] via-[#29103a]/80 to-purple-800/10" />
+            <div className="relative z-10 flex w-[61%] flex-col items-start justify-center px-4 py-5 sm:px-7 sm:py-8 lg:px-10">
+              <p className="mb-2 text-[8px] font-medium uppercase tracking-[0.16em] text-purple-200 sm:text-[11px]">Votre prochaine obsession</p>
+              <h3 className="line-clamp-3 font-serif text-[clamp(24px,6vw,46px)] font-bold leading-[1.02] tracking-[-0.025em] text-white">{featuredStory.title}</h3>
+              <p className="mt-2 line-clamp-1 text-[11px] text-purple-100 sm:text-sm">{[featuredStory.genre, ...(featuredStory.tags || []).slice(0, 1)].filter(Boolean).join(' · ')}</p>
+              <button onClick={() => onSelectStory(featuredStory)} className="mt-4 flex items-center gap-1.5 rounded-full bg-[#f6efff] px-4 py-2 text-xs font-bold text-purple-800 transition hover:bg-white sm:mt-6 sm:px-5 sm:py-3 sm:text-sm">Découvrir <ChevronRight className="h-4 w-4" /></button>
+            </div>
+            <div className="pointer-events-none absolute bottom-[8%] right-[5%] top-[9%] w-[33%]" style={{ perspective: '800px' }}>
+              <img src={cover(featuredStory, 500)} alt={`Couverture de ${featuredStory.title}`} onError={onCoverError(featuredStory.title)} className="h-full w-full rounded-r-lg border-l-[3px] border-white/20 object-cover shadow-[8px_12px_20px_#0009]" style={{ transform: 'rotateY(-15deg) rotate(7deg)' }} />
+            </div>
+          </div>
+        </section>}
 
-            {featuredUsers.length > 0 && (
-              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-none lg:grid lg:grid-cols-5 lg:gap-4 lg:space-x-0 lg:overflow-visible">
-                {featuredUsers.map((u) => (
-                  <div key={u.id} onClick={() => onViewProfile?.(u.id)} className="w-24 flex-shrink-0 lg:w-auto flex flex-col items-center text-center cursor-pointer">
-                    <div className="relative">
-                      <img src={optimizedImage(u.avatar, 64, { square: true }) || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(u.username))} alt={u.username} className="w-16 h-16 rounded-full object-cover ring-2 ring-amber-400/50" referrerPolicy="no-referrer" />
-                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[7px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase shadow">À la une</span>
-                    </div>
-                    <span className="mt-2 text-[11px] font-black text-gray-950 dark:text-gray-50 truncate w-full">{u.username}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })()}
-
+        <section aria-label="Pour vous">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-[15px] font-bold sm:text-lg"><Compass className="h-5 w-5 text-purple-600" />Pour vous</h2>
+            <button onClick={() => onOpenLibrary?.()} className="flex items-center gap-1 text-xs font-medium text-purple-700 dark:text-purple-400">Tout voir<ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <div aria-label="Filtrer par genre" className="mb-3 flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+            {genres.map(genre => <button key={genre} aria-pressed={genreFilter === genre} onClick={() => setGenreFilter(genre)} className={`shrink-0 rounded-full px-5 py-1.5 text-[11px] font-medium transition ${genreFilter === genre ? 'bg-gradient-to-r from-purple-600 to-[#a600f5] text-white' : 'bg-[#f3f3f7] text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400'}`}>{genre}</button>)}
+          </div>
+          {visibleBooks.length ? <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:gap-x-5 lg:grid-cols-5">
+            {visibleBooks.map(story => <article key={story.id} className="min-w-0">
+              <button onClick={() => onSelectStory(story)} className="block w-full text-left transition hover:-translate-y-1" aria-label={`Découvrir ${story.title}`}>
+                <img src={cover(story)} alt={story.title} onError={onCoverError(story.title)} loading="lazy" className="aspect-[0.78] w-full rounded-[10px] bg-zinc-100 object-cover shadow-sm dark:bg-zinc-900" />
+                <h3 className="mt-1.5 line-clamp-2 font-serif text-[12px] font-bold leading-snug sm:text-base">{story.title}</h3>
+              </button>
+              <button onClick={() => onViewProfile?.(story.authorId)} className="mt-0.5 block max-w-full truncate text-left text-[10px] text-zinc-400 hover:text-purple-600 sm:text-xs">{story.authorName}</button>
+              <div className="mt-1.5 flex items-center gap-2 text-[9px] text-zinc-400 sm:gap-3 sm:text-xs"><span className="flex items-center gap-1"><Eye className="h-3 w-3" />{formatStat(story.reads || story.views || 0)}</span><span className="flex items-center gap-1"><Heart className="h-3 w-3" />{formatStat(story.likes || 0)}</span></div>
+            </article>)}
+          </div> : <div className="rounded-2xl bg-purple-50/60 p-6 text-center text-sm text-zinc-500 dark:bg-purple-950/20">{publishedStories.length ? 'Aucun récit dans ce genre pour le moment.' : 'Les premières histoires arrivent bientôt. Votre prochain coup de cœur vous attend ici.'}</div>}
+        </section>
       {/* SECTION: LIVRES TÉLÉCHARGÉS (disponibles hors ligne) */}
       {offlineBooks.length > 0 && (
         <section className="space-y-3">
@@ -483,182 +411,7 @@ export default function HomeView({
         </section>
       )}
 
-      {/* CARTE HÉRO « REPRENDRE » : replonger en un geste dans le dernier
-          chapitre ouvert, avec le temps de lecture restant. */}
-      {resumeInfo && (
-        <section
-          id="resume-reading-card"
-          onClick={() => onSelectStory(resumeInfo.story)}
-          className="relative overflow-hidden rounded-2xl border border-purple-500/25 bg-gradient-to-br from-purple-700 via-purple-800 to-[#1a1030] cursor-pointer shadow-lg active:scale-[0.99] transition"
-        >
-          <div className="flex items-stretch gap-3 p-3">
-            <div className="w-16 flex-shrink-0 rounded-xl overflow-hidden aspect-[2/3] bg-black/30">
-              {resumeInfo.story.cover && (
-                <img src={optimizedImage(resumeInfo.story.cover, 160)} alt={resumeInfo.story.title} onError={onCoverError(resumeInfo.story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 text-white">
-              <p className="text-[9px] font-black uppercase tracking-widest text-purple-200/90">Reprendre ta lecture</p>
-              <h3 className="text-sm font-black leading-tight line-clamp-1">{resumeInfo.story.title}</h3>
-              <p className="text-[11px] text-purple-100/90 line-clamp-1">
-                Chapitre {resumeInfo.chapterIndex + 1}{resumeInfo.chapterTitle ? ` · ${resumeInfo.chapterTitle}` : ''}
-              </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
-                  <div className="h-full bg-white/90 rounded-full" style={{ width: `${resumeInfo.percent}%` }} />
-                </div>
-                <span className="text-[9px] font-bold text-purple-100/80 whitespace-nowrap">~{resumeInfo.timeLabel} restantes</span>
-              </div>
-            </div>
-            <div className="flex items-center flex-shrink-0">
-              <span className="w-9 h-9 rounded-full bg-white text-purple-700 flex items-center justify-center shadow">
-                <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
-              </span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* SECTION 1: CONTINUER / COMMENCER LA LECTURE (libellé honnête selon l'état) */}
-      {displayOngoing.length > 0 && (
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-purple-600" />
-            <span>{hasOngoing ? 'Continuer la lecture' : 'Commencer une lecture'}</span>
-          </h3>
-        </div>
-
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 lg:grid lg:grid-cols-5 lg:gap-4 lg:overflow-visible lg:mx-0 lg:px-0">
-          {displayOngoing.slice(0, 6).map((story) => {
-            const { percent } = getStoryProgressInfo(story);
-            const readCh = story.chapters.filter((ch) => readChapters.includes(ch.id)).length;
-            const started = readCh > 0 || lastReadProgress?.storyId === story.id;
-            return (
-              <div key={story.id} className="w-36 flex-shrink-0 lg:w-auto bg-gray-50 dark:bg-[#0E0E14] border border-gray-100 dark:border-purple-900/15 rounded-2xl p-2.5 flex flex-col">
-                <div onClick={() => onSelectStory(story)} className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer">
-                  <img src={optimizedImage(story.cover, 220)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  {/* Barre de progression : affichée UNIQUEMENT si elle a une
-                      valeur à montrer (percent > 0). Sinon (progression non
-                      encore calculable), on ne montre pas une barre vide/figée. */}
-                  {started && percent > 0 && (
-                    <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/30">
-                      <div className="h-full bg-purple-500" style={{ width: `${Math.min(100, percent)}%` }} />
-                    </div>
-                  )}
-                </div>
-                <h4 className="mt-2 font-serif font-black text-[11px] text-gray-900 dark:text-white line-clamp-1">{story.title}</h4>
-                <p className="text-[9px] text-gray-400 line-clamp-1">{story.authorName}</p>
-                <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">
-                  {started ? `Chapitre ${Math.max(1, readCh)}` : `${story.chapters.length} chapitre${story.chapters.length > 1 ? 's' : ''}`}
-                </p>
-                <button
-                  onClick={() => onSelectStory(story)}
-                  className="mt-2 w-full flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase tracking-wider py-1.5 rounded-lg transition"
-                >
-                  <BookOpen className="w-3 h-3" /> {started ? 'Reprendre' : 'Commencer'}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-      )}
-
-      {/* SECTION : REPRENEZ VOTRE ÉCRITURE (auteurs) */}
-      {currentUser.role !== 'Lecteur' && (() => {
-        const myStories = stories.filter((s) => s.authorId === currentUser.id);
-        const latest = myStories.slice().sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())[0];
-        return (
-          <section className="rounded-2xl p-4 bg-gradient-to-br from-purple-600/10 to-fuchsia-600/5 border border-purple-500/20 flex items-center gap-4">
-            {latest ? (
-              <>
-                <img src={optimizedImage(latest.cover, 120)} alt={latest.title} className="w-14 h-20 rounded-lg object-cover flex-shrink-0 shadow" referrerPolicy="no-referrer" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Reprenez votre écriture</p>
-                  <h4 className="text-sm font-serif font-black text-gray-900 dark:text-white line-clamp-1 mt-0.5">{latest.title}</h4>
-                  <p className="text-[10px] text-gray-400">{latest.chapters?.length || 0} chapitre{(latest.chapters?.length || 0) > 1 ? 's' : ''}</p>
-                  <button onClick={() => onStartWriting?.()} className="mt-2 inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition">
-                    <PenTool className="w-3 h-3" /> Écrire
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1">
-                <p className="text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Une histoire à raconter ?</p>
-                <h4 className="text-sm font-serif font-black text-gray-900 dark:text-white mt-0.5">Commence ton premier livre</h4>
-                <button onClick={() => onStartWriting?.()} className="mt-2 inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition">
-                  <PenTool className="w-3 h-3" /> Créer un livre
-                </button>
-              </div>
-            )}
-          </section>
-        );
-      })()}
-
-      {/* SECTION 2: DECOUVRIR (onglets Tendances / Nouveautes / Recommandes) */}
-      <section className="space-y-3">
-        <h3 className="font-extrabold text-[11px] uppercase tracking-widest text-gray-900 dark:text-white flex items-center gap-1.5">
-          <Compass className="w-4 h-4 text-purple-600" />
-          <span>Découvrir</span>
-        </h3>
-
-        <div className="flex gap-2 text-[10px] font-black uppercase tracking-wide">
-          {([['tendances','Tendances'],['nouveautes','Nouveautés'],['recommandes','Recommandés']] as const).map(([id,label]) => (
-            <button
-              key={id}
-              onClick={() => setDiscoverTab(id)}
-              className={`px-3 py-1.5 rounded-full transition ${discoverTab === id ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {(() => {
-          const forYou = displayForYou.map((d) => d.story);
-          const list = discoverTab === 'tendances'
-            ? trendingStories
-            : discoverTab === 'nouveautes'
-              ? newsStories
-              // « Recommandés » exclut les récits déjà lus/favoris : pour un lecteur
-              // assidu cela peut être vide → repli honnête sur les tendances.
-              : (forYou.length > 0 ? forYou : trendingStories);
-          return (
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 lg:grid lg:grid-cols-5 lg:gap-4 lg:overflow-visible lg:mx-0 lg:px-0">
-              {list.slice(0, 12).map((story, i) => (
-                <div key={story.id} className="w-28 flex-shrink-0 lg:w-auto">
-                  <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden">
-                    <img onClick={() => onSelectStory(story)} src={optimizedImage(story.cover, 180)} alt={story.title} onError={onCoverError(story.title)} className="w-full h-full object-cover cursor-pointer" referrerPolicy="no-referrer" />
-                    <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>
-                    <button
-                      aria-label="Partager"
-                      title="Partager"
-                      onClick={(e) => { e.stopPropagation(); handleShareStory(story); }}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition"
-                    >
-                      <Share2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <h4 onClick={() => onSelectStory(story)} className="mt-1.5 font-serif text-[12px] font-semibold text-gray-900 dark:text-white line-clamp-1 cursor-pointer leading-tight">{story.title}</h4>
-                  <p className="text-[10px] text-gray-400 line-clamp-1">{story.authorName}</p>
-                  <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-400">
-                    <span className="flex items-center gap-0.5" title="Lectures"><Eye className="w-2.5 h-2.5 shrink-0" />{formatStat(story.reads || 0)}</span>
-                    <span className="flex items-center gap-0.5" title="J’aime"><Heart className="w-2.5 h-2.5 shrink-0" />{formatStat(story.likes || 0)}</span>
-                    <span className="flex items-center gap-0.5" title="Temps de lecture estimé"><Clock className="w-2.5 h-2.5 shrink-0" />{formatMinutes(storyMinutes(story))}</span>
-                  </div>
-                </div>
-              ))}
-              {list.length === 0 && <p className="text-xs text-gray-400 py-6">Rien pour le moment.</p>}
-            </div>
-          );
-        })()}
-      </section>
-
-      </div>
-      )}
-
-      {/* FEUILLE DE PARTAGE (repli quand la Web Share API native est absente) */}
+      </div>}
       {shareStory && (
         <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in select-none">
           <div 

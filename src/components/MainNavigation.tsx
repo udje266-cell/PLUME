@@ -24,10 +24,11 @@ import {
   Send,
   Star,
   Trophy,
-  Feather
+  Feather, LibraryBig
 } from 'lucide-react';
 import { User, UserRole, AppNotification } from '../types';
-import Logo from './Logo';
+import logoPlume from '../../assets/logo-plume.png';
+import logoPlumeDark from '../../assets/logo-plume-dark.png';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MainNavigationProps {
@@ -99,11 +100,11 @@ export default function MainNavigation({
   // recherche de l'accueil (plus dans la barre du bas). Le bouton central
   // « Écrire » est mis en avant (rond surélevé).
   const leftTabs = [
-    { id: 'home' as const, label: 'Accueil', icon: <Home className="w-5 h-5" /> },
-    { id: 'achievements' as const, label: 'Succès', icon: <Trophy className="w-5 h-5" /> },
+    { id: 'home' as const, label: 'Accueil', icon: <Home className="w-5 h-5" fill={activeTab === 'home' ? 'currentColor' : 'none'} /> },
+    { id: 'explore' as const, label: 'Bibliothèque', icon: <LibraryBig className="w-5 h-5" /> },
   ];
   const rightTabs = [
-    { id: 'messages' as const, label: 'Message', icon: <MessageSquare className="w-5 h-5" /> },
+    { id: 'messages' as const, label: 'Messages', icon: <MessageSquare className="w-5 h-5" /> },
     { id: 'profile' as const, label: 'Profil', icon: <UserIcon className="w-5 h-5" /> },
     ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', icon: <ShieldCheck className="w-5 h-5" /> }] : []),
   ];
@@ -141,22 +142,14 @@ export default function MainNavigation({
       {/* TOP ACTIONS APP HEADER — fond OPAQUE qui remonte jusqu'en haut de
           l'ecran (integre la barre systeme) : un seul bloc continu avec le corps,
           sans bande separee ni transparence qui se superpose. */}
-      <header className="w-full bg-white dark:bg-black transition-colors pb-1 px-4" style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top))' }}>
+      <header className="w-full bg-white dark:bg-black transition-colors pb-1 px-[18px]" style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top))' }}>
         <div className="flex items-center justify-between">
           
-          {/* Left: Filter Toggle Button */}
-          <button
-            id="sidebar-toggle-btn"
-            onClick={onOpenSidebar}
-            className="p-2.5 rounded-xl text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-purple-950/20 transition-all cursor-pointer"
-            title="Sélecteur d'Archipel"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          {/* Center Brand */}
-          <div className="cursor-pointer" onClick={() => onChangeTab('home')}>
-            <Logo size="lg" showText={true} />
+          <div className="flex items-center gap-1">
+            {activeTab !== 'home' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Filtres de la bibliothèque" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
+            <button aria-label="Accueil PLUME" onClick={() => onChangeTab('home')} className="relative h-[44px] w-[128px] overflow-hidden shrink-0">
+              <img src={darkMode ? logoPlumeDark : logoPlume} alt="PLUME" className="absolute left-[-71px] top-[-65px]" style={{ width: 280, maxWidth: 'none' }} />
+            </button>
           </div>
 
           {/* Right: Theme Toggle or Mini Avatar */}
@@ -168,7 +161,7 @@ export default function MainNavigation({
               title={darkMode ? 'Passer en mode clair' : 'Passer en mode sombre'}
             >
               <div className="transition-transform duration-500 hover:rotate-45">
-                {darkMode ? <Sun className="w-4 h-4 fill-purple-400 text-purple-400" /> : <Moon className="w-4 h-4 text-zinc-650" />}
+                {darkMode ? <Sun className="w-[21px] h-[21px] fill-purple-400 text-purple-400" /> : <Moon className="w-[21px] h-[21px] text-zinc-650" />}
               </div>
             </button>
 
@@ -185,7 +178,7 @@ export default function MainNavigation({
                 className="relative p-2 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-purple-950/20 transition-all active:scale-95 duration-200 outline-none cursor-pointer"
                 title="Notifications"
               >
-                <Bell className="w-4 h-4" />
+                <Bell className="w-[21px] h-[21px]" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-purple-600 text-white text-[9px] font-black flex items-center justify-center border border-white dark:border-black">
                     {unreadCount > 9 ? '9+' : unreadCount}
@@ -288,23 +281,10 @@ export default function MainNavigation({
               )}
             </div>
 
-            {/* Quick Profile Simulation Button */}
-            <div 
-              onClick={() => onChangeTab('profile')}
-              className="relative cursor-pointer"
-            >
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.username}
-                className="w-7 h-7 rounded-full object-cover ring-2 ring-purple-600"
-                referrerPolicy="no-referrer"
-              />
-              {currentUser.isVerified && (
-                <div className="absolute -bottom-1 -right-1 bg-white dark:bg-black rounded-full p-[0.3px] scale-90">
-                  <VerifiedBadge size="xs" />
-                </div>
-              )}
-            </div>
+            <button aria-label="Mon profil" onClick={() => onChangeTab('profile')} className="relative ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 ring-2 ring-purple-500 ring-offset-2 ring-offset-white dark:ring-offset-black">
+              {currentUser.avatar ? <img src={currentUser.avatar} alt={currentUser.username} className="h-full w-full rounded-full object-cover" referrerPolicy="no-referrer" /> : <span className="text-sm font-bold text-purple-700">{currentUser.username.charAt(0).toUpperCase()}</span>}
+              {currentUser.isVerified && <span className="absolute -bottom-1 -right-1 rounded-full bg-white dark:bg-black"><VerifiedBadge size="xs" /></span>}
+            </button>
           </div>
 
         </div>
@@ -334,7 +314,7 @@ export default function MainNavigation({
             } bg-gradient-to-br from-purple-600 to-fuchsia-600`}>
               <img src="/app-icon.png" alt="Écrire" className="w-full h-full object-cover" draggable={false} />
             </span>
-            <span className={`text-[9px] mt-1 font-black uppercase tracking-wide ${activeTab === 'write' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}>Écrire</span>
+            <span className={`text-[9px] mt-1 font-bold tracking-wide ${activeTab === 'write' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}>Écrire</span>
           </button>
 
           {rightTabs.map((tab) => renderTab(tab))}
