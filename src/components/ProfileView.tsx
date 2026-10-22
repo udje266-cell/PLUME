@@ -57,6 +57,7 @@ import { authHeaders, setAuthToken } from '../utils/auth';
 import { getNotifSettings, saveNotifSettings, notificationPermission, requestNotificationPermission, playNotificationSound, getNotifCategories, saveNotifCategories, type NotifSettings, type NotifType, type NotifCategories, type NotifCategory } from '../utils/notify';
 import { ensureWebPush } from '../utils/pwa';
 import {
+
   getUserStats,
   generateReaderAchievements,
   generateAuthorAchievements,
@@ -257,6 +258,20 @@ const getCroppedImageFile = async (
   });
 };
 
+
+// Le contenu enregistré par l'éditeur immersif est du HTML (<div>, <br>…).
+// Dans ce champ texte simple, on l'affiche en texte brut lisible, un
+// paragraphe par ligne, au lieu des balises.
+function htmlToPlainText(content: string): string {
+  if (!content || !/<\/?(div|p|br|span|b|i|em|strong|h[1-6])\b/i.test(content)) return content || '';
+  const s = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(div|p|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  const d = document.createElement('div');
+  d.innerHTML = s;
+  return (d.textContent || '').replace(/\u00a0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 export default function ProfileView({
   currentUser,
@@ -1294,7 +1309,7 @@ const user = freshViewedUser || freshCurrentUser;
   const handleOpenChapterEditor = (story: Story, chapterToEdit: Chapter | null) => {
     setEditingChapterInStory({ story, chapter: chapterToEdit });
     setChapterTitle(chapterToEdit ? chapterToEdit.title : `Chapitre ${story.chapters.length + 1} : `);
-    setChapterContent(chapterToEdit ? chapterToEdit.content : '');
+    setChapterContent(chapterToEdit ? htmlToPlainText(chapterToEdit.content) : '');
   };
 
   const handleSaveChapter = () => {
