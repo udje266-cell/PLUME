@@ -18,6 +18,10 @@ try {
   for (const user of [id, stranger]) await prisma.user.create({ data: { id: user, username: user, email: `${user}@example.invalid` } });
   await prisma.story.create({ data: { id, title: 'Private shelves', genre: 'Fantasy', description: '', authorId: stranger, status: 'PUBLIE' } });
   await prisma.chapter.create({ data: { id, title: 'Chapter', content: 'One\n\nTwo', order: 1, storyId: id, isPublished: true } });
+  const preflight = await fetch(`${base}/api/me/collections/probe`, { method: 'OPTIONS', headers: { Origin: 'https://localhost', 'Access-Control-Request-Method': 'PATCH', 'Access-Control-Request-Headers': 'authorization,content-type' } });
+  assert.equal(preflight.status, 204);
+  assert(preflight.headers.get('access-control-allow-methods').split(',').includes('PATCH'));
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://localhost');
   const anonymous = await fetch(`${base}/api/me/library`); assert.equal(anonymous.status, 401);
   assert.equal((await call(id, 'POST', '/api/me/collections', { name: ' ' })).status, 400);
   const created = await call(id, 'POST', '/api/me/collections', { name: 'Lectures du soir' });
