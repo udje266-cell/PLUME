@@ -24,7 +24,7 @@ import {
   Send,
   Star,
   Trophy,
-  Feather, LibraryBig
+  Feather, LibraryBig, BookOpen
 } from 'lucide-react';
 import { User, UserRole, AppNotification } from '../types';
 import logoPlume from '../../assets/logo-plume.png';
@@ -32,8 +32,8 @@ import logoPlumeDark from '../../assets/logo-plume-dark.png';
 import { VerifiedBadge } from './VerifiedBadge';
 
 interface MainNavigationProps {
-  activeTab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
-  onChangeTab: (tab: 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements') => void;
+  activeTab: 'home' | 'explore' | 'library' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
+  onChangeTab: (tab: 'home' | 'explore' | 'library' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements') => void;
   currentUser: User;
   onOpenSidebar: () => void;
   darkMode: boolean;
@@ -101,7 +101,7 @@ export default function MainNavigation({
   // « Écrire » est mis en avant (rond surélevé).
   const leftTabs = [
     { id: 'home' as const, label: 'Accueil', icon: <Home className="w-5 h-5" fill={activeTab === 'home' ? 'currentColor' : 'none'} /> },
-    { id: 'explore' as const, label: 'Bibliothèque', icon: <LibraryBig className="w-5 h-5" /> },
+    { id: 'library' as const, label: 'Bibliothèque', icon: <BookOpen className="w-5 h-5" fill={activeTab === 'library' ? 'currentColor' : 'none'} /> },
   ];
   const rightTabs = [
     { id: 'messages' as const, label: 'Messages', icon: <MessageSquare className="w-5 h-5" /> },
@@ -146,7 +146,7 @@ export default function MainNavigation({
         <div className="flex items-center justify-between">
           
           <div className="flex items-center gap-1">
-            {activeTab !== 'home' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Filtres de la bibliothèque" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
+            {activeTab !== 'home' && activeTab !== 'library' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Filtres de la bibliothèque" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
             <button aria-label="Accueil PLUME" onClick={() => onChangeTab('home')} className="relative h-[44px] w-[128px] overflow-hidden shrink-0">
               <img src={darkMode ? logoPlumeDark : logoPlume} alt="PLUME" className="absolute left-[-71px] top-[-65px]" style={{ width: 280, maxWidth: 'none' }} />
             </button>

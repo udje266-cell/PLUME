@@ -37,6 +37,8 @@ import ProfileView from './components/ProfileView';
 import AdminDashboard from './components/AdminDashboard';
 import AchievementsView from './components/AchievementsView';
 import HomeView from './components/HomeView';
+import LibraryView from './components/LibraryView';
+import type { ReadingStatus } from './utils/library';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
 import GroupCallOverlay from './components/GroupCallOverlay';
@@ -1351,7 +1353,7 @@ export default function App() {
   });
 
   // UI state variables
-  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'library' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements'>('home');
   // Vrai quand une discussion est ouverte en plein ecran (mobile) → on masque
   // l'en-tete + la barre du bas de l'app (comme WhatsApp).
   const [chatFullscreen, setChatFullscreen] = useState(false);
@@ -2552,6 +2554,14 @@ export default function App() {
   const syncReadingList = (storyId: string, list: 'currently' | 'completed' | 'later', active: boolean) => {
     if (!isAuthenticated) return;
     mutateServer('POST', '/api/me/reading-list', { storyId, list, active }, `rlist:${list}:${storyId}`);
+  };
+
+  const handleSetLibraryStatus = (storyId: string, status: ReadingStatus) => {
+    const update = (setter: React.Dispatch<React.SetStateAction<string[]>>, active: boolean) => setter(previous => active ? Array.from(new Set([...previous, storyId])) : previous.filter(id => id !== storyId));
+    update(setCurrentlyReading, status === 'currently');
+    update(setReadLater, status === 'later');
+    update(setCompletedStories, status === 'completed');
+    mutateServer('PUT', `/api/me/library/books/${encodeURIComponent(storyId)}/status`, { status }, `library-status:${storyId}`);
   };
 
   const handleToggleCurrentlyReading = (storyId: string) => {
@@ -4028,6 +4038,14 @@ export default function App() {
                       }}
                       onStartWriting={() => setActiveTab(currentUser?.role !== 'Lecteur' ? 'write' : 'profile')}
                     />
+                  )}
+
+                  {activeTab === 'library' && (
+                    <LibraryView key={currentUser!.id} currentUser={currentUser!} stories={allowedStories}
+                      favorites={favorites} currentlyReading={currentlyReading} readLater={readLater} completedStories={completedStories}
+                      onSelectStory={story => { setStartChapterIndex(null); handleSelectStoryForReading(story, { force: true }); }}
+                      onDiscover={() => { setActiveFilter(null); setActiveTab('explore'); }}
+                      onToggleFavorite={handleToggleFavorite} onSetStatus={handleSetLibraryStatus} />
                   )}
 
                   {activeTab === 'explore' && (

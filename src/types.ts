@@ -69,6 +69,7 @@ export interface Chapter {
   title: string;
   content: string;
   publishDate: string;
+  publishedAt?: string;
   isPublished: boolean;
   order?: number;
   views: number;

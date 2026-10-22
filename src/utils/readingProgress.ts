@@ -28,6 +28,10 @@ function readAll(userId?: string): Record<string, BookProgress> {
   }
 }
 
+export function getSavedBookProgress(userId: string): Record<string, BookProgress> {
+  return readAll(userId);
+}
+
 export function getBookProgress(userId: string | undefined, storyId: string): BookProgress | null {
   return readAll(userId)[storyId] || null;
 }

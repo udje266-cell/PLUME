@@ -14,6 +14,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
+import { registerLibraryRoutes } from './src/server/library';
 import { redis } from './src/server/redis';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { recommendStories, weightsForDiscovery, explorationRatioForDiscovery } from './src/utils/recommendation';
@@ -6425,7 +6426,7 @@ export async function createServerInstance() {
       const last = await prisma.readingProgress.findFirst({
         where: { userId: req.user.id, storyId: req.params.storyId, chapter: { isPublished: true } },
         orderBy: { lastReadAt: 'desc' },
-        select: { chapterId: true, progressPercent: true, lastReadAt: true },
+        select: { chapterId: true, progressPercent: true, paragraphIndex: true, lastReadAt: true },
       });
       res.json(last || null);
     } catch (error) {
@@ -6437,6 +6438,8 @@ export async function createServerInstance() {
   // ----- État de lecture partagé entre appareils (app native ↔ PWA) -----
   // Listes de lecture + chapitres réellement lus, en une seule requête au
   // démarrage. Le client FUSIONNE (union) avec son état local.
+  registerLibraryRoutes(app, prisma, requireAuth, io);
+
   app.get('/api/me/reading-state', requireAuth, async (req: any, res) => {
     try {
       const [entries, reads] = await Promise.all([
@@ -6694,13 +6697,17 @@ export async function createServerInstance() {
       if (!chapter.isPublished && chapter.story?.authorId !== req.user.id && req.user.role !== 'Administrateur') {
         return res.status(404).json({ error: 'Chapitre non trouvé' });
       }
-      const rawPercent = Number(req.body.progressPercent);
+      const paragraphIndex = req.body?.paragraphIndex ?? null;
+      if (paragraphIndex !== null && (!Number.isInteger(paragraphIndex) || paragraphIndex < 0 || paragraphIndex > 1_000_000)) {
+        return res.status(400).json({ error: 'Position de paragraphe invalide.' });
+      }
+      const rawPercent = Number(req.body?.progressPercent);
       // Number.isFinite : NaN traversait Math.min/max et finissait en base.
       const progressPercent = Number.isFinite(rawPercent) ? Math.min(100, Math.max(0, rawPercent)) : 0;
       const progress = await prisma.readingProgress.upsert({
         where: { userId_storyId_chapterId: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id } },
-        update: { progressPercent, lastReadAt: new Date() },
-        create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent },
+        update: { progressPercent, paragraphIndex, lastReadAt: new Date() },
+        create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent, paragraphIndex },
         include: { story: true, chapter: true },
       });
       io.emit('reading_progress_changed');

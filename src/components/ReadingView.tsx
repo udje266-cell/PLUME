@@ -1,3 +1,4 @@
+import { escapeText, sanitizeInlineHtml, plainFromHtml, contentToParagraphs } from '../utils/chapterParagraphs';
 import LiveReadingProgress from './LiveReadingProgress';
 /**
  * @license
@@ -67,47 +68,6 @@ import { Media } from '@capacitor-community/media';
 // souligne). Le contenu peut etre du HTML leger (nouveaux chapitres ecrits dans
 // l'editeur WYSIWYG) ou du texte simple (anciens chapitres). On NE GARDE que les
 // balises inline sures pour eviter toute injection.
-function escapeText(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-function sanitizeInlineHtml(html: string): string {
-  return html.replace(/<(\/?)([a-zA-Z0-9]+)[^>]*>/g, (_m, slash, tag) => {
-    const t = String(tag).toLowerCase();
-    return ['b', 'strong', 'i', 'em', 'u', 'br'].includes(t) ? `<${slash}${t}>` : '';
-  });
-}
-function plainFromHtml(html: string): string {
-  if (typeof document === 'undefined') return html.replace(/<[^>]+>/g, '');
-  const d = document.createElement('div');
-  d.innerHTML = html;
-  return d.textContent || '';
-}
-function contentToParagraphs(content: string): { html: string; text: string }[] {
-  if (!content) return [];
-  const hasHtml = /<\/?(b|strong|i|em|u|div|p|br|span|hr|h[1-6]|li|ul|ol|blockquote|table)\b/i.test(content);
-  if (!hasHtml) {
-    return content.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean)
-      .map((t) => ({ html: escapeText(t).replace(/\n/g, '<br>'), text: t }));
-  }
-  const s = content
-    // Structures riches (import Word) rendues avec des équivalents SÛRS :
-    // titres → paragraphes en gras, éléments de liste → puces, tableaux →
-    // cellules espacées. Avant, ces balises étaient simplement supprimées et
-    // leur texte se collait au paragraphe suivant.
-    .replace(/<h[1-6][^>]*>/gi, '\n<strong>')
-    .replace(/<\/h[1-6]>/gi, '</strong>\n')
-    .replace(/<li[^>]*>/gi, '\n• ')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<\/?(ul|ol|blockquote|table|thead|tbody|tr)[^>]*>/gi, '\n')
-    .replace(/<\/?t[dh][^>]*>/gi, ' ')
-    .replace(/<\/(div|p)>/gi, '\n')
-    .replace(/<(div|p)[^>]*>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<hr\s*\/?>/gi, '\n* * *\n');
-  return s.split(/\n+/).map((l) => l.trim()).filter(Boolean)
-    .map((l) => ({ html: sanitizeInlineHtml(l), text: plainFromHtml(l).trim() }));
-}
-
 interface ReadingViewProps {
   story: Story;
   onBack: () => void;
@@ -458,7 +418,6 @@ export default function ReadingView({
   });
   // Suivi de la progression de lecture réelle (défilement) pour CE récit.
   const readerRootRef = useRef<HTMLDivElement>(null);
-  const restoredScrollRef = useRef(false);
 
   // Téléchargement hors-ligne de ce récit.
   const [downloaded, setDownloaded] = useState<boolean>(() => isDownloaded(story.id));
@@ -883,7 +842,7 @@ export default function ReadingView({
   // Envoi débouncé (4 s) du chapitre courant + % de défilement vers
   // /api/chapters/:id/progress (table ReadingProgress, jusqu'ici jamais
   // alimentée par le client). Silencieux hors-ligne : la position locale reste.
-  const progressSyncRef = useRef<{ chapterId: string; percent: number } | null>(null);
+  const progressSyncRef = useRef<{ chapterId: string; percent: number; paragraphIndex: number } | null>(null);
   const progressSyncTimerRef = useRef<any>(null);
   const flushProgressSync = React.useCallback(() => {
     const p = progressSyncRef.current;
@@ -893,7 +852,7 @@ export default function ReadingView({
     fetch(`/api/chapters/${p.chapterId}/progress`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ progressPercent: p.percent }),
+      body: JSON.stringify({ progressPercent: p.percent, paragraphIndex: p.paragraphIndex }),
     }).catch(() => { /* hors-ligne : la position locale suffit en attendant */ });
   }, []);
   const scheduleProgressSync = React.useCallback(() => {
@@ -917,7 +876,7 @@ export default function ReadingView({
         fetch(`/api/chapters/${p.chapterId}/progress`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ progressPercent: p.percent }),
+          body: JSON.stringify({ progressPercent: p.percent, paragraphIndex: p.paragraphIndex }),
           keepalive: true,
         }).catch(() => {});
       } catch { /* ignore */ }
@@ -1059,7 +1018,7 @@ export default function ReadingView({
         // sur n'importe quel appareil.
         const curCh = story.chapters[chapterIdxRef.current];
         if (curCh && curCh.id !== '__empty__') {
-          progressSyncRef.current = { chapterId: curCh.id, percent: chapterParaFraction(curPara, chapParaCount) };
+          progressSyncRef.current = { chapterId: curCh.id, percent: chapterParaFraction(curPara, chapParaCount), paragraphIndex: curPara };
           scheduleProgressSync();
         }
 
@@ -1095,8 +1054,8 @@ export default function ReadingView({
     // Reprise de la position au premier affichage de ce livre. On ré-applique
     // plusieurs fois pour absorber le rendu progressif (images, polices) afin
     // d'atterrir EXACTEMENT là où l'on s'était arrêté.
-    if (!restoredScrollRef.current) {
-      restoredScrollRef.current = true;
+    // Re-schedule after effect cleanup (React StrictMode cancels the first timers).
+    {
       const saved = getBookProgress(currentUser.id, story.id);
       const hasPara = saved && typeof saved.paragraphIndex === 'number' && saved.paragraphIndex > 0;
       if (saved && (hasPara || saved.scrollRatio > 0.01)) {
@@ -1179,7 +1138,7 @@ export default function ReadingView({
         // reconvertit en index de paragraphe pour reprendre au paragraphe près.
         const meta = paraMetaRef.current;
         const chapParaCount = meta.counts[idx] || 1;
-        const targetPara = paragraphFromChapterFraction(ratio, chapParaCount);
+        const targetPara = Number.isInteger(sp.paragraphIndex) && sp.paragraphIndex >= 0 ? Math.min(chapParaCount - 1, sp.paragraphIndex) : paragraphFromChapterFraction(ratio, chapParaCount);
         const percent = bookPercentFromParagraph(meta, idx, targetPara);
         // On écrit la position serveur dans le stockage local : les prochaines
         // ouvertures passeront par le chemin de reprise habituel.

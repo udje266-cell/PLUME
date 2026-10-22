@@ -9,12 +9,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Compass, PenTool, MessageSquare, Trophy, ShieldCheck, Search, Bell, Sun, Moon } from 'lucide-react';
+import { Home, Compass, PenTool, MessageSquare, Trophy, ShieldCheck, Search, Bell, Sun, Moon, LibraryBig } from 'lucide-react';
 import { User, AppNotification } from '../types';
 import Logo from './Logo';
 import { VerifiedBadge } from './VerifiedBadge';
 
-type Tab = 'home' | 'explore' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
+type Tab = 'home' | 'explore' | 'library' | 'write' | 'messages' | 'profile' | 'admin' | 'achievements';
 
 interface TopNavProps {
   activeTab: Tab;
@@ -57,6 +57,7 @@ export default function TopNav({
 
   const links: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'home', label: 'Accueil', icon: <Home className="w-4 h-4" /> },
+    { id: 'library', label: 'Bibliothèque', icon: <LibraryBig className="w-4 h-4" /> },
     { id: 'explore', label: 'Parcourir', icon: <Compass className="w-4 h-4" /> },
     ...((canWrite || isAdmin) ? [{ id: 'write' as Tab, label: 'Écrire', icon: <PenTool className="w-4 h-4" /> }] : []),
     { id: 'messages', label: 'Messages', icon: <MessageSquare className="w-4 h-4" />, badge: unreadMessagesCount },

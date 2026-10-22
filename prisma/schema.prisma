@@ -108,6 +108,7 @@ model User {
   readingProgress   ReadingProgress[]
   readingHistory    ReadingHistory[]
   readingListEntries ReadingListEntry[]
+  bookCollections   BookCollection[]
   chapterReads      ChapterRead[]
   savedQuotes       SavedQuote[]
   likes             StoryLike[]
@@ -160,6 +161,7 @@ model Story {
   ratings        StoryRating[]
   favorites      Favorite[]
   readingProgress ReadingProgress[]
+  collectionBooks CollectionBook[]
   readingHistory ReadingHistory[]
   chapterReads   ChapterRead[]
 
@@ -396,6 +398,7 @@ model ReadingProgress {
   storyId         String
   chapterId       String
   progressPercent Float    @default(0)
+  paragraphIndex  Int?
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   story           Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   chapter         Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
@@ -756,4 +759,28 @@ model PassageLike {
 
   @@unique([userId, chapterId, paragraphIndex])
   @@index([chapterId])
+}
+
+// Private shelves, owned by a reader and shared between their devices.
+model BookCollection {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books     CollectionBook[]
+
+  @@unique([userId, name])
+}
+
+model CollectionBook {
+  collectionId String
+  storyId      String
+  addedAt      DateTime @default(now())
+  collection   BookCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  story        Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, storyId])
+  @@index([storyId])
 }
