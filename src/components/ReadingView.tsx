@@ -42,12 +42,15 @@ import {
   Download,
   Palette,
   Share2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  List, ScrollText, Settings,
 } from 'lucide-react';
 import { Story, Chapter, Comment, User } from '../types';
 import { downloadBook, isDownloaded, removeDownload } from '../utils/offline';
 import { getBookProgress, saveBookProgress, getScrollParent, buildParaMeta, bookPercentFromParagraph, chapterParaFraction, paragraphFromChapterFraction } from '../utils/readingProgress';
 import { authHeaders } from '../utils/auth';
+import { ReaderPrefs, DEFAULT_READER_PREFS, sanitizeReaderPrefs, resolveTheme, fontCss, MARGIN_PX, PARA_GAP_EM } from '../utils/readerPrefs';
+import ReaderSettingsSheet from './ReaderSettingsSheet';
 import { chapterMinutes, formatMinutes } from '../utils/readingTime';
 import { spatializeElement, makeOrbitPanner, type SpatialHandle } from '../utils/spatialAudio';
 import { ttsSupported, loadVoices, pickFrenchVoice, speakText, speakNeural, neuralTtsAvailable, unlockNeuralAudio, ttsCancel } from '../utils/tts';
@@ -111,7 +114,7 @@ interface ReadingViewProps {
   onToggleFeatured?: (storyId: string) => void;
   onFollowAuthor: (authorId: string) => void;
   comments: Comment[];
-  onAddComment: (chapterId: string, content: string) => void;
+  onAddComment: (chapterId: string, content: string, paragraphIndex?: number | null) => void;
   onLikeComment: (commentId: string) => void;
   onAddReply: (commentId: string, content: string) => void;
   onDeleteComment: (commentId: string) => void;
@@ -501,37 +504,27 @@ export default function ReadingView({
   // en cours de lecture (taille, thème, interligne, police) était PERDU en
   // fermant le livre — il fallait tout re-régler à chaque session.
   const readingPrefsKey = `plume_reading_prefs_${currentUser.id}`;
-  const savedPrefs = ((): Partial<{ fontSize: number; fontStyle: FontStyleType; lineSpacing: LineSpacingType; readingTheme: ReadingTheme; audiobookEnabled: boolean; audioMini: boolean; speechRate: number }> => {
-    try {
-      const raw = JSON.parse(localStorage.getItem(readingPrefsKey) || '{}') || {};
-      // VALIDATION : des valeurs corrompues (NaN, 999, enum inconnu) cassaient
-      // le rendu jusqu'à re-réglage manuel.
-      const out: any = {};
-      const fs = Number(raw.fontSize);
-      if (Number.isFinite(fs)) out.fontSize = Math.min(32, Math.max(14, Math.round(fs)));
-      if (['serif', 'sans', 'mono'].includes(raw.fontStyle)) out.fontStyle = raw.fontStyle;
-      if (['compact', 'normal', 'relaxed'].includes(raw.lineSpacing)) out.lineSpacing = raw.lineSpacing;
-      if (['light', 'sepia', 'dark', 'dimmed'].includes(raw.readingTheme)) out.readingTheme = raw.readingTheme;
-      if (typeof raw.audiobookEnabled === 'boolean') out.audiobookEnabled = raw.audiobookEnabled;
-      if (typeof raw.audioMini === 'boolean') out.audioMini = raw.audioMini;
-      const sr = Number(raw.speechRate);
-      if (Number.isFinite(sr)) out.speechRate = Math.min(2, Math.max(0.5, sr));
-      return out;
-    } catch { return {}; }
-  })();
-  const [fontSize, setFontSize] = useState<number>(savedPrefs.fontSize ?? prefFontSize); // Font Size Slider (14px - 32px)
-  const [fontStyle, setFontStyle] = useState<FontStyleType>(savedPrefs.fontStyle ?? prefFontStyle); // Typography presets
-  const [lineSpacing, setLineSpacing] = useState<LineSpacingType>(savedPrefs.lineSpacing ?? 'normal');
-  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(savedPrefs.readingTheme ?? prefTheme);
+  const rawSaved = ((): any => { try { return JSON.parse(localStorage.getItem(readingPrefsKey) || '{}') || {}; } catch { return {}; } })();
+  // Préférences d'affichage (thème, police, mise en page, défilement…),
+  // validées et migrées depuis l'ancien format (fontStyle/lineSpacing/readingTheme).
+  const [prefs, setPrefsState] = useState<ReaderPrefs>(() => sanitizeReaderPrefs(rawSaved, {
+    ...DEFAULT_READER_PREFS,
+    fontSize: prefFontSize,
+    theme: prefTheme === 'dark' ? 'oled' : prefTheme === 'dimmed' ? 'graphite' : prefTheme,
+    font: prefFontStyle === 'sans' ? 'roboto' : prefFontStyle === 'mono' ? 'firacode' : 'literata',
+  }));
+  const setPrefs = (patch: Partial<ReaderPrefs>) => setPrefsState((cur) => ({ ...cur, ...patch }));
+  const fontSize = prefs.fontSize;
+  const T = resolveTheme(prefs.theme);
   // « Livre audio » (synthèse vocale). Activable/désactivable, réglable en vitesse.
-  const [audiobookEnabled, setAudiobookEnabled] = useState<boolean>(savedPrefs.audiobookEnabled ?? true);
+  const [audiobookEnabled, setAudiobookEnabled] = useState<boolean>(typeof rawSaved.audiobookEnabled === 'boolean' ? rawSaved.audiobookEnabled : true);
   // Lecteur audio replie en une petite pastille (pour ne pas encombrer l'ecran).
-  const [audioMini, setAudioMini] = useState<boolean>(savedPrefs.audioMini ?? false);
-  const [speechRate, setSpeechRate] = useState<number>(savedPrefs.speechRate ?? 1);
+  const [audioMini, setAudioMini] = useState<boolean>(typeof rawSaved.audioMini === 'boolean' ? rawSaved.audioMini : true);
+  const [speechRate, setSpeechRate] = useState<number>(Number.isFinite(Number(rawSaved.speechRate)) ? Math.min(2, Math.max(0.5, Number(rawSaved.speechRate))) : 1);
   useEffect(() => {
-    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, audioMini, speechRate })); } catch { /* plein */ }
-  }, [fontSize, fontStyle, lineSpacing, readingTheme, audiobookEnabled, audioMini, speechRate, readingPrefsKey]);
-  const [isSettingsExpanded, setIsSettingsExpanded] = useState<boolean>(false);
+    try { localStorage.setItem(readingPrefsKey, JSON.stringify({ ...prefs, audiobookEnabled, audioMini, speechRate })); } catch { /* plein */ }
+  }, [prefs, audiobookEnabled, audioMini, speechRate, readingPrefsKey]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   
   // Interactive Custom controls
   const [isImmersive, setIsImmersive] = useState<boolean>(false);
@@ -540,6 +533,10 @@ export default function ReadingView({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isChaptersOpen, setIsChaptersOpen] = useState(false);
+  // Commentaires d'un paragraphe précis (null = tout le chapitre).
+  const [commentParagraph, setCommentParagraph] = useState<number | null>(null);
+  // Paragraphe dont la barre d'actions (♥, citation, surlignage…) est ouverte.
+  const [toolsIdx, setToolsIdx] = useState<number | null>(null);
   
   // Soundscape
   const [activeSoundscape, setActiveSoundscape] = useState<SoundscapeType>('none');
@@ -1223,6 +1220,7 @@ export default function ReadingView({
 
   // Gérer la sélection manuelle de paragraphe (click)
   const handleParagraphSelect = (pIdx: number) => {
+    setToolsIdx((cur) => (cur === pIdx ? null : pIdx));
     setActiveParagraphIndex(pIdx);
     // Livre audio : taper un paragraphe déplace le point de lecture vocale ; si
     // la narration est en cours, elle reprend depuis ce paragraphe.
@@ -1433,6 +1431,108 @@ export default function ReadingView({
     }
   }, [isCinemaMode]);
 
+  // ── Progression dans le chapitre + temps restant ─────────────────────────
+  const [chapterProgress, setChapterProgress] = useState(0);
+  const chapterWords = React.useMemo(
+    () => plainFromHtml(activeChapter?.content || '').split(/\s+/).filter(Boolean).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeChapter?.id, activeChapter?.content],
+  );
+  const chapterLeftMin = Math.ceil((chapterWords * (1 - chapterProgress)) / 230);
+  useEffect(() => {
+    const scroller = getScrollParent(readerRootRef.current);
+    const target: any = scroller || window;
+    const onScroll = () => {
+      const art = activeChapter ? document.getElementById(`chapter-content-${activeChapter.id}`) : null;
+      if (!art) return;
+      const r = art.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const total = Math.max(1, r.height - vh * 0.5);
+      setChapterProgress(Math.min(1, Math.max(0, (-r.top + vh * 0.25) / total)));
+    };
+    target.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => target.removeEventListener('scroll', onScroll);
+  }, [activeChapter?.id]);
+
+  // ── Défilement automatique (vitesse en mots/minute) ──────────────────────
+  const [autoScrolling, setAutoScrolling] = useState(false);
+  const toggleAutoScroll = () => setAutoScrolling((v) => !v);
+  useEffect(() => {
+    if (!autoScrolling || !activeChapter) return;
+    const scroller = getScrollParent(readerRootRef.current);
+    let raf = 0;
+    let last = 0;
+    let carry = 0;
+    const step = (now: number) => {
+      const art = document.getElementById(`chapter-content-${activeChapter.id}`);
+      if (!last) last = now;
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (art) {
+        const pxPerWord = chapterWords > 0 ? art.scrollHeight / chapterWords : 4;
+        carry += (prefs.autoScrollWpm / 60) * pxPerWord * dt;
+        const px = Math.floor(carry);
+        carry -= px;
+        if (px > 0) { if (scroller) scroller.scrollBy(0, px); else window.scrollBy(0, px); }
+        const r = art.getBoundingClientRect();
+        if (r.bottom < window.innerHeight * 0.55) {
+          if (prefs.autoScrollEnd === 'next' && activeChapterIndex < story.chapters.length - 1) {
+            setActiveChapterIndex(activeChapterIndex + 1);
+          } else {
+            setAutoScrolling(false);
+          }
+          return;
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    // Le lecteur reprend la main dès qu'il fait défiler lui-même.
+    const stop = () => setAutoScrolling(false);
+    window.addEventListener('wheel', stop, { passive: true });
+    window.addEventListener('touchmove', stop, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchmove', stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoScrolling, activeChapter?.id, prefs.autoScrollWpm, prefs.autoScrollEnd]);
+
+  // ── Écran toujours allumé pendant la lecture (Wake Lock API) ─────────────
+  useEffect(() => {
+    if (!prefs.keepAwake) return;
+    let lock: any = null;
+    const request = async () => { try { lock = await (navigator as any).wakeLock?.request('screen'); } catch { /* non supporté */ } };
+    request();
+    const onVis = () => { if (document.visibilityState === 'visible') request(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { document.removeEventListener('visibilitychange', onVis); try { lock?.release(); } catch { /* ignore */ } };
+  }, [prefs.keepAwake]);
+
+  // Charge les « j'aime » de passage du chapitre affiché.
+  useEffect(() => {
+    const chId = activeChapter?.id;
+    if (!chId) return;
+    let cancelled = false;
+    fetch(`/api/passage-likes?chapterId=${encodeURIComponent(chId)}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || cancelled) return;
+        const counts: Record<string, number> = {};
+        Object.entries(d.counts || {}).forEach(([i, n]) => { counts[`${chId}_p_${i}`] = Number(n); });
+        const mine: Record<string, boolean> = {};
+        (d.mine || []).forEach((i: number) => { mine[`${chId}_p_${i}`] = true; });
+        setPassageLikes(prev => ({ ...prev, ...counts }));
+        setLikedPassagesMe(prev => ({ ...prev, ...mine }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeChapter?.id]);
+
+  useEffect(() => { setCommentParagraph(null); setToolsIdx(null); }, [activeChapter?.id]);
+
   // Split chapter text into readable paragraphs
   const paragraphs = activeChapter ? contentToParagraphs(activeChapter.content) : [];
 
@@ -1455,7 +1555,7 @@ export default function ReadingView({
   const handleCommentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim()) return;
-    onAddComment(activeChapter.id, newCommentText);
+    onAddComment(activeChapter.id, newCommentText, commentParagraph);
     setNewCommentText('');
   };
 
@@ -1533,25 +1633,6 @@ export default function ReadingView({
       .catch(() => {});
   };
 
-  // Charge les « j'aime » de passage du chapitre affiché.
-  useEffect(() => {
-    const chId = activeChapter?.id;
-    if (!chId) return;
-    let cancelled = false;
-    fetch(`/api/passage-likes?chapterId=${encodeURIComponent(chId)}`, { headers: authHeaders() })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d || cancelled) return;
-        const counts: Record<string, number> = {};
-        Object.entries(d.counts || {}).forEach(([i, n]) => { counts[`${chId}_p_${i}`] = Number(n); });
-        const mine: Record<string, boolean> = {};
-        (d.mine || []).forEach((i: number) => { mine[`${chId}_p_${i}`] = true; });
-        setPassageLikes(prev => ({ ...prev, ...counts }));
-        setLikedPassagesMe(prev => ({ ...prev, ...mine }));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeChapter?.id]);
 
   const openLyricardCreator = (txt: string) => {
     const activeSelection = window.getSelection()?.toString().trim();
@@ -1976,148 +2057,80 @@ export default function ReadingView({
   };
 
   // Theme styling definitions (V1 & V2 Adapted)
-  const themeClasses: Record<ReadingTheme, string> = {
-    light: 'bg-[#FCFBF8] text-[#1F2937] border-[#ecebf6]',
-    sepia: 'bg-[#F4ECD8] text-[#433422] border-[#E6D4AF]',
-    dimmed: 'bg-[#181824] text-[#E4E4E7] border-[#2c2c3e]',
-    dark: 'bg-[#0A0A0F] text-[#E4E4E7] border-[#1C1C28]',
-  };
-
-  // Background gradient adaptations based on book atmosphere (story.ambiance)
-  const getAmbianceGradient = () => {
-    const spaceMap: Record<string, string> = {
-      'Sombre': 'from-[#0B0C10] via-[#151722] to-[#0A0A0F]',
-      'Lumineux': 'from-[#FCFAF5] via-[#FFFBF5] to-[#FAF6F2]',
-      'Mélancolique': 'from-[#F3F4F7] via-[#E9EBF1] to-[#DEE1E8]',
-      'Captivant': 'from-[#140E1B] via-[#24172C] to-[#12091A]',
-      'Onirique': 'from-[#FAF5FC] via-[#FFF6FC] to-[#FAF2FB]',
-      'Mystérieux': 'from-[#090710] via-[#161226] to-[#08050F]'
-    };
-    
-    // Force dark version if theme is dark/dimmed
-    if (readingTheme === 'dark' || readingTheme === 'dimmed') {
-      if (story.ambiance === 'Lumineux') return 'from-[#0A0A0F] to-[#161722]';
-      if (story.ambiance === 'Mélancolique') return 'from-[#141829] to-[#0E101E]';
-      return spaceMap[story.ambiance] || 'from-[#0F0F14] to-[#0A0A0F]';
-    }
-    
-    // Light versions
-    if (readingTheme === 'light' || readingTheme === 'sepia') {
-      if (story.ambiance === 'Sombre') return 'from-[#FAF8F5] to-[#EBE9E4]';
-      if (story.ambiance === 'Captivant') return 'from-[#FFF8FC] to-[#F5ECEF]';
-      return spaceMap[story.ambiance] || 'from-[#FAF6F0] to-[#FFF9F6]';
-    }
-    
-    return 'from-[#FCFBF8] to-[#FCFBF8]';
-  };
-
-  const fontStyleClasses: Record<FontStyleType, string> = {
-    sans: 'font-sans',
-    serif: 'font-serif tracking-wide',
-    classic: 'font-[Georgia] leading-relaxed tracking-normal',
-    mono: 'font-mono text-xs scale-[0.98] leading-relaxed'
-  };
-
-  const lineSpacingClasses: Record<LineSpacingType, string> = {
-    tight: 'leading-normal p-1',
-    normal: 'leading-relaxed md:leading-loose p-2.5',
-    loose: 'leading-extra-loose md:leading-[2.5rem] p-4'
-  };
-
   // Get metadata block
   const chapterComments = comments.filter(c => c.chapterId === activeChapter.id);
+  const paraCommentCounts: Record<number, number> = {};
+  chapterComments.forEach((c) => { if (typeof c.paragraphIndex === 'number') paraCommentCounts[c.paragraphIndex] = (paraCommentCounts[c.paragraphIndex] || 0) + 1; });
+  // Liste affichée dans le tiroir : un paragraphe précis, ou tout le chapitre.
+  const drawerComments = commentParagraph === null ? chapterComments : chapterComments.filter((c) => c.paragraphIndex === commentParagraph);
 
   return (
-    <div ref={readerRootRef} className={`min-h-screen pb-24 transition-all duration-700 bg-gradient-to-br ${getAmbianceGradient()} ${readingTheme === 'dark' || readingTheme === 'dimmed' ? 'dark text-[#E4E4E7]' : 'text-[#2C3E50]'}`}>
+    <div ref={readerRootRef} className={`min-h-screen pb-24 transition-colors duration-500 ${T.dark ? 'dark' : ''}`} style={{ background: T.bg, color: T.fg }}>
+      {/* Filtre lumière bleue (teinte chaude par-dessus tout le lecteur). */}
+      {prefs.warmth > 0 && <div aria-hidden="true" className="fixed inset-0 pointer-events-none z-[60]" style={{ background: '#ff9a3c', opacity: prefs.warmth * 0.6, mixBlendMode: 'multiply' }} />}
       
-      {/* 1. TOP HEADER NAVIGATION - HIDDEN IN IMMERSIVE MODE */}
+      {/* 1. BARRE DU HAUT (style liseuse) : retour, titre + chapitre, sommaire,
+          défilement auto, livre audio, réglages — et la progression du chapitre. */}
       {!isImmersive && (
-        <div className="sticky top-0 z-30 border-b bg-white/90 dark:bg-black/90 backdrop-blur-md border-slate-200 dark:border-purple-900/10 py-3.5 shadow-xs transition-all animate-fade-in" style={{ paddingTop: 'max(0.875rem, env(safe-area-inset-top))' }}>
-          <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
-            
-            {/* Back button */}
-            <button
-              id="reader-back-btn"
-              onClick={onBack}
-              className="flex items-center space-x-1.5 text-xs font-black uppercase tracking-wider text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Quitter</span>
+        <div className="sticky top-0 z-30 px-3 pb-2" style={{ paddingTop: 'max(0.6rem, env(safe-area-inset-top))', background: `linear-gradient(${T.bg} 70%, ${T.bg}00)` }}>
+          <div className="max-w-3xl mx-auto flex items-center gap-1 rounded-2xl px-1.5 py-1.5 shadow-sm" style={{ background: T.surface, border: `1px solid ${T.line}` }}>
+            <button id="reader-back-btn" onClick={onBack} aria-label="Retour à l’œuvre" className="p-2 rounded-xl" style={{ color: T.fg }}>
+              <ArrowLeft className="w-5 h-5" />
             </button>
-
-            {/* Book metadata dynamic title */}
-            <div className="text-center max-w-[160px] sm:max-w-xs truncate">
-              <span className="text-[9px] uppercase font-bold tracking-widest text-purple-600 dark:text-purple-450 block font-mono">Lecture</span>
-              <h1 className="text-sm font-black font-serif text-gray-900 dark:text-white truncate leading-tight">{story.title}</h1>
+            <div className="flex-1 min-w-0 leading-tight">
+              <p className="text-[13px] font-bold truncate">{story.title}</p>
+              <p className="text-[11px] truncate" style={{ color: T.muted }}>
+                {tomeLabel ? `T${tomeLabel.tomeNumber} · ` : ''}Chapitre {activeChapterIndex + 1}
+                {chapterLeftMin > 0 ? ` · ${chapterLeftMin} min` : ''}
+              </p>
             </div>
-
-            {/* Top Toolbar controls */}
-            <div className="flex items-center space-x-1.5">
-
-              {/* Mise en avant (administrateur uniquement) */}
-              {currentUser.role === 'Administrateur' && onToggleFeatured && (
-                <button
-                  onClick={() => onToggleFeatured(story.id)}
-                  className={`p-2.5 rounded-xl border transition ${
-                    story.featured
-                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-500'
-                      : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-amber-500'
-                  }`}
-                  title={story.featured ? 'Retirer de la une' : 'Mettre ce récit en avant'}
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Téléchargement hors-ligne */}
-              <button
-                id="reader-download-btn"
-                onClick={toggleDownload}
-                className={`p-2.5 rounded-xl border transition ${
-                  downloaded
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-purple-600'
-                }`}
-                title={downloaded ? 'Téléchargé (disponible hors ligne) — appuyer pour retirer' : 'Télécharger pour lire hors ligne'}
-              >
-                {downloaded ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+            {currentUser.role === 'Administrateur' && onToggleFeatured && (
+              <button onClick={() => onToggleFeatured(story.id)} title={story.featured ? 'Retirer de la une' : 'Mettre ce récit en avant'} className="p-2 rounded-xl" style={{ color: story.featured ? '#f59e0b' : T.muted }}>
+                <Sparkles className="w-[18px] h-[18px]" />
               </button>
-
-              {/* Soundscape Control Icon */}
-              <span className="relative">
-                <button
-                  id="active-sound-icon-btn"
-                  onClick={() => {
-                    if (activeSoundscape !== 'none') {
-                      setActiveSoundscape('none');
-                    } else {
-                      setActiveSoundscape('rain');
-                    }
-                  }}
-                  className={`p-2.5 rounded-xl border transition ${
-                    activeSoundscape !== 'none'
-                      ? 'bg-blue-500/10 border-blue-500/20 text-blue-500 font-extrabold rotate-3'
-                      : 'bg-gray-100 dark:bg-zinc-800 text-gray-400 border-gray-200 dark:border-zinc-700 hover:text-blue-500'
-                  }`}
-                  title="Ambiance Sonore Tactile"
-                >
-                  {activeSoundscape !== 'none' ? <Volume2 className="w-4 h-4 animate-bounce" /> : <VolumeX className="w-4 h-4" />}
-                </button>
-              </span>
-              
-              {/* Immersion button toggler */}
-              <button
-                id="toggle-immersive-quick-btn"
-                onClick={() => setIsImmersive(true)}
-                className="p-2.5 rounded-xl bg-gray-100 dark:bg-zinc-800 text-gray-450 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200 dark:border-zinc-700 transition cursor-pointer"
-                title="Passer en mode immersion totale"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
-            </div>
+            )}
+            <button onClick={() => setIsChaptersOpen(true)} aria-label="Chapitres" title="Chapitres" className="p-2 rounded-xl" style={{ color: T.fg }}>
+              <List className="w-[19px] h-[19px]" />
+            </button>
+            <button onClick={toggleAutoScroll} aria-label={autoScrolling ? 'Arrêter le défilement automatique' : 'Lancer le défilement automatique'} title="Défilement automatique" className="p-2 rounded-xl" style={{ color: autoScrolling ? '#fff' : T.fg, background: autoScrolling ? T.accent : 'transparent' }}>
+              <ScrollText className="w-[19px] h-[19px]" />
+            </button>
+            <button id="reader-download-btn" onClick={toggleDownload} title={downloaded ? 'Téléchargé (hors ligne) — appuyer pour retirer' : 'Télécharger pour lire hors ligne'} className="p-2 rounded-xl" style={{ color: downloaded ? '#10b981' : T.fg }}>
+              {downloaded ? <Check className="w-[18px] h-[18px]" /> : <Download className="w-[18px] h-[18px]" />}
+            </button>
+            <button onClick={() => setIsSettingsOpen(true)} aria-label="Réglages d’affichage" title="Réglages d’affichage" className="p-2 rounded-xl" style={{ color: T.fg }}>
+              <Settings className="w-[19px] h-[19px]" />
+            </button>
+          </div>
+          {/* Progression dans le chapitre */}
+          <div className="max-w-3xl mx-auto mt-1.5 h-[3px] rounded-full overflow-hidden" style={{ background: T.line }}>
+            <div className="h-full rounded-full transition-[width] duration-150" style={{ width: `${Math.round(chapterProgress * 100)}%`, background: T.accent }} />
           </div>
         </div>
       )}
+
+      <ReaderSettingsSheet
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        prefs={prefs}
+        setPrefs={setPrefs}
+        onReset={() => setPrefsState({ ...DEFAULT_READER_PREFS })}
+        theme={T}
+        autoScrolling={autoScrolling}
+        onToggleAutoScroll={toggleAutoScroll}
+        soundscape={activeSoundscape}
+        setSoundscape={setActiveSoundscape}
+        soundVolume={soundVolume}
+        setSoundVolume={setSoundVolume}
+        spatialAudioOn={spatialAudioOn}
+        setSpatialAudioOn={setSpatialAudioOn}
+        cinema={isCinemaMode}
+        setCinema={setIsCinemaMode}
+        audiobookEnabled={audiobookEnabled}
+        setAudiobookEnabled={setAudiobookEnabled}
+        speechRate={speechRate}
+        setSpeechRate={setSpeechRate}
+      />
 
       {/* 2. FLOATING FLOATING IMMERSIVE CLOSE TOOL - SHOWN EXCLUSIVELY DURING FOCUS/IMMERSIVE MODE */}
       {isImmersive && (
@@ -2238,266 +2251,9 @@ export default function ReadingView({
         document.body,
       )}
 
-      {/* 3. MULTI-LAYER READING BOARD CHASSIS */}
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 relative">
-        
-        {/* UPPER CONTROLS AND CUSTOMIZATION ZONE (HIDDEN DURING IMMERSION) */}
-        {!isImmersive && (
-          <div className="bg-white/80 dark:bg-zinc-900/40 backdrop-blur-md rounded-2xl border border-gray-150 dark:border-zinc-800/60 shadow-xs animate-fade-in text-left overflow-hidden">
-            {/* Collapsible Header */}
-            <button
-              onClick={() => setIsSettingsExpanded(!isSettingsExpanded)}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50/50 dark:hover:bg-zinc-850/30 transition-all focus:outline-hidden select-none cursor-pointer"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span className="font-sans font-black text-[10px] text-gray-850 dark:text-gray-200 uppercase tracking-widest">
-                  Ambiance & Options de lecture
-                </span>
-                
-                {activeSoundscape !== 'none' && (
-                  <span className="bg-purple-500/15 text-purple-600 dark:text-purple-300 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full animate-pulse font-mono">
-                    Ambiance: {activeSoundscape}
-                  </span>
-                )}
-                
-                <span className="bg-purple-500/10 text-purple-600 dark:text-purple-300 text-[8.5px] font-bold px-2 py-0.5 rounded font-mono">
-                  {fontSize}px
-                </span>
-
-                <span className="bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 text-[8.5px] font-bold px-2 py-0.5 rounded uppercase font-mono">
-                  {fontStyle}
-                </span>
-
-                {isCinemaMode && (
-                  <span className="bg-purple-600/15 text-purple-600 dark:text-purple-400 text-[8.5px] font-black px-2 py-0.5 rounded uppercase">
-                    Cinéma
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex items-center space-x-1.5 text-gray-400 dark:text-gray-500 shrink-0">
-                <span className="text-[9px] uppercase font-black tracking-wider hidden sm:inline font-sans">
-                  {isSettingsExpanded ? "Réduire" : "Déployer"}
-                </span>
-                {isSettingsExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-purple-650" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-              </div>
-            </button>
-
-            {/* Collapsible Content Body */}
-            {isSettingsExpanded && (
-              <div className="p-4 pt-2 border-t border-gray-100 dark:border-zinc-800/80 space-y-4 animate-slide-down">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  
-                  {/* Soundscape presets panel */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] uppercase font-mono tracking-widest text-purple-600 dark:text-purple-400 font-bold flex items-center space-x-1">
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>Ambiance Sonore Harmonique</span>
-                    </span>
-                    <div className="grid grid-cols-3 gap-1 select-none">
-                      {[
-                        { id: 'none', label: 'Silence' },
-                        { id: 'rain', label: '🌧️ Pluie' },
-                        { id: 'forest', label: '🌲 Forêt' },
-                        { id: 'fireplace', label: '🔥 Foyer' },
-                        { id: 'library', label: '🏛️ Salon' },
-                        { id: 'ocean', label: '🌊 Océan' },
-                        { id: 'breeze', label: '🍃 Vent' },
-                      ].map((preset) => (
-                        <button
-                          key={preset.id}
-                          id={`soundscape-select-${preset.id}`}
-                          onClick={() => setActiveSoundscape(preset.id as SoundscapeType)}
-                          className={`py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer ${
-                            activeSoundscape === preset.id
-                              ? 'bg-blue-600 text-white shadow-xs font-black'
-                              : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-purple-600'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {activeSoundscape !== 'none' && (
-                      <div className="flex items-center space-x-2 pt-1">
-                        <span className="text-[9.5px] font-bold text-gray-400">Volume :</span>
-                        <input
-                          id="sound-volume-slider"
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={soundVolume}
-                          onChange={(e) => setSoundVolume(parseFloat(e.target.value))}
-                          className="flex-1 accent-purple-600 bg-gray-200 h-1 rounded"
-                        />
-                        <span className="text-[9.5px] font-mono text-gray-400 font-bold font-mono">{~~(soundVolume * 100)}%</span>
-                      </div>
-                    )}
-
-                    {/* Son immersif 3D (HRTF) — la source tourne autour de soi. */}
-                    <button
-                      type="button"
-                      id="spatial-audio-toggle"
-                      onClick={() => setSpatialAudioOn((v) => !v)}
-                      className={`w-full flex items-center justify-between gap-2 py-1.5 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer mt-1 ${
-                        spatialAudioOn
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-purple-600'
-                      }`}
-                      title="Son spatialisé pour casque et écouteurs"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Headphones className="w-3.5 h-3.5" />
-                        <span>Son immersif 3D</span>
-                      </span>
-                      <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase ${spatialAudioOn ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
-                        {spatialAudioOn ? 'Casque' : 'Off'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Advanced Customizations */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] uppercase font-mono tracking-widest text-[#7C3AED] dark:text-purple-400 font-bold flex items-center space-x-1">
-                      <Sliders className="w-3.5 h-3.5" />
-                      <span>Personnalisation Avancée</span>
-                    </span>
-                    
-                    {/* Font families */}
-                    <div className="flex items-center justify-between gap-1.5 pb-1">
-                      <span className="text-[10px] font-bold text-gray-400">Police:</span>
-                      <div className="flex gap-1">
-                        {(['sans', 'serif', 'classic', 'mono'] as FontStyleType[]).map((f) => (
-                          <button
-                            key={f}
-                            id={`font-family-select-${f}`}
-                            onClick={() => setFontStyle(f)}
-                            className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition leading-none cursor-pointer ${
-                              fontStyle === f
-                                ? 'bg-purple-600 text-white shadow-xs'
-                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-500'
-                            }`}
-                          >
-                            {f === 'sans' ? 'Inter' : f === 'serif' ? 'Serif' : f === 'classic' ? 'Georgia' : 'Mono'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Font Sizing Slider */}
-                    <div className="flex items-center space-x-2 pb-1">
-                      <span className="text-[10px] font-bold text-gray-400">Taille:</span>
-                      <input
-                        id="font-size-slider"
-                        type="range"
-                        min="14"
-                        max="32"
-                        value={fontSize}
-                        onChange={(e) => setFontSize(parseInt(e.target.value))}
-                        className="flex-1 accent-purple-600 bg-gray-200 h-1 rounded"
-                      />
-                      <span className="text-[10px] font-mono text-gray-450 font-bold">{fontSize}px</span>
-                    </div>
-
-                    {/* Line spacing heights */}
-                    <div className="flex items-center justify-between gap-1.5">
-                      <span className="text-[10px] font-bold text-gray-400">Interligne:</span>
-                      <div className="flex gap-1">
-                        {(['tight', 'normal', 'loose'] as LineSpacingType[]).map((sp) => (
-                          <button
-                            key={sp}
-                            id={`line-spacing-select-${sp}`}
-                            onClick={() => setLineSpacing(sp)}
-                            className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition leading-none cursor-pointer ${
-                              lineSpacing === sp
-                                ? 'bg-purple-600 text-white shadow-xs'
-                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-500'
-                            }`}
-                          >
-                            {sp === 'tight' ? 'Étroit' : sp === 'normal' ? 'Normal' : 'Spacieux'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* Quick interactive Mode Activators */}
-                <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-wrap gap-2 justify-between items-center text-[11px]">
-                  {/* Cinema Mode switch box */}
-                  <button
-                    id="toggle-cinema-mode-btn"
-                    onClick={() => setIsCinemaMode(!isCinemaMode)}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border font-bold transition select-none cursor-pointer ${
-                      isCinemaMode
-                        ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-sm'
-                        : 'bg-gray-100 dark:bg-zinc-800/70 border-gray-200 dark:border-zinc-705 text-gray-550'
-                    }`}
-                    title="Le texte environnant s'estompe pour focaliser votre pensée."
-                  >
-                    <span>🎬 Mode Cinéma</span>
-                    <span className={`text-[9px] py-0.2 px-1 rounded uppercase ${isCinemaMode ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
-                      {isCinemaMode ? 'Actif' : 'Désactivé'}
-                    </span>
-                  </button>
-
-                  {/* Livre audio (synthese vocale) : activation/desactivation. */}
-                  {(
-                    <button
-                      id="toggle-audiobook-btn"
-                      onClick={() => setAudiobookEnabled((v) => !v)}
-                      className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border font-bold transition select-none cursor-pointer ${
-                        audiobookEnabled
-                          ? 'bg-[#7C3AED] text-white border-[#7C3AED] shadow-sm'
-                          : 'bg-gray-100 dark:bg-zinc-800/70 border-gray-200 dark:border-zinc-705 text-gray-550'
-                      }`}
-                      title="Écoutez le livre comme un livre audio (lecture vocale)."
-                    >
-                      <Headphones className="w-3.5 h-3.5" />
-                      <span>Livre audio</span>
-                      <span className={`text-[9px] py-0.2 px-1 rounded uppercase ${audiobookEnabled ? 'bg-white/25' : 'bg-gray-200 dark:bg-zinc-700'}`}>
-                        {audiobookEnabled ? 'Activé' : 'Désactivé'}
-                      </span>
-                    </button>
-                  )}
-
-                  {/* Reading Theme Selectors list */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-bold text-gray-400 mr-1.5">Papier :</span>
-                    {(['light', 'sepia', 'dimmed', 'dark'] as const).map((t) => (
-                      <button
-                        key={t}
-                        id={`custom-read-theme-${t}`}
-                        onClick={() => setReadingTheme(t)}
-                        className={`px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider rounded-lg border transition cursor-pointer ${
-                          t === 'light' ? 'bg-[#FCFBF8] text-[#1F2937] border-gray-200' :
-                          t === 'sepia' ? 'bg-[#F4ECD8] text-[#433422] border-[#E6D4AF]' :
-                          t === 'dimmed' ? 'bg-[#181824] text-[#E4E4E7] border-gray-700' :
-                          'bg-[#0A0A0F] text-[#E4E4E7] border-gray-800'
-                        } ${readingTheme === t ? 'ring-2 ring-purple-600 scale-102 font-black' : 'opacity-75 hover:opacity-100'}`}
-                      >
-                        {t === 'light' ? 'Jour' : t === 'sepia' ? 'Sépia' : t === 'dimmed' ? 'Dim' : 'Nuit'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {/* 4. MAIN READING PAPER PAD WITH ADVANCED CONFIGURATIONS */}
-        <main className={`p-6 md:p-12 rounded-[2.5rem] border shadow-md transition-all duration-700 ${themeClasses[readingTheme]} ${isImmersive ? 'ring-0 border-none bg-transparent shadow-none py-16' : ''}`}>
+      {/* 3. PAGE DE LECTURE : texte pleine largeur, sans cadre (style liseuse). */}
+      <div className="max-w-3xl mx-auto py-4 relative" style={{ paddingLeft: MARGIN_PX[prefs.margins], paddingRight: MARGIN_PX[prefs.margins] }}>
+        <main className={`transition-all duration-500 ${isImmersive ? 'py-16' : ''}`}>
 
           {!hasChapters && (
             <div className="text-center py-16 px-4">
@@ -2536,11 +2292,41 @@ export default function ReadingView({
             )}
           </div>
 
+          {/* Carte « Lecture audio » en tête de chapitre (comme sur les liseuses). */}
+          {audiobookEnabled && !isImmersive && hasChapters && (
+            <div className="mb-8 rounded-2xl p-4 flex items-center gap-3" style={{ background: T.surface, border: `1px solid ${T.line}` }}>
+              <button
+                type="button"
+                onClick={toggleAudiobook}
+                aria-label={isSpeaking ? 'Mettre en pause' : 'Écouter ce chapitre'}
+                className="w-12 h-12 rounded-full flex items-center justify-center text-white shrink-0 shadow-md"
+                style={{ background: T.accent }}
+              >
+                {isSpeaking ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: T.accent }}>Lecture audio</p>
+                <p className="text-[14px] font-semibold leading-tight">{isSpeaking ? 'Lecture en cours…' : 'Écouter ce chapitre'}</p>
+                <p className="text-[11px]" style={{ color: T.muted }}>Le texte se surligne au fil de la voix{neuralReady ? ' · voix naturelle' : ''}.</p>
+              </div>
+              <select
+                value={speechRate}
+                onChange={(e) => setSpeechRate(Number(e.target.value))}
+                aria-label="Vitesse de lecture"
+                className="rounded-xl text-[12px] font-bold px-2 py-1.5 outline-none"
+                style={{ background: T.bg, color: T.fg, border: `1px solid ${T.line}` }}
+              >
+                {[0.75, 1, 1.25, 1.5, 2].map((r) => <option key={r} value={r}>{String(r).replace('.', ',')}×</option>)}
+              </select>
+            </div>
+          )}
+
           {/* CINEMA AND TEXT DISPLAY LAYOUT */}
           <article 
             id={`chapter-content-${activeChapter.id}`}
-            className={`text-left select-text ${fontStyleClasses[fontStyle]} ${lineSpacingClasses[lineSpacing]}`}
-            style={{ fontSize: `${fontSize}px` }}
+            className="select-text"
+            style={{ fontSize: `${prefs.fontSize}px`, fontFamily: fontCss(prefs.font), lineHeight: prefs.lineHeight, textAlign: prefs.align, hyphens: prefs.align === 'justify' ? 'auto' : 'manual', WebkitHyphens: prefs.align === 'justify' ? 'auto' : 'manual' } as React.CSSProperties}
+            lang="fr"
           >
             {paragraphs.map((para, pIdx) => {
               const pText = para.text;
@@ -2556,19 +2342,34 @@ export default function ReadingView({
                   id={`p-idx-${pIdx}`}
                   data-paragraph-index={pIdx}
                   onClick={() => handleParagraphSelect(pIdx)}
-                  style={ann?.color ? { backgroundColor: `${ann.color}2e`, boxShadow: `inset 3px 0 0 ${ann.color}` } : undefined}
-                  className={`relative group rounded-xl transition-all duration-500 cursor-pointer mb-6 ${
-                    isCinemaMode
-                      ? (isPFocus
-                        ? 'opacity-100 scale-[1.01] bg-purple-500/5 dark:bg-purple-950/10 p-4 shadow-sm'
-                        : 'opacity-15 blur-[0.4px] hover:opacity-40 select-none scale-[0.98]'
-                        )
-                      : (isPFocus
-                        ? 'bg-purple-500/5 dark:bg-purple-950/5 border-l-4 border-purple-550/60 p-3.5'
-                        : 'hover:bg-gray-100/30 dark:hover:bg-zinc-800/10 p-2 rounded-lg'
-                        )
+                  style={{
+                    marginBottom: `${PARA_GAP_EM[prefs.paraSpacing]}em`,
+                    paddingRight: 30,
+                    ...(ann?.color ? { backgroundColor: `${ann.color}2e`, boxShadow: `inset 3px 0 0 ${ann.color}`, paddingLeft: 8, borderRadius: 6 } : {}),
+                    ...(isSpeaking && isPFocus ? { backgroundColor: `${T.accent}1f`, borderRadius: 6 } : {}),
+                  }}
+                  className={`relative transition-all duration-500 cursor-pointer ${
+                    isCinemaMode ? (isPFocus ? 'opacity-100' : 'opacity-20 blur-[0.4px] select-none') : ''
                   }`}
                 >
+                  {/* Bulle de commentaires dans la marge (comme sur les liseuses web). */}
+                  {!isImmersive && (() => {
+                    const n = paraCommentCounts[pIdx] || 0;
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setCommentParagraph(pIdx); setIsCommentsOpen(true); }}
+                        aria-label={n ? `Voir les ${n} commentaires de ce paragraphe` : 'Commenter ce paragraphe'}
+                        className="absolute right-0 top-1 flex flex-col items-center gap-0.5"
+                        style={{ opacity: n ? 1 : (isPFocus ? 0.7 : 0.22) }}
+                      >
+                        <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: n ? T.accent : T.surface, color: n ? '#fff' : T.muted }}>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </span>
+                        {n > 0 && <span className="text-[10px] font-bold leading-none" style={{ color: T.muted }}>{n}</span>}
+                      </button>
+                    );
+                  })()}
                   {/* Indicateur de note perso : petite pastille cliquable. */}
                   {ann?.note && !isImmersive && (
                     <button
@@ -2582,7 +2383,7 @@ export default function ReadingView({
                   )}
                   {/* Floating discrete react toolbar next to hovered/focused paragraph */}
                   {!isImmersive && (
-                    <div className={`absolute right-2 -bottom-2 z-10 items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in ${isPFocus ? 'flex' : 'hidden group-hover:flex'}`}>
+                    <div className={`absolute right-8 -bottom-3 z-10 items-center space-x-1.5 bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-full py-1 px-2.5 text-[10px] shadow-md animate-fade-in ${toolsIdx === pIdx ? 'flex' : 'hidden'}`}>
                       {/* Like paragraph line (hidden in Cinema mode) */}
                       {!isCinemaMode && (
                         <>
@@ -2651,7 +2452,7 @@ export default function ReadingView({
                   )}
 
                   <p
-                    className="indent-4 leading-relaxed font-serif whitespace-pre-wrap break-words"
+                    className="whitespace-pre-wrap break-words"
                     dangerouslySetInnerHTML={{ __html: para.html }}
                   />
                   
@@ -2997,7 +2798,7 @@ export default function ReadingView({
         <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-stretch lg:justify-end animate-fade-in text-left">
           <div 
             className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-            onClick={() => setIsCommentsOpen(false)}
+            onClick={() => { setIsCommentsOpen(false); setCommentParagraph(null); }}
           />
           
           <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] lg:rounded-t-none lg:rounded-l-2xl shadow-2xl border-t lg:border-t-0 lg:border-l border-gray-150 dark:border-purple-900/20 flex flex-col h-[82vh] lg:h-full lg:max-w-md transition-transform animate-slide-up overflow-hidden">
@@ -3005,15 +2806,21 @@ export default function ReadingView({
 
             <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between font-sans">
               <div className="text-left">
-                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] font-bold">Retour sur ce chapitre</span>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] font-bold">{commentParagraph === null ? 'Retour sur ce chapitre' : `Paragraphe ${commentParagraph + 1}`}</span>
                 <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white mt-0.5">
-                  Commentaires ({chapterComments.length})
+                  Commentaires ({drawerComments.length})
                 </h3>
+                {commentParagraph !== null && (
+                  <>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 italic max-w-xs">« {plainFromHtml(paragraphs[commentParagraph]?.html || '').slice(0, 140)} »</p>
+                    <button onClick={() => setCommentParagraph(null)} className="text-[10px] font-bold text-purple-600 mt-1">Voir tout le chapitre ({chapterComments.length})</button>
+                  </>
+                )}
               </div>
               
               <button
                 id="close-comments-drawer"
-                onClick={() => setIsCommentsOpen(false)}
+                onClick={() => { setIsCommentsOpen(false); setCommentParagraph(null); }}
                 className="p-1 text-xs font-black text-gray-550"
               >
                 Fermer
@@ -3021,7 +2828,7 @@ export default function ReadingView({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 pb-20 scrollbar-none">
-              {chapterComments.length === 0 ? (
+              {drawerComments.length === 0 ? (
                 <div className="text-center py-16 px-4">
                   <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-3">
                     <MessageCircle className="w-6 h-6 text-[#7C3AED]" />
@@ -3032,7 +2839,7 @@ export default function ReadingView({
                   </p>
                 </div>
               ) : (
-                chapterComments.map((com) => (
+                drawerComments.map((com) => (
                   <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2shadow-xs">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">

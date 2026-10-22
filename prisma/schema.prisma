@@ -291,6 +291,8 @@ model Comment {
   chapterId String
   userId    String
   content   String
+  // Paragraphe commenté (null = commentaire sur le chapitre entier).
+  paragraphIndex Int?
   likes     Int      @default(0)
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)

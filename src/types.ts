@@ -100,6 +100,7 @@ export interface Comment {
   id: string;
   storyId: string;
   chapterId: string;
+  paragraphIndex?: number | null;
   userId: string;
   username: string;
   avatar: string;

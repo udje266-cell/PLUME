@@ -2590,7 +2590,7 @@ export default function App() {
 
 
   // Comments management
-  const handleAddComment = (chapterId: string, content: string) => {
+  const handleAddComment = (chapterId: string, content: string, paragraphIndex?: number | null) => {
     if (!selectedStoryForReading) return;
 
     const newComment: Comment = {
@@ -2601,6 +2601,7 @@ export default function App() {
       username: currentUser.username,
       avatar: currentUser.avatar,
       content,
+      paragraphIndex: paragraphIndex ?? null,
       date: new Date().toISOString(),
       likes: 0,
       replies: []

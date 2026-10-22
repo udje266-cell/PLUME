@@ -1412,7 +1412,7 @@ export async function createServerInstance() {
     // Images : Cloudinary, avatars Google, data:/blob: (previews locales).
     "img-src 'self' data: blob: https:",
     // Polices : Google Fonts (gstatic) + data:.
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
     // API same-origin + WebSocket (socket.io) + Google.
     "connect-src 'self' https: wss:",
     // Audio des messages / lecture immersive.
@@ -4041,13 +4041,15 @@ export async function createServerInstance() {
   app.post('/api/comments', requireAuth, contentLimiter, async (req: any, res) => {
     try {
       const { storyId, chapterId, content } = req.body;
+      const pi = Number(req.body?.paragraphIndex);
+      const paragraphIndex = Number.isInteger(pi) && pi >= 0 && pi < 100000 ? pi : null;
       if (!storyId || !chapterId || !content) return res.status(400).json({ error: 'storyId, chapterId et content sont requis' });
       if (tooLong(content, LIMITS.comment)) return res.status(400).json({ error: 'Commentaire trop long (max 8000 caractères).' });
       const story = await prisma.story.findUnique({ where: { id: storyId }, select: { authorId: true, title: true, author: { select: { whoCanComment: true } } } });
       if (!story) return res.status(404).json({ error: 'Récit non trouvé' });
       const permission = await ensureCanComment(req.user.id, story.authorId, story.author?.whoCanComment);
       if (!permission.ok) return res.status(403).json({ error: permission.error });
-      const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content }, include: { user: { select: SAFE_USER_SELECT }, replies: true } });
+      const comment = await prisma.comment.create({ data: { storyId, chapterId, userId: req.user.id, content, paragraphIndex }, include: { user: { select: SAFE_USER_SELECT }, replies: true } });
       // XP : commentaire (plafonné côté donneur), bonus à l'auteur du récit.
       if (story.authorId !== req.user.id) {
         awardCappedXp(req.user.id, 'reader', XP.commentGiven, 'commentGiven', 10).catch(() => {});
