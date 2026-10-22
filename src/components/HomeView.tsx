@@ -37,6 +37,7 @@ interface HomeViewProps {
   onFollowAuthor: (authorId: string) => void;
   onOpenDiscussion: (partnerId: string) => void;
   onViewProfile?: (userId: string) => void;
+  onOpenPersonalLibrary?: () => void;
   onOpenLibrary?: (query?: string) => void; // ouvre la Bibliothèque (ex-Explorer)
   onStartWriting?: () => void;               // ouvre l'écriture / création
 }
@@ -52,6 +53,7 @@ export default function HomeView({
   onToggleFavorite,
   onViewProfile,
   onOpenLibrary,
+  onOpenPersonalLibrary,
 }: HomeViewProps) {
 
   const [shareStory, setShareStory] = useState<Story | null>(null);
@@ -318,7 +320,7 @@ export default function HomeView({
         {resumeInfo && <section id="resume-reading-card" aria-label="Reprendre ma lecture">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-[15px] font-bold sm:text-lg"><Clock className="h-5 w-5 text-purple-600" />Reprendre ma lecture</h2>
-            <button aria-label="Voir ma bibliothèque" onClick={() => onViewProfile?.(currentUser.id)} className="p-1"><ChevronRight className="h-5 w-5 text-zinc-500" /></button>
+            <button aria-label="Voir ma bibliothèque" onClick={onOpenPersonalLibrary} className="p-1"><ChevronRight className="h-5 w-5 text-zinc-500" /></button>
           </div>
           <div className="relative flex items-center gap-3 rounded-[19px] bg-[#f6f0fd] dark:bg-purple-950/30 p-3 sm:gap-5 sm:p-4">
             <button onClick={() => onSelectStory(resumeInfo.story)} aria-label={`Reprendre ${resumeInfo.story.title}`} className="shrink-0">

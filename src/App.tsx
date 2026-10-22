@@ -4032,6 +4032,7 @@ export default function App() {
                       onFollowAuthor={handleFollowAuthor}
                       onOpenDiscussion={handleOpenDiscussion}
                       onViewProfile={handleViewUserProfile}
+                      onOpenPersonalLibrary={() => setActiveTab('library')}
                       onOpenLibrary={(query) => {
                         setActiveFilter(query ? { type: 'search', value: query } : null);
                         setActiveTab('explore');
