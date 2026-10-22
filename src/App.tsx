@@ -2949,24 +2949,14 @@ export default function App() {
       reads: 0
     };
 
-    setStories(prev => prev.map(s => {
-      if (s.id === storyId) {
-        const updatedStory = {
-          ...s,
-          chapters: [...s.chapters, newChapter]
-        };
-
-        // Sync new chapter to server
-        fetch(`/api/stories/${storyId}/chapters`, {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(newChapter)
-        }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur ajout de chapitre :', e));
-
-        return updatedStory;
-      }
-      return s;
-    }));
+    setStories(prev => prev.map(s => (s.id === storyId ? { ...s, chapters: [...s.chapters, newChapter] } : s)));
+    // Envoi au serveur HORS du « updater » de setState (React peut rejouer un
+    // updater : l'appel partait alors deux fois → doublon / erreur 500).
+    fetch(`/api/stories/${storyId}/chapters`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(newChapter)
+    }).then(() => refreshCurrentUser()).catch(e => console.error('[PLUME] Erreur ajout de chapitre :', e));
 
     return newChapter; // l'éditeur immersif s'en sert pour passer en mode mise à jour
   };

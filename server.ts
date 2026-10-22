@@ -576,7 +576,10 @@ const MESSAGE_REQUEST_LIMIT = 3;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// « gemini-flash-latest » suit toujours le modèle Flash courant (les versions
+// figées comme gemini-2.0-flash sont retirées par Google et renvoient 404).
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
 const AI_PROVIDER: 'deepseek' | 'gemini' | 'none' = DEEPSEEK_API_KEY ? 'deepseek' : (GEMINI_API_KEY ? 'gemini' : 'none');
 const AI_CONFIGURED = AI_PROVIDER !== 'none';
 const AI_MODEL = AI_PROVIDER === 'deepseek' ? DEEPSEEK_MODEL : GEMINI_MODEL;
@@ -641,8 +644,7 @@ async function callAI(systemPrompt: string, userText: string, maxTokens = 1024):
       return String(data?.choices?.[0]?.message?.content || '').trim();
     }
     // ── Repli Gemini ──
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-    const r = await fetch(url, {
+    const geminiCall = (model: string) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -652,6 +654,9 @@ async function callAI(systemPrompt: string, userText: string, maxTokens = 1024):
       }),
       signal: ctrl.signal,
     });
+    let r = await geminiCall(GEMINI_MODEL);
+    // Modèle retiré/inconnu (404) : repli automatique sur le Flash courant.
+    if (r.status === 404 && GEMINI_MODEL !== GEMINI_FALLBACK_MODEL) r = await geminiCall(GEMINI_FALLBACK_MODEL);
     if (!r.ok) {
       const body = await r.text().catch(() => '');
       throw new Error(`Gemini ${r.status}: ${body.slice(0, 300)}`);
@@ -3814,6 +3819,11 @@ export async function createServerInstance() {
             },
           });
         } catch (e: any) {
+          // Même identifiant déjà enregistré (requête rejouée) : idempotent.
+          if (e?.code === 'P2002' && chapter.id) {
+            const already = await prisma.chapter.findUnique({ where: { id: String(chapter.id) } });
+            if (already && already.storyId === req.params.storyId) return res.status(200).json(serializeChapter(already));
+          }
           if (e?.code !== 'P2002' || attempt === 2) throw e;
         }
       }

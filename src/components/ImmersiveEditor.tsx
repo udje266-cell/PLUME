@@ -407,7 +407,9 @@ function deAccentKey(w: string): string {
 
 function analyzeText(input: string): TextAnalysis {
   const text = input.replace(/\r/g, '').trim();
-  const paragraphs = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  // L'éditeur produit une ligne par paragraphe (un saut de ligne simple) :
+  // on compte chaque ligne non vide comme un paragraphe.
+  const paragraphs = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
   const sentences = splitSentences(text.replace(/\n+/g, ' '));
   const tokens = wordTokens(text);
   const words = tokens.length;
@@ -459,13 +461,13 @@ function analyzeText(input: string): TextAnalysis {
 
   const tips: string[] = [];
   if (avgSentenceLen > 25) tips.push(`Phrases longues en moyenne (${avgSentenceLen.toFixed(0)} mots) : coupe-en quelques-unes pour le rythme.`);
-  if (longSentences.length) tips.push(`${longSentences.length} phrase(s) depassent 30 mots — a verifier.`);
-  if (repeatedWords.length) tips.push(`Mots repetes : « ${repeatedWords.slice(0, 3).map((r) => r.word).join(' », « ')} ». Varie le vocabulaire.`);
-  if (words > 60 && adverbCount / words > 0.04) tips.push(`Beaucoup d'adverbes en « -ment » (${adverbCount}) : prefere des verbes precis.`);
-  if (words > 60 && weakVerbPct > 12) tips.push(`Verbes faibles frequents (etre/avoir/faire/dire) : cherche des verbes d'action.`);
+  if (longSentences.length) tips.push(`${longSentences.length} phrase(s) dépassent 30 mots — à vérifier.`);
+  if (repeatedWords.length) tips.push(`Mots répétés : « ${repeatedWords.slice(0, 3).map((r) => r.word).join(' », « ')} ». Varie le vocabulaire.`);
+  if (words > 60 && adverbCount / words > 0.04) tips.push(`Beaucoup d'adverbes en « -ment » (${adverbCount}) : préfère des verbes précis.`);
+  if (words > 60 && weakVerbPct > 12) tips.push(`Verbes faibles fréquents (être/avoir/faire/dire) : cherche des verbes d'action.`);
   if (startRepeats.length) tips.push(`Plusieurs phrases commencent par « ${startRepeats[0].word} » — varie tes ouvertures.`);
   if (words > 120 && richnessPct < 40) tips.push(`Richesse lexicale faible (${richnessPct.toFixed(0)} %) : diversifie ton vocabulaire.`);
-  if (!tips.length) tips.push('Texte equilibre — rien de majeur a signaler. Continue ainsi !');
+  if (!tips.length) tips.push('Texte équilibré — rien de majeur à signaler. Continue ainsi !');
 
   return { words, sentences: sentCount, paragraphs: paragraphs.length, readingMin, avgSentenceLen, longSentences, repeatedWords, adverbCount, weakVerbPct, dialoguePct, startRepeats, richnessPct, tips };
 }
@@ -1094,11 +1096,11 @@ export default function ImmersiveEditor({
       >
         <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('bold')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Gras"><Bold className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('italic')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Italique"><Italic className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('underline')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Souligne"><Underline className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={insertSeparator} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Separateur"><Minus className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('underline')} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Souligné"><Underline className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={insertSeparator} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Séparateur"><Minus className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={doUndo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Annuler"><Undo2 className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={doRedo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Retablir"><Redo2 className="w-4 h-4" /></button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={openAIAssistant} className="p-2 text-purple-600" aria-label="Assistant d'ecriture IA" title="Assistant d'ecriture IA"><Sparkles className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={doRedo} className="p-2 text-gray-700 dark:text-gray-200" aria-label="Rétablir"><Redo2 className="w-4 h-4" /></button>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={openAIAssistant} className="p-2 text-purple-600" aria-label="Assistant d'écriture IA" title="Assistant d'écriture IA"><Sparkles className="w-4 h-4" /></button>
         <button onMouseDown={(e) => e.preventDefault()} onClick={() => { editorRef.current?.blur(); setChromeVisible(false); }} className="p-2 text-purple-600" aria-label="Immersion"><Maximize2 className="w-4 h-4" /></button>
       </div>
 
@@ -1385,7 +1387,7 @@ export default function ImmersiveEditor({
               <button key={c.id} onClick={() => { setShowSommaire(false); persistNow(); onSwitchChapter(c); }}
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 flex items-center justify-between ${c.id === createdIdRef.current ? 'bg-purple-500/10 text-purple-600' : 'hover:bg-gray-100 dark:hover:bg-zinc-900'}`}>
                 <span className="text-xs font-bold truncate">{i + 1}. {c.title || 'Sans titre'}</span>
-                <span className="text-[9px] text-gray-400 shrink-0 ml-2">{c.isPublished ? 'Publie' : 'Brouillon'}</span>
+                <span className="text-[9px] text-gray-400 shrink-0 ml-2">{c.isPublished ? 'Publié' : 'Brouillon'}</span>
               </button>
             ))}
             <button onClick={() => { setShowSommaire(false); persistNow(); onSwitchChapter('new'); }} className="w-full mt-2 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black uppercase tracking-wider">+ Nouveau chapitre</button>

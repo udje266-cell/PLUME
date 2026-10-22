@@ -347,7 +347,15 @@ export default function WriteView({
   const handleCreateStorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (creatingBusy) return; // anti double-clic (deux œuvres identiques)
-    if (!title.trim() || !description.trim()) return;
+    if (!title.trim() || !description.trim()) {
+      alert('Ajoute un titre et un synopsis pour créer ton œuvre.');
+      return;
+    }
+    // Plus de genre « Science-Fiction » attribué en silence : l'auteur choisit.
+    if (!selectedGenres.length) {
+      alert('Choisis au moins un genre pour ton œuvre (il aide les lecteurs à la trouver).');
+      return;
+    }
 
     const tagsArray = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
     const genresArray = selectedGenres.length ? selectedGenres : [GENRES[0]];
@@ -1539,7 +1547,7 @@ export default function WriteView({
                               </div>
                               <div className="absolute top-2 right-2">
                                 <span className="text-[8.5px] px-2 py-0.5 rounded-md font-black bg-black/60 text-white shadow-xs backdrop-blur-xs">
-                                  {!story.ageRating || story.ageRating === 'all' ? 'Universal' : `${story.ageRating}+`}
+                                  {!story.ageRating || story.ageRating === 'all' ? 'Tout public' : `${story.ageRating}+`}
                                 </span>
                               </div>
                             </div>
