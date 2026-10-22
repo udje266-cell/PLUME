@@ -3106,6 +3106,12 @@ export async function createServerInstance() {
         include: { followers: true, following: true, blockedUsers: true },
       });
 
+      // Invalidate public snapshots immediately when sharing permissions change.
+      // The event carries no profile or reading data; every client rechecks access.
+      if (updatedUser.showBooksRead !== existing.showBooksRead || updatedUser.privateProfile !== existing.privateProfile) {
+        io.emit('reading_progress_changed');
+      }
+
       // Sauf override admin explicite, on (re)calcule la certification d'après
       // les données réelles (rôle Auteur + accomplissements DB).
       if (!adminSetVerification) {

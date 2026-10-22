@@ -1,4 +1,5 @@
 import LiveReadingProgress from './LiveReadingProgress';
+import ProfileReadingSharing from './ProfileReadingSharing';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -44,7 +45,9 @@ import {
   Lock,
   KeyRound,
   X,
-  LogOut
+  LogOut,
+  BarChart3,
+  Tag
 } from 'lucide-react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { levelProgress } from '../utils/leveling';
@@ -73,6 +76,7 @@ interface ProfileViewProps {
   authorCertification?: { authorPercent: number; authorUnlocked: number } | null;
   viewedUser?: User | null;
   onBackToMyProfile?: () => void;
+  onStartWriting?: () => void;
   onUpdateProfile: (updatedFields: Partial<User>) => void | Promise<boolean>;
   onUpdateAndVerifyUserStats?: (updateFn: (stats: UserStats) => void) => void;
   stories: Story[];
@@ -97,6 +101,15 @@ interface ProfileViewProps {
   onViewProfile?: (userId: string) => void;
   onBlockUser?: (userId: string, block: boolean) => void;
   allUsers?: User[];
+}
+
+function ProfileAvatar({ user, className }: { user: Pick<User, 'username' | 'avatar'>; className: string }) {
+  const [failed, setFailed] = useState(false);
+  React.useEffect(() => setFailed(false), [user.avatar]);
+  return <div role="img" aria-label={`Avatar de ${user.username}`} className={`relative overflow-hidden shrink-0 flex items-center justify-center bg-gradient-to-br from-purple-500 to-purple-900 text-white ${className}`}>
+    <span aria-hidden="true" className="font-serif text-2xl font-bold">{user.username.slice(0, 1).toUpperCase()}</span>
+    {user.avatar && !failed && <img src={user.avatar} alt="" className="absolute inset-0 w-full h-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />}
+  </div>;
 }
 
 const createVisualBannerPreset = (scene: 'library' | 'forest' | 'city' | 'cosmos') => {
@@ -303,6 +316,7 @@ export default function ProfileView({
   onBlockUser,
   allUsers = [],
   friendIds,
+  onStartWriting,
 }: ProfileViewProps) {
   
 const freshCurrentUser = allUsers?.find((u) => u.id === currentUser.id) || currentUser;
@@ -324,6 +338,7 @@ const user = freshViewedUser || freshCurrentUser;
   };
 
   const [activeSubTab, setActiveSubTab] = useState<'writings' | 'favorites'>('writings');
+  React.useEffect(() => { setActiveSubTab('writings'); setIsEditingBio(false); }, [user.id]);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioText, setBioText] = useState(user.bio);
   const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
@@ -1370,7 +1385,7 @@ const user = freshViewedUser || freshCurrentUser;
   };
 
   return (
-    <div className="max-w-2xl lg:max-w-none mx-auto px-4 lg:px-10 xl:px-16 pt-2 pb-32 space-y-8 animate-fade-in text-left relative min-h-screen">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-2 pb-32 space-y-4 animate-fade-in text-left relative min-h-screen">
       
       {avatarImageSrc && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
@@ -1506,10 +1521,10 @@ const user = freshViewedUser || freshCurrentUser;
       )}
 
       {/* 1. EDITABLE PROFILE BANNER */}
-      <div className="relative h-48 rounded-3xl overflow-hidden shadow-lg select-none group border border-purple-100 dark:border-zinc-800">
+      <div className="relative h-40 sm:h-56 rounded-2xl overflow-hidden shadow-lg select-none group border border-purple-100 dark:border-zinc-800">
         <img 
           src={profileBanner} 
-          alt="Bannière d'auteur" 
+          alt="Bannière du profil"
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
           onError={() => setProfileBanner(BANNER_PRESETS[0])}
         />
@@ -1524,7 +1539,7 @@ const user = freshViewedUser || freshCurrentUser;
               setIsSettingsOpen(true);
             }}
             className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-xl p-2.5 transition backdrop-blur-md cursor-pointer shadow-md border border-white/5 active:scale-95 z-20"
-            title="Paramètres de profil"
+            title="Paramètres de profil" aria-label="Paramètres de profil"
           >
             <Settings className="w-4 h-4 text-purple-200" />
           </button>
@@ -1534,6 +1549,7 @@ const user = freshViewedUser || freshCurrentUser;
         {isOwnProfile && (
           <button
             id="banner-picker-toggle"
+            aria-label="Changer la bannière"
             onClick={() => setIsBannerPickerOpen(!isBannerPickerOpen)}
             className="absolute top-4 right-16 bg-black/50 hover:bg-black/70 text-white rounded-xl p-2.5 text-xs flex items-center space-x-1 transition backdrop-blur-md whitespace-nowrap cursor-pointer shadow-md border border-white/5 z-20"
           >
@@ -1543,10 +1559,10 @@ const user = freshViewedUser || freshCurrentUser;
         )}
 
         {isOwnProfile && isBannerPickerOpen && (
-          <div className="absolute top-16 right-4 bg-white dark:bg-[#1B1B26] border border-gray-150 dark:border-zinc-800 rounded-2xl p-3 z-50 flex space-x-2 shadow-2xl animate-fade-in">
+          <div className="absolute top-16 left-2 right-2 overflow-x-auto bg-white dark:bg-[#1B1B26] border border-gray-150 dark:border-zinc-800 rounded-2xl p-3 z-50 flex space-x-2 shadow-2xl animate-fade-in">
             <label
               htmlFor="banner-upload"
-              className="w-14 h-14 rounded-xl overflow-hidden border border-dashed border-purple-500/50 hover:border-purple-600 transition hover:scale-105 shadow-sm flex flex-col items-center justify-center cursor-pointer bg-purple-500/5 text-purple-600 dark:text-purple-300"
+              className="w-14 h-14 shrink-0 rounded-xl overflow-hidden border border-dashed border-purple-500/50 hover:border-purple-600 transition hover:scale-105 shadow-sm flex flex-col items-center justify-center cursor-pointer bg-purple-500/5 text-purple-600 dark:text-purple-300"
               title="Importer une bannière"
             >
               {isUploadingBanner ? (
@@ -1573,7 +1589,7 @@ const user = freshViewedUser || freshCurrentUser;
                 key={preset}
                 id={`preset-banner-btn-${idx}`}
                 onClick={() => handleSelectBanner(preset)}
-                className="w-14 h-14 rounded-xl overflow-hidden border border-gray-200 hover:border-purple-600 transition hover:scale-105 shadow-sm"
+                className="w-14 h-14 shrink-0 rounded-xl overflow-hidden border border-gray-200 hover:border-purple-600 transition hover:scale-105 shadow-sm"
               >
                 <img
                   src={preset}
@@ -1592,23 +1608,14 @@ const user = freshViewedUser || freshCurrentUser;
             déborde sur la couverture) le recouvrait à moitié (« Curateur Littér… »). */}
         <div className="absolute top-4 left-4 flex items-center space-x-1.5 bg-purple-900/95 text-white font-extrabold text-[9px] px-3 py-1.5 rounded-lg uppercase tracking-wider select-none shadow-md backdrop-blur-xs">
           <BookMarked className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
-          <span>Curateur Littéraire</span>
+          <span>{displayRole(user.role)}</span>
         </div>
       </div>
 
       {/* 2. OVERLAPPING AVATAR HERO COMPOSITION */}
-      <div className="flex flex-col items-center justify-center text-center space-y-4 -mt-20 sticky z-10">
+      <div className="relative flex flex-col items-center justify-center text-center gap-3 z-10" style={{ marginTop: -44 }}>
         <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-purple-900 via-purple-600 to-black p-[3.5px] shadow-lg">
-            <div className="w-full h-full rounded-full bg-white dark:bg-black" />
-          </div>
-
-          <img
-            src={user.avatar}
-            alt={user.username}
-            className="w-28 h-28 rounded-full object-cover relative z-10 p-[5px] bg-white dark:bg-black shadow-md mx-auto"
-            referrerPolicy="no-referrer"
-          />
+          <ProfileAvatar user={user} className="w-28 h-28 rounded-full ring-2 ring-purple-500 ring-offset-2 ring-offset-white dark:ring-offset-[#101018] shadow-lg mx-auto" />
 
           {isOwnProfile && (
             <>
@@ -1638,10 +1645,16 @@ const user = freshViewedUser || freshCurrentUser;
 
         {/* Display name, birthday and gender */}
         <div className="flex flex-col items-center">
-          <h3 className="text-2xl font-serif font-black text-gray-900 dark:text-white flex items-center gap-1.5 justify-center">
+          <h1 className="text-[28px] sm:text-3xl leading-tight font-serif font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-1.5 justify-center break-all">
             {user.username}
             {user.isVerified && <VerifiedBadge size="md" />}
-          </h3>
+          </h1>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 break-all">@{user.username}</p>
+          {isOwnProfile && (
+            <button id="profile-edit-button" onClick={() => { setSelectedRoleType(currentUser.role); setActiveSettingsTab('account'); setSelectedSettingsSection('account'); setIsSettingsOpen(true); }} className="mt-2 inline-flex items-center gap-2 rounded-full border border-purple-400/60 px-4 py-1.5 text-xs text-purple-700 dark:text-purple-300 hover:bg-purple-500/10">
+              <Edit className="h-3.5 w-3.5" /> Modifier mon profil
+            </button>
+          )}
           
           <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase mt-1">
             {currentUser.role === 'Administrateur' && (
@@ -1657,26 +1670,7 @@ const user = freshViewedUser || freshCurrentUser;
             )}
           </p>
 
-          {/* POPULARITE PLUME (auteurs uniquement) : niveau + barre de progression
-              ponderee vers le palier suivant. Masquable via la confidentialite. */}
-          {canSeePlumePopularity && (
-            <div className="mt-2.5 flex flex-col items-center gap-1.5">
-              <span
-                title={`Popularité Plume — basée sur les lectures (40%), les mentions j'aime reçues (25%) et les abonnés (35%).`}
-                className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/20 flex items-center gap-1.5"
-              >
-                <span className="text-sm leading-none">{plumePopularity.icon}</span>
-                Popularité niv.{plumePopularity.level} · {plumePopularity.name}
-              </span>
-              {plumePopularity.next && (
-                <div className="w-40 max-w-full" title={`${plumePopularity.percentToNext}% vers ${plumePopularity.next.name}`}>
-                  <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500 transition-all" style={{ width: `${plumePopularity.percentToNext}%` }} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* INTERACTION ACTIONS FOR OTHER PROFILES */}
@@ -1772,7 +1766,7 @@ const user = freshViewedUser || freshCurrentUser;
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
               {canSeeFollowing ? (user.following?.length ?? 0) : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">Suivis</span>
+            <span className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5 truncate">Suivis</span>
           </button>
 
           <div className="border-r border-purple-100 dark:border-zinc-850 h-5 my-auto shrink-0" />
@@ -1786,7 +1780,7 @@ const user = freshViewedUser || freshCurrentUser;
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
               {canSeeFollowers ? (user.followers?.length || 0) : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">Abonnés</span>
+            <span className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5 truncate">Abonnés</span>
           </button>
 
           <div className="border-r border-purple-100 dark:border-zinc-850 h-5 my-auto shrink-0" />
@@ -1800,7 +1794,7 @@ const user = freshViewedUser || freshCurrentUser;
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
               {canSeeFriends ? friendsCount : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">Amis</span>
+            <span className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5 truncate">Amis</span>
           </button>
 
           <div className="border-r border-purple-100 dark:border-zinc-850 h-5 my-auto shrink-0" />
@@ -1814,65 +1808,13 @@ const user = freshViewedUser || freshCurrentUser;
             <span className="font-serif text-sm sm:text-base md:text-lg font-black text-purple-600 dark:text-purple-400 leading-tight group-hover:scale-105 transition truncate">
               {canSeeMentions ? totalLikes : <Lock className="w-3 h-3 text-zinc-400 dark:text-zinc-500 inline-block mb-0.5" />}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400 text-[7px] sm:text-[8px] md:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest mt-0.5 truncate">J'aime</span>
+            <span className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5 truncate">J'aime</span>
           </button>
         </div>
 
-        {/* LIVRES LUS ET LIVRES ÉCRITS DISPLAY */}
-        {(() => {
-          // Stats serveur d'abord (exactes pour TOUT profil) ; le localStorage
-          // ne connaît que l'activité du visiteur sur CET appareil, donc il ne
-          // sert que de repli pour son propre profil.
-          const booksReadCount = user.stats?.completedReadCycles
-            ?? (isOwnProfile ? getUserStats(user.id, user.role, user.username).completedReadCycles : 0);
-          const booksWrittenCount = writtenStories.length;
-
-          const isLecteurAccount = user.role === 'Lecteur';
-          const isAuteurAccount = user.role === 'Auteur';
-          // Les administrateurs affichent à la fois lectures et écritures.
-          const isMixedAccount = user.role === 'Administrateur';
-
-          const displaysRead = (isLecteurAccount || isMixedAccount) && (user.showBooksRead ?? false);
-          const displaysWritten = (isAuteurAccount || isMixedAccount) && (user.showBooksWritten ?? false);
-
-          if (!displaysRead && !displaysWritten) return null;
-
-          return (
-            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-3.5 rounded-2xl text-left space-y-2.5 shadow-xs select-none animation-fade-in">
-              <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-500 tracking-wider">
-                <BookOpen className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
-                <span>Activité Littéraire</span>
-              </div>
-
-              {(() => {
-                const both = displaysRead && displaysWritten;
-                // Une seule stat : ligne compacte (label + valeur). Deux stats :
-                // tuiles côte à côte. Évite une grande carte vide pour un chiffre.
-                const tile = (label: string, value: number) => both ? (
-                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 p-3 rounded-2xl text-center flex flex-col justify-center">
-                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest leading-none">{label}</span>
-                    <span className="font-serif text-lg font-black text-purple-600 dark:text-purple-400 mt-1">{value}</span>
-                  </div>
-                ) : (
-                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 py-2.5 px-3.5 rounded-xl flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest">{label}</span>
-                    <span className="font-serif text-xl font-black text-purple-600 dark:text-purple-400 leading-none">{value}</span>
-                  </div>
-                );
-                return (
-                  <div className={both ? 'grid grid-cols-2 gap-3' : ''}>
-                    {displaysRead && tile('Livres lus', booksReadCount)}
-                    {displaysWritten && tile('Livres écrits', booksWrittenCount)}
-                  </div>
-                );
-              })()}
-            </div>
-          );
-        })()}
-
         {/* 4. BIOGRAPHY PARCHMENT BOX */}
-        <div className="relative w-full bg-white dark:bg-zinc-900/15 p-5 rounded-2xl border border-purple-500/15 dark:border-zinc-800/80 shadow-xs text-left space-y-4">
-          <div className="absolute top-3.5 right-3.5">
+        <div className="relative w-full px-2 text-left space-y-2">
+          <div className="absolute top-0 right-1">
             {isOwnProfile && !isEditingBio && (
               <button
                 id="tiktok-modifier-profil-btn"
@@ -1883,19 +1825,15 @@ const user = freshViewedUser || freshCurrentUser;
                 className="p-1 px-2.5 bg-zinc-150 hover:bg-zinc-200 dark:bg-zinc-850 dark:hover:bg-zinc-800 text-zinc-650 dark:text-zinc-400 rounded-lg text-[9px] font-black uppercase tracking-wider transition duration-250 cursor-pointer flex items-center gap-1 border border-zinc-200 dark:border-zinc-850"
               >
                 <Edit className="w-3 h-3" />
-                Dossier
+                Modifier
               </button>
             )}
           </div>
 
-          <div className="flex items-center space-x-2 text-[10px] font-bold uppercase text-zinc-500 tracking-wider">
-            <PenTool className="w-4 h-4 text-purple-600" />
-            <span>BIOGRAPHIE</span>
-          </div>
 
           {!isEditingBio ? (
-            <p className="text-xs text-zinc-650 dark:text-zinc-300 italic font-serif leading-relaxed px-1">
-              {user.bio || "Aucune biographie rédigée. Évoquez votre univers littéraire et invitez vos futurs lecteurs dans vos songes !"}
+            <p className="text-sm text-zinc-600 dark:text-zinc-300 italic font-serif leading-relaxed pr-20">
+              {user.bio || "Un univers à découvrir, une histoire à partager."}
             </p>
           ) : (
             <div className="space-y-4 pt-1 shadow-inner rounded-xl p-2 bg-zinc-50 dark:bg-zinc-950/40">
@@ -1970,10 +1908,10 @@ const user = freshViewedUser || freshCurrentUser;
           )}
 
           {!isEditingBio && (user.favoriteGenres || []).length > 0 && (
-            <div className="flex flex-wrap gap-1 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/60 font-sans">
+            <div className="flex flex-wrap gap-1.5 font-sans">
               {(user.favoriteGenres || []).map(g => (
-                <span key={g} className="text-[9px] font-bold bg-purple-500/10 text-purple-750 dark:text-purple-300 border border-purple-500/15 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                  {g}
+                <span key={g} className="inline-flex items-center gap-1.5 text-[11px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/15 px-2.5 py-1 rounded-full">
+                  <Tag className="w-3 h-3" />{g}
                 </span>
               ))}
             </div>
@@ -1981,7 +1919,12 @@ const user = freshViewedUser || freshCurrentUser;
         </div>
       </div>
 
-      <LiveReadingProgress userId={user.id} />
+      <ProfileReadingSharing key={user.id} user={user} isOwnProfile={isOwnProfile} onUpdateProfile={onUpdateProfile} onManage={() => {
+        setActiveSettingsTab('privacy'); setSelectedSettingsSection('privacy'); setIsSettingsOpen(true);
+      }} />
+
+      {canSeePalmares && <section aria-label="Mon parcours" className="rounded-2xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/60 dark:bg-white/[0.02] p-3 sm:p-4 space-y-3">
+        <h2 className="flex items-center gap-2 font-serif text-lg font-bold text-zinc-900 dark:text-white"><BarChart3 className="w-5 h-5 text-purple-500" />Mon parcours</h2>
 
       {/* NIVEAUX (XP) — deux jauges séparées Lecteur / Auteur, selon le rôle */}
       {canSeePalmares && (() => {
@@ -1992,29 +1935,43 @@ const user = freshViewedUser || freshCurrentUser;
         const Gauge = (p: ReturnType<typeof levelProgress>, label: string, accent: string) => (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-zinc-700 dark:text-zinc-200">
-                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-white text-[10px] font-black ${accent}`}>{p.level}</span>
-                {label} · <span className="text-zinc-400 font-bold normal-case">{p.title}</span>
+              <span className="flex flex-wrap items-center gap-1 text-xs text-zinc-700 dark:text-zinc-200">
+                <span>Niveau {p.level}</span> · {label} · <span className="text-zinc-400 font-bold normal-case">{p.title}</span>
               </span>
-              <span className="text-[9px] font-mono text-zinc-400">{p.inLevel}/{p.levelSpan} XP</span>
+              <span className="text-[10px] shrink-0 text-zinc-500 dark:text-zinc-400">{p.inLevel}/{p.levelSpan} XP</span>
             </div>
-            <div className="h-2 w-full rounded-full bg-zinc-150 dark:bg-zinc-800 overflow-hidden">
+            <div role="progressbar" aria-label={`Progression ${label}`} aria-valuenow={p.percent} aria-valuemin={0} aria-valuemax={100} className="h-2.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
               <div className={`h-full rounded-full ${accent} transition-all`} style={{ width: `${p.percent}%` }} />
             </div>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Encore {p.nextLevelXp - p.xp} XP avant le niveau {p.level + 1}.</p>
           </div>
         );
         return (
-          <div className="p-4 rounded-2xl space-y-3 font-sans text-left bg-zinc-50/70 dark:bg-white/[0.03]">
-            <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-200">
-              <Zap className="w-4 h-4 text-purple-600" />
-              <span className="font-bold text-[10px] uppercase tracking-wider">Niveaux & Expérience</span>
-            </div>
-            {showReaderLvl && Gauge(rp, 'Lecteur', 'bg-purple-600')}
-            {showAuthorLvl && Gauge(ap, 'Auteur', 'bg-emerald-600')}
+          <div className="space-y-3 font-sans text-left">
+            {showReaderLvl && Gauge(rp, 'Lecteur', 'bg-gradient-to-r from-purple-500 to-fuchsia-600')}
+            {showAuthorLvl && Gauge(ap, 'Auteur', 'bg-gradient-to-r from-purple-500 to-fuchsia-600')}
           </div>
         );
       })()}
 
+      <div className="grid grid-cols-3 gap-2" aria-label="Trophées à la une">
+        {[0, 1, 2].map(slot => {
+          const snapshot = isOwnProfile && showcaseEnabled
+            ? myAchievementsList.find(a => a.id === showcase[slot] && a.isUnlocked)
+            : !isOwnProfile ? user.showcase?.[slot] : null;
+          return <div key={slot} className={`rounded-xl border px-2 py-3 flex flex-col sm:flex-row items-center gap-1.5 text-center sm:text-left ${snapshot ? 'border-amber-500/40 bg-amber-500/10' : 'border-zinc-200 dark:border-zinc-800'}`}>
+            <Trophy className={`w-5 h-5 shrink-0 ${snapshot ? 'text-amber-500' : 'text-zinc-400 dark:text-zinc-600'}`} />
+            <span className="text-[10px] leading-snug text-zinc-600 dark:text-zinc-300">{snapshot?.title || (isOwnProfile ? 'À mettre en avant' : 'À découvrir')}</span>
+          </div>;
+        })}
+      </div>
+      <details className="group/parcours border-t border-zinc-200 dark:border-zinc-800 pt-2">
+        <summary className="list-none cursor-pointer flex items-center gap-2 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 [&::-webkit-details-marker]:hidden">
+          <Trophy className="w-4 h-4 text-amber-500" /> {isOwnProfile ? 'Voir mes trophées et légendes' : 'Voir ses trophées et légendes'}
+          <ChevronRight className="w-4 h-4 ml-auto transition-transform group-open/parcours:rotate-90" />
+        </summary>
+        <div className="pt-3 space-y-3">
+          {isOwnProfile && <button type="button" onClick={() => setShowAllAchievements(true)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20"><Award className="w-4 h-4" />Tous mes trophées et leurs légendes<ChevronRight className="w-4 h-4" /></button>}
       {/* LÉGENDES : trophées légendaires/secrets débloqués. En mode `owner` (mon
           profil) l'évaluation serveur se déclenche et célèbre les nouveautés ;
           en mode `public` on n'affiche que les légendes déjà obtenues. */}
@@ -2152,39 +2109,89 @@ const user = freshViewedUser || freshCurrentUser;
         </div>
       )}
 
-      {/* 5. TABS NAVIGATION WITH HIGHLY LITERARY MOOD */}
-      {/* L'Étagère est construite depuis la bibliothèque LOCALE du visiteur
-          (progression, favoris…) : sur le profil d'un autre, elle montrerait
-          les lectures du visiteur en les faisant passer pour celles du
-          profil visité. On ne l'affiche donc que sur son propre profil. */}
-      <div className={`grid ${isOwnProfile ? 'grid-cols-2' : 'grid-cols-1'} border-b border-zinc-200 dark:border-zinc-800 select-none bg-zinc-50 dark:bg-zinc-900/10 p-1 rounded-2xl`}>
-        <button
-          id="profile-tab-writings"
-          onClick={() => setActiveSubTab('writings')}
-          className={`py-3 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
-            activeSubTab === 'writings' || !isOwnProfile
-              ? 'bg-purple-600 text-white font-black shadow-md'
-              : 'text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400'
-          }`}
-        >
-          <BookMarked className="w-4 h-4" />
-          <span className="text-[9px] uppercase font-bold mt-1">Écritoire ({writtenStories.length})</span>
-        </button>
+        {/* LIVRES LUS ET LIVRES ÉCRITS DISPLAY */}
+        {(() => {
+          // Stats serveur d'abord (exactes pour TOUT profil) ; le localStorage
+          // ne connaît que l'activité du visiteur sur CET appareil, donc il ne
+          // sert que de repli pour son propre profil.
+          const booksReadCount = user.stats?.completedReadCycles
+            ?? (isOwnProfile ? getUserStats(user.id, user.role, user.username).completedReadCycles : 0);
+          const booksWrittenCount = writtenStories.length;
 
-        {isOwnProfile && (
-        <button
-          id="profile-tab-favorites"
-          onClick={() => setActiveSubTab('favorites')}
-          className={`py-3 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
-            activeSubTab === 'favorites'
-              ? 'bg-purple-600 text-white font-black shadow-md'
-              : 'text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400'
-          }`}
-        >
-          <BookOpen className="w-4 h-4" />
-          <span className="text-[9px] uppercase font-bold mt-1">Étagère de Lectures</span>
+          const isLecteurAccount = user.role === 'Lecteur';
+          const isAuteurAccount = user.role === 'Auteur';
+          // Les administrateurs affichent à la fois lectures et écritures.
+          const isMixedAccount = user.role === 'Administrateur';
+
+          const displaysRead = (isLecteurAccount || isMixedAccount) && (user.showBooksRead ?? false);
+          const displaysWritten = (isAuteurAccount || isMixedAccount) && (user.showBooksWritten ?? false);
+
+          if (!displaysRead && !displaysWritten) return null;
+
+          return (
+            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-3.5 rounded-2xl text-left space-y-2.5 shadow-xs select-none animation-fade-in">
+              <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-500 tracking-wider">
+                <BookOpen className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
+                <span>Activité Littéraire</span>
+              </div>
+
+              {(() => {
+                const both = displaysRead && displaysWritten;
+                // Une seule stat : ligne compacte (label + valeur). Deux stats :
+                // tuiles côte à côte. Évite une grande carte vide pour un chiffre.
+                const tile = (label: string, value: number) => both ? (
+                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 p-3 rounded-2xl text-center flex flex-col justify-center">
+                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest leading-none">{label}</span>
+                    <span className="font-serif text-lg font-black text-purple-600 dark:text-purple-400 mt-1">{value}</span>
+                  </div>
+                ) : (
+                  <div key={label} className="bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 dark:border-zinc-850/60 py-2.5 px-3.5 rounded-xl flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-black tracking-widest">{label}</span>
+                    <span className="font-serif text-xl font-black text-purple-600 dark:text-purple-400 leading-none">{value}</span>
+                  </div>
+                );
+                return (
+                  <div className={both ? 'grid grid-cols-2 gap-3' : ''}>
+                    {displaysRead && tile('Livres lus', booksReadCount)}
+                    {displaysWritten && tile('Livres écrits', booksWrittenCount)}
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+          {/* POPULARITE PLUME (auteurs uniquement) : niveau + barre de progression
+              ponderee vers le palier suivant. Masquable via la confidentialite. */}
+          {canSeePlumePopularity && (
+            <div className="mt-2.5 flex flex-col items-center gap-1.5">
+              <span
+                title={`Popularité Plume — basée sur les lectures (40%), les mentions j'aime reçues (25%) et les abonnés (35%).`}
+                className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/20 flex items-center gap-1.5"
+              >
+                <span className="text-sm leading-none">{plumePopularity.icon}</span>
+                Popularité niv.{plumePopularity.level} · {plumePopularity.name}
+              </span>
+              {plumePopularity.next && (
+                <div className="w-40 max-w-full" title={`${plumePopularity.percentToNext}% vers ${plumePopularity.next.name}`}>
+                  <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500 transition-all" style={{ width: `${plumePopularity.percentToNext}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
+      </section>}
+
+      <div role="tablist" aria-label="Publications et lectures" className="grid grid-cols-2 border-b border-zinc-200 dark:border-zinc-700">
+        <button id="profile-tab-writings" role="tab" aria-selected={activeSubTab === 'writings'} aria-controls="profile-writings" onClick={() => setActiveSubTab('writings')} className={`py-3 text-xs border-b-2 transition ${activeSubTab === 'writings' ? 'border-purple-600 text-purple-700 dark:text-purple-300 font-semibold' : 'border-transparent text-zinc-500 dark:text-zinc-400'}`}>
+          {isOwnProfile ? 'Mes écrits' : 'Ses écrits'} ({writtenStories.length})
         </button>
-        )}
+        <button id="profile-tab-favorites" role="tab" aria-selected={activeSubTab === 'favorites'} aria-controls="profile-readings" onClick={() => setActiveSubTab('favorites')} className={`py-3 text-xs border-b-2 transition ${activeSubTab === 'favorites' ? 'border-purple-600 text-purple-700 dark:text-purple-300 font-semibold' : 'border-transparent text-zinc-500 dark:text-zinc-400'}`}>
+          {isOwnProfile ? 'Mes lectures' : 'Ses lectures'}
+        </button>
       </div>
 
       {/* 6. COZY BOOKSHELVES TAB CONTENTS */}
@@ -2192,14 +2199,19 @@ const user = freshViewedUser || freshCurrentUser;
         
         {/* TAB 1: Mon Cabinet d'Écriture */}
         {activeSubTab === 'writings' && (
-          <div className="space-y-8 animate-fade-in text-left">
+          <div id="profile-writings" role="tabpanel" aria-labelledby="profile-tab-writings" className="space-y-8 animate-fade-in text-left">
             {writtenStories.length === 0 ? (
-              <div className="text-center py-16 px-4 bg-zinc-50/50 dark:bg-zinc-900/20 border border-zinc-200/50 dark:border-zinc-800 rounded-3xl">
-                <PenTool className="w-10 h-10 mx-auto text-purple-600 stroke-1" />
-                <h4 className="font-serif font-bold text-xs text-zinc-700 dark:text-zinc-300 mt-2">Écritoire encore vide</h4>
-                <p className="text-[11px] text-zinc-400 mt-1 max-w-xs mx-auto">
-                  Allez sur l'Atelier "Écrire" pour enfanter votre première épopée !
-                </p>
+              <div className="relative overflow-hidden text-center py-5 px-4 rounded-2xl border border-purple-500/15 bg-gradient-to-br from-purple-50 via-white to-purple-50 dark:from-purple-950/20 dark:via-[#101018] dark:to-purple-950/10">
+                <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(168,85,247,0.12),transparent_70%)]" />
+                <img src="/app-icon.png" alt="" className="relative w-20 h-20 rounded-full object-contain mx-auto drop-shadow-[0_0_18px_rgba(168,85,247,0.4)]" />
+                <h2 className="relative font-serif font-bold text-lg text-zinc-900 dark:text-white mt-2">{isOwnProfile ? 'Votre première histoire commence ici' : 'Une première histoire à venir'}</h2>
+                <p className="relative text-xs text-zinc-500 dark:text-zinc-400 mt-1">{isOwnProfile ? 'Donnez vie à vos idées, un chapitre à la fois.' : 'Les histoires publiées apparaîtront ici.'}</p>
+                {isOwnProfile && <button onClick={() => {
+                  if (currentUser.role !== 'Lecteur') onStartWriting?.();
+                  else { setSelectedRoleType('Auteur'); setActiveSettingsTab('account'); setSelectedSettingsSection('account'); setIsSettingsOpen(true); }
+                }} className="relative mt-4 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-xs font-semibold shadow-lg shadow-purple-500/15 hover:brightness-110">
+                  <Edit className="w-4 h-4" />Écrire mon premier chapitre
+                </button>}
               </div>
             ) : (
               <div className="space-y-8 text-left">
@@ -2267,7 +2279,7 @@ const user = freshViewedUser || freshCurrentUser;
 
         {/* TAB 2: Bibliothèque de Favoris / Cabinet de Lecture */}
         {activeSubTab === 'favorites' && isOwnProfile && (
-          <div className="space-y-6 animate-fade-in text-left">
+          <div id="profile-readings" role="tabpanel" aria-labelledby="profile-tab-favorites" className="space-y-6 animate-fade-in text-left">
             
             {/* Elegant headers filters */}
             <div className="flex flex-wrap gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl border border-zinc-200/50 dark:border-zinc-805 select-none">
@@ -2421,6 +2433,10 @@ const user = freshViewedUser || freshCurrentUser;
           </div>
         )}
 
+        {activeSubTab === 'favorites' && !isOwnProfile && <div id="profile-readings" role="tabpanel" aria-labelledby="profile-tab-favorites" className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 text-sm text-zinc-500 dark:text-zinc-400">
+          {user.showBooksRead && !user.privateProfile ? <LiveReadingProgress userId={user.id} /> : <p>Ce lecteur ne partage pas ses lectures.</p>}
+        </div>}
+
         {/* 8. CAROUSEL DES PROFILS SUGGÉRÉS DE DÉCOUVERTE */}
         {(() => {
           const suggestedUsers = allUsers.filter(u => u.id !== currentUser.id && u.id !== user.id);
@@ -2431,8 +2447,8 @@ const user = freshViewedUser || freshCurrentUser;
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <h4 className="font-serif font-black text-sm text-gray-900 dark:text-white uppercase tracking-wide">
-                    Profils susceptibles de vous intéresser
+                  <h4 className="font-serif font-bold text-lg text-gray-900 dark:text-white">
+                    À découvrir
                   </h4>
                 </div>
                 
@@ -2468,14 +2484,9 @@ const user = freshViewedUser || freshCurrentUser;
                       key={su.id}
                       id={`suggested-user-card-${su.id}`}
                       onClick={() => onViewProfile?.(su.id)}
-                      className="flex-none w-[175px] bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 hover:border-purple-500/20 dark:border-zinc-850 dark:hover:border-zinc-700/60 p-4 rounded-xl flex flex-col items-center text-center space-y-3 shadow-xs hover:shadow-md transition duration-200 cursor-pointer group"
+                      className="flex-none w-[220px] bg-zinc-50 dark:bg-zinc-900/35 border border-purple-500/5 hover:border-purple-500/20 dark:border-zinc-850 dark:hover:border-zinc-700/60 p-3 rounded-xl grid grid-cols-[40px_1fr] items-center text-left gap-x-3 gap-y-2 shadow-xs hover:shadow-md transition duration-200 cursor-pointer group"
                     >
-                      <img 
-                        src={su.avatar} 
-                        alt={su.username} 
-                        className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/10"
-                        referrerPolicy="no-referrer"
-                      />
+                      <ProfileAvatar user={su} className="w-10 h-10 rounded-full ring-1 ring-purple-500/20 row-span-2" />
 
                       <div className="min-w-0 w-full font-sans">
                         <p className="text-[11px] font-sans font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight group-hover:text-purple-500 transition">
@@ -2498,7 +2509,7 @@ const user = freshViewedUser || freshCurrentUser;
                           e.stopPropagation();
                           onFollowAuthor?.(su.id);
                         }}
-                        className={`w-full py-1.5 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center space-x-1 ${
+                        className={`col-span-2 w-full py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center space-x-1 ${
                           followsSu
                             ? 'bg-zinc-200 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-300 hover:bg-zinc-250'
                             : 'bg-purple-600 hover:bg-purple-750 text-white hover:scale-105'
@@ -2962,6 +2973,7 @@ const user = freshViewedUser || freshCurrentUser;
           onClick={() => { setShowAllAchievements(false); setAchievementsSearch(''); }}
         >
           <div
+            role="dialog" aria-modal="true" aria-label="Mes trophées" onKeyDown={event => { if (event.key === 'Escape') setShowAllAchievements(false); }}
             className="bg-white dark:bg-[#0E0E14] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2971,7 +2983,7 @@ const user = freshViewedUser || freshCurrentUser;
                 setAchievementsSearch('');
               }}
               className="absolute top-5 right-5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg transition font-black cursor-pointer focus:outline-none"
-              title="Fermer"
+              title="Fermer" aria-label="Fermer les trophées"
             >
               ✕
             </button>
@@ -3447,7 +3459,7 @@ const user = freshViewedUser || freshCurrentUser;
               <button
                 type="button"
                 onClick={() => setSelectedAchievement(null)}
-                className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-zinc-400 hover:text-purple-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                className="absolute top-0 right-1 p-1.5 rounded-full text-zinc-400 hover:text-purple-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
                 title="Fermer"
               >
                 <X className="w-4 h-4" />
@@ -4207,15 +4219,15 @@ const user = freshViewedUser || freshCurrentUser;
                       {/* Afficher le nombre de livres lus */}
                       <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-850">
                         <div className="space-y-0.5 pr-4">
-                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Afficher le nombre de livres lus</label>
-                          <span className="text-[9px] text-zinc-455 block">Afficher publiquement sur votre profil le nombre de livres que vous avez terminés. (Privé par défaut)</span>
+                          <label className="text-[11px] font-bold text-gray-900 dark:text-white block">Partager mes lectures</label>
+                          <span className="text-[9px] text-zinc-455 block">Partager votre progression en direct et votre nombre de livres terminés. Le partage reste désactivé sur un profil privé.</span>
                         </div>
                         <input 
                           type="checkbox" 
                           checked={currentUser.showBooksRead ?? false}
                           onChange={(e) => {
                             onUpdateProfile({ showBooksRead: e.target.checked });
-                            setShowStatusToast(e.target.checked ? "Affichage du livre lus activé !" : "Affichage du livre lus désactivé !");
+                            setShowStatusToast(e.target.checked ? "Partage des lectures activé !" : "Partage des lectures désactivé !");
                             setTimeout(() => setShowStatusToast(null), 2550);
                           }}
                           className="w-4 h-4 text-purple-650 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"

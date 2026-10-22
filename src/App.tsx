@@ -1438,9 +1438,17 @@ export default function App() {
       }, 300);
     };
     window.addEventListener('plume:reading-progress', refresh);
+    window.addEventListener('online', refresh);
+    window.addEventListener('focus', refresh);
+    const interval = activeTab === 'profile' ? setInterval(refresh, 15_000) : undefined;
     refresh();
-    return () => { disposed = true; clearTimeout(timer); window.removeEventListener('plume:reading-progress', refresh); };
-  }, [viewedUser?.id, currentUser?.id]);
+    return () => {
+      disposed = true; clearTimeout(timer); clearInterval(interval);
+      window.removeEventListener('plume:reading-progress', refresh);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [viewedUser?.id, currentUser?.id, activeTab]);
 
   const handleViewUserProfile = (userId: string) => {
     const target = allUsers.find(u => u.id === userId) || (userId === currentUser?.id ? currentUser : null);
@@ -4140,6 +4148,7 @@ export default function App() {
                       authorCertification={authorCertification}
                       viewedUser={viewedUser}
                       onBackToMyProfile={() => setViewedUser(null)}
+                      onStartWriting={() => { setViewedUser(null); setActiveTab('write'); window.scrollTo(0, 0); }}
                       onUpdateProfile={handleUpdateProfile}
                       onUpdateAndVerifyUserStats={handleUpdateAndVerifyUserStats}
                       stories={allowedStories}

@@ -7,8 +7,8 @@ type Row = {
 };
 
 /** Socket invalidations plus a fallback refresh, with fresh authorization each time. */
-export default function LiveReadingProgress({ userId, storyId, groupId }: {
-  userId?: string; storyId?: string; groupId?: string;
+export default function LiveReadingProgress({ userId, storyId, groupId, embedded = false }: {
+  userId?: string; storyId?: string; groupId?: string; embedded?: boolean;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [failed, setFailed] = useState(false);
@@ -45,8 +45,8 @@ export default function LiveReadingProgress({ userId, storyId, groupId }: {
       window.removeEventListener('online', schedule);
     };
   }, [userId, storyId, groupId]);
-  return <section aria-label="Lecture en direct" className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-xs space-y-2 max-h-44 overflow-y-auto">
-    <p className="font-bold">Lecture en direct</p>
+  return <section aria-label={embedded ? "Progression partagée" : "Lecture en direct"} className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-xs space-y-2 max-h-44 overflow-y-auto">
+    {!embedded && <p className="font-bold">Lecture en direct</p>}
     {failed ? <p>Connexion interrompue. Nouvelle tentative automatique.</p> : !rows.length ?
       <p className="text-zinc-500">Aucune lecture partagée ces 5 dernières minutes. Le partage dépend de la visibilité des lectures dans les paramètres du profil.</p> :
       rows.map(row => <div key={row.userId} className="space-y-1">
