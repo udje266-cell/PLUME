@@ -1400,8 +1400,8 @@ export default function ReadingView({
   );
   const chapterLeftMin = Math.ceil((chapterWords * (1 - chapterProgress)) / 230);
   useEffect(() => {
-    const scroller = getScrollParent(readerRootRef.current);
-    const target: any = scroller || window;
+    // Écoute en phase de capture sur le document : capte le défilement quel que
+    // soit le conteneur qui défile réellement (sinon la barre restait à 0 %).
     const onScroll = () => {
       const art = activeChapter ? document.getElementById(`chapter-content-${activeChapter.id}`) : null;
       if (!art) return;
@@ -1410,9 +1410,10 @@ export default function ReadingView({
       const total = Math.max(1, r.height - vh * 0.5);
       setChapterProgress(Math.min(1, Math.max(0, (-r.top + vh * 0.25) / total)));
     };
-    target.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('resize', onScroll);
     onScroll();
-    return () => target.removeEventListener('scroll', onScroll);
+    return () => { document.removeEventListener('scroll', onScroll, { capture: true } as any); window.removeEventListener('resize', onScroll); };
   }, [activeChapter?.id]);
 
   // ── Défilement automatique (vitesse en mots/minute) ──────────────────────
