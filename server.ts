@@ -486,6 +486,7 @@ async function deleteUserEverything(uid: string): Promise<void> {
     prisma.chapterRead.deleteMany({ where: { userId: uid } }),
     prisma.savedQuote.deleteMany({ where: { userId: uid } }),
     prisma.passageNote.deleteMany({ where: { userId: uid } }),
+    prisma.passageLike.deleteMany({ where: { userId: uid } }),
     prisma.readingHistory.deleteMany({ where: { userId: uid } }),
     prisma.notification.deleteMany({ where: { userId: uid } }),
     // Jetons push (donnée personnelle liée à l'appareil) : colonne userId sans
@@ -6156,6 +6157,7 @@ export async function createServerInstance() {
       const finishersByCh = new Map<string, Set<string>>();
       const dwellSumByCh = new Map<string, number>();
       const dwellCntByCh = new Map<string, number>();
+      const dwellByChUser = new Map<string, number>();
       if (chapterIds.length) {
         const evs = await prisma.readingEvent.findMany({
           where: { chapterId: { in: chapterIds }, type: { in: ['read_start', 'read_end'] } },
@@ -6173,12 +6175,21 @@ export async function createServerInstance() {
             const wpm = typeof p.wpm === 'number' ? p.wpm : 0;
             const botLike = wpm > 1500 || (d < 800 && pct > 40);
             if (pct >= 85) addTo(finishersByCh, e.chapterId, e.userId);
+            // Une session de lecture émet PLUSIEURS read_end (pause, arrière-plan…) :
+            // on CUMULE le temps par lecteur, puis on fait la moyenne par lecteur
+            // (avant : moyenne par événement → « 4 s » pour un chapitre de 45 min).
             if (d > 0 && !botLike) {
-              dwellSumByCh.set(e.chapterId, (dwellSumByCh.get(e.chapterId) || 0) + d / 1000);
-              dwellCntByCh.set(e.chapterId, (dwellCntByCh.get(e.chapterId) || 0) + 1);
+              const k = e.chapterId + '|' + e.userId;
+              dwellByChUser.set(k, (dwellByChUser.get(k) || 0) + d / 1000);
             }
           }
         }
+      }
+
+      for (const [k, sec] of dwellByChUser) {
+        const ch = k.slice(0, k.indexOf('|'));
+        dwellSumByCh.set(ch, (dwellSumByCh.get(ch) || 0) + sec);
+        dwellCntByCh.set(ch, (dwellCntByCh.get(ch) || 0) + 1);
       }
 
       const result = stories.map((s) => {
@@ -6200,7 +6211,14 @@ export async function createServerInstance() {
         const firstReads = chapters[0]?.fullReads || 0;
         const lastReads = chapters.length ? chapters[chapters.length - 1].fullReads : 0;
         // Complétion : parmi ceux qui ont VRAIMENT lu le début, combien vont au bout.
-        const completion = firstReads > 0 ? Math.round((lastReads / firstReads) * 100) : 0;
+        // Avec assez de télémétrie, on mesure les lecteurs RÉELS : ceux qui
+        // commencent le 1er chapitre vs ceux qui terminent le dernier (sinon une
+        // œuvre d'un seul chapitre affichait toujours 100 %).
+        const firstStarters = chapters[0]?.starters || 0;
+        const lastFinishers = chapters.length ? chapters[chapters.length - 1].finishers : 0;
+        const completion = firstStarters >= 3
+          ? Math.min(100, Math.round((lastFinishers / firstStarters) * 100))
+          : (firstReads > 0 ? Math.round((lastReads / firstReads) * 100) : 0);
         return {
           id: s.id,
           title: s.title,
@@ -6525,6 +6543,42 @@ export async function createServerInstance() {
 
   // ─── ANNOTATIONS DE LECTURE (surlignage + note perso, privees) ───────────
   // Mes annotations pour un recit (ancrees au paragraphe).
+  // « J'aime » sur les passages d'un chapitre : compteurs publics + les miens.
+  app.get('/api/passage-likes', requireAuth, async (req: any, res) => {
+    try {
+      const chapterId = String(req.query.chapterId || '');
+      if (!chapterId) return res.status(400).json({ error: 'chapterId requis' });
+      const rows = await prisma.passageLike.groupBy({ by: ['paragraphIndex'], where: { chapterId }, _count: { _all: true } });
+      const mine = await prisma.passageLike.findMany({ where: { chapterId, userId: req.user.id }, select: { paragraphIndex: true } });
+      const counts: Record<number, number> = {};
+      rows.forEach((r: any) => { counts[r.paragraphIndex] = r._count._all; });
+      res.json({ counts, mine: mine.map((m) => m.paragraphIndex) });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du chargement des likes.' });
+    }
+  });
+
+  app.post('/api/passage-likes/toggle', requireAuth, async (req: any, res) => {
+    try {
+      const storyId = String(req.body?.storyId || '');
+      const chapterId = String(req.body?.chapterId || '');
+      const paragraphIndex = Number(req.body?.paragraphIndex);
+      if (!storyId || !chapterId || !Number.isInteger(paragraphIndex) || paragraphIndex < 0) {
+        return res.status(400).json({ error: 'Paramètres invalides.' });
+      }
+      const key = { userId_chapterId_paragraphIndex: { userId: req.user.id, chapterId, paragraphIndex } };
+      const existing = await prisma.passageLike.findUnique({ where: key });
+      if (existing) await prisma.passageLike.delete({ where: key });
+      else await prisma.passageLike.create({ data: { userId: req.user.id, storyId, chapterId, paragraphIndex } });
+      const count = await prisma.passageLike.count({ where: { chapterId, paragraphIndex } });
+      res.json({ liked: !existing, count });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du like.' });
+    }
+  });
+
   app.get('/api/me/annotations', requireAuth, async (req: any, res) => {
     try {
       const storyId = typeof req.query.storyId === 'string' ? req.query.storyId : undefined;

@@ -25,6 +25,7 @@ import { Story, User } from '../types';
 import { optimizedImage } from '../utils/imageUrl';
 import { displayRole } from '../utils/role';
 import { VerifiedBadge } from './VerifiedBadge';
+import { GENRES } from '../data';
 
 interface ExplorerViewProps {
   stories: Story[];
@@ -55,18 +56,8 @@ interface SavedFilter {
   sortBy: SortOption;
 }
 
-const ALL_SPEC_GENRES = [
-  'Science-Fiction',
-  'Fantasy',
-  'Romance',
-  'Thriller & Policier',
-  'Horreur',
-  'Mystère',
-  'Action & Aventure',
-  'Historique',
-  'Humour',
-  'Développement personnel'
-];
+// Même liste que la création d'œuvre et le menu latéral (src/data.ts).
+const ALL_SPEC_GENRES = GENRES;
 
 export default function ExplorerView({
   stories,
@@ -351,7 +342,7 @@ export default function ExplorerView({
         {/* Actions row: Save filter button */}
         <div className="pt-2 border-t border-gray-100 dark:border-zinc-850/50 flex justify-between items-center">
           <span className="text-[10px] font-mono text-gray-400 flex items-center gap-2">
-            {filteredStories.length} résultats filtrés
+            {filteredStories.length} résultat{filteredStories.length > 1 ? 's' : ''} filtré{filteredStories.length > 1 ? 's' : ''}
             {hasActiveFilters && (
               <button
                 id="explorer-clear-filters"

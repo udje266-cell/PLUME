@@ -1655,9 +1655,10 @@ export default function App() {
         // écran dédié plutôt que de laisser toutes les requêtes échouer en série.
         await waitForServerAwake();
 
-        // 1. Fetch Users & Me
-        const me = await refreshUsersData();
+        // 1. Fetch Users & Me — routes réservées aux membres : on ne les appelle
+        // pas avant la connexion (sinon 401 inutiles sur l'écran de connexion).
         const loggedIn = localStorage.getItem('plume_is_logged_in') === 'true';
+        const me = loggedIn ? await refreshUsersData() : null;
 
         if (loggedIn && me) {
           await hydrateAccountData(me);
@@ -1670,6 +1671,7 @@ export default function App() {
           setStories(fetchedStories.map((story: Story) => normalizeStoryViewsFromStorage(normalizeStoryFavoritesFromStorage(normalizeStoryLikesFromStorage(story)))));
         }
 
+        if (!loggedIn) return;
         // 3. Fetch Comments
         const commentsRes = await fetch('/api/comments', { headers: authHeaders() });
         if (commentsRes.ok) {
@@ -3802,6 +3804,13 @@ export default function App() {
               // sans attendre un redémarrage : sinon l'app restait sur les
               // données locales de l'appareil (divergence app / PWA).
               hydrateAccountData(user).catch(() => {});
+              // Données réservées aux membres (non chargées avant la connexion).
+              refreshUsersData().catch(() => {});
+              fetch('/api/comments', { headers: authHeaders() })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((c) => { if (c) setComments(c.map((comment: Comment) => normalizeCommentLikesFromStorage(comment))); })
+                .catch(() => {});
+              fetchConversationsList();
             }}
             onRegisterSuccess={(newUser) => {
               setAllUsers([...allUsers, newUser]);

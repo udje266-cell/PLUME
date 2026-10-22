@@ -742,3 +742,16 @@ model GroupPollVote {
   @@unique([messageId, userId])
   @@index([messageId])
 }
+
+// « J'aime » sur un passage (paragraphe) d'un chapitre — un par lecteur.
+model PassageLike {
+  id             String   @id @default(cuid())
+  userId         String
+  storyId        String
+  chapterId      String
+  paragraphIndex Int
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, chapterId, paragraphIndex])
+  @@index([chapterId])
+}

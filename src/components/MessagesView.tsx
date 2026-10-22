@@ -1724,6 +1724,8 @@ export default function MessagesView({
                 les messages « supprimés pour moi » : sinon un message masqué
                 du fil réapparaissait en aperçu de conversation. */}
             {activeTab === 'chats' && conversations.filter((conv) => {
+              // Discussion jamais commencée (aucun message) : masquée, sauf celle ouverte.
+              if (!conv.messages?.length && conv.id !== activeConversationId) return false;
               const q = convSearch.trim().toLowerCase();
               if (!q) return true;
               const partner = resolvePartner(conv);

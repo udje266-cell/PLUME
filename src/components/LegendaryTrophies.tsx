@@ -24,6 +24,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Crown, Lock, Sparkles } from 'lucide-react';
 import type { LegendaryTrophy } from '../types';
 
+// Date lisible (« 22 juillet 2026 ») au lieu de l'horodatage ISO brut.
+function formatUnlockDate(d?: string | null): string {
+  if (!d) return '';
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? String(d) : dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 const RARITY_STYLE: Record<LegendaryTrophy['rarity'], string> = {
   legendaire: 'from-amber-400/25 to-orange-500/10 border-amber-400/60',
   divin: 'from-fuchsia-500/25 via-purple-600/15 to-amber-400/15 border-fuchsia-400/60',
@@ -54,7 +61,7 @@ function TrophyCard({ t, onClick }: { t: LegendaryTrophy; onClick: () => void })
       </h4>
       <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3">{t.description}</p>
       {!locked && t.unlockedDate && (
-        <span className="text-[8px] font-mono text-gray-400 mt-auto pt-1">Débloqué le {t.unlockedDate}</span>
+        <span className="text-[8px] font-mono text-gray-400 mt-auto pt-1">Débloqué le {formatUnlockDate(t.unlockedDate)}</span>
       )}
     </button>
   );
@@ -140,7 +147,7 @@ export default function LegendaryTrophies({ mode, userId, compact }: Props) {
               </p>
             )}
             {selected.unlockedDate && (
-              <p className="text-[10px] font-mono text-gray-400 mt-3">Débloqué le {selected.unlockedDate}</p>
+              <p className="text-[10px] font-mono text-gray-400 mt-3">Débloqué le {formatUnlockDate(selected.unlockedDate)}</p>
             )}
             <button onClick={() => setSelected(null)} className="mt-5 w-full py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black uppercase tracking-wider">Fermer</button>
           </div>

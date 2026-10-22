@@ -18,6 +18,13 @@ import {
 } from '../utils/achievements';
 import LegendaryTrophies from './LegendaryTrophies';
 
+// Date lisible (« 22 juillet 2026 ») au lieu de l'horodatage ISO brut.
+function formatUnlockDate(d?: string | null): string {
+  if (!d) return '';
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? String(d) : dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 const RARITY_STYLE: Record<Achievement['rarity'], string> = {
   commun: 'from-zinc-400/15 to-zinc-500/5 border-zinc-300/40 dark:border-zinc-700',
   rare: 'from-blue-500/15 to-cyan-500/5 border-blue-400/40',
@@ -55,7 +62,7 @@ function AchievementCard({ a, onClick }: { a: Achievement; onClick: () => void }
         {a.realDesc || a.mysteryDesc}
       </p>
       {!locked && a.unlockedDate && (
-        <span className="text-[8px] font-mono text-gray-400 mt-auto pt-1">Débloqué le {a.unlockedDate}</span>
+        <span className="text-[8px] font-mono text-gray-400 mt-auto pt-1">Débloqué le {formatUnlockDate(a.unlockedDate)}</span>
       )}
     </button>
   );
@@ -160,7 +167,7 @@ export default function AchievementsView({ currentUser }: AchievementsViewProps)
               </p>
             )}
             {selected.isUnlocked && selected.unlockedDate && (
-              <p className="text-[10px] font-mono text-gray-400 mt-3">Débloqué le {selected.unlockedDate}</p>
+              <p className="text-[10px] font-mono text-gray-400 mt-3">Débloqué le {formatUnlockDate(selected.unlockedDate)}</p>
             )}
             <button onClick={() => setSelected(null)} className="mt-5 w-full py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black uppercase tracking-wider">Fermer</button>
           </div>

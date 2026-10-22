@@ -267,8 +267,8 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     rarity: 'legendaire',
     category: 'reader',
     secret: false,
-    publicDescription: "Explorer l'archipel dans toute sa diversite, sans laisser un seul horizon inconnu.",
-    flavor: "A parcouru chaque territoire litteraire de PLUME et n'a laisse aucun genre inexplore.",
+    publicDescription: "Explorer l'archipel dans toute sa diversité, sans laisser un seul horizon inconnu.",
+    flavor: "A parcouru chaque territoire littéraire de PLUME et n'a laissé aucun genre inexploré.",
     adminCondition: `Terminer au moins une œuvre dans CHACUN des ${ALL_GENRES.length} genres disponibles (${ALL_GENRES.join(', ')}). Œuvre "terminee" = dernier chapitre publie lu en entier.`,
     evaluate: async (ctx) => {
       const r = await ctx.reader();
@@ -282,8 +282,8 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     rarity: 'legendaire',
     category: 'reader',
     secret: false,
-    publicDescription: "Remonter le fil du temps jusqu'aux recits des premieres heures de l'archipel.",
-    flavor: "A acheve une œuvre nee il y a bien longtemps, quand l'archipel n'etait qu'une jeune legende.",
+    publicDescription: "Remonter le fil du temps jusqu'aux récits des premières heures de l'archipel.",
+    flavor: "A achevé une œuvre née il y a bien longtemps, quand l'archipel n'était qu'une jeune légende.",
     adminCondition: 'Terminer une œuvre dont la publication a commence il y a au moins 5 ans (story.createdAt >= 5 ans).',
     evaluate: async (ctx) => {
       const r = await ctx.reader();
@@ -299,8 +299,8 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     rarity: 'legendaire',
     category: 'author',
     secret: false,
-    publicDescription: "Ne jamais laisser la flamme s'eteindre, saison apres saison, sans la moindre interruption.",
-    flavor: "N'a jamais rompu le rythme : une flamme d'ecriture entretenue sans faille pendant des annees.",
+    publicDescription: "Ne jamais laisser la flamme s'éteindre, saison après saison, sans la moindre interruption.",
+    flavor: "N'a jamais rompu le rythme : une flamme d'écriture entretenue sans faille pendant des années.",
     adminCondition: 'Publier au moins un chapitre CHAQUE semaine pendant 3 annees consecutives sans interruption (aucune semaine vide sur une fenetre glissante de 3 ans).',
     evaluate: async (ctx) => {
       const a = await ctx.author();
@@ -314,8 +314,8 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     rarity: 'legendaire',
     category: 'author',
     secret: false,
-    publicDescription: "Tisser plusieurs recits en un seul univers, relies par un fil invisible mais coherent.",
-    flavor: "A donne naissance a un univers vivant, ou plusieurs œuvres se repondent et se completent.",
+    publicDescription: "Tisser plusieurs récits en un seul univers, reliés par un fil invisible mais cohérent.",
+    flavor: "A donné naissance à un univers vivant, où plusieurs œuvres se répondent et se complètent.",
     adminCondition: "Creer un univers d'au moins 3 œuvres reliees par un marqueur commun (tag partage entre >= 3 œuvres).",
     evaluate: async (ctx) => {
       const a = await ctx.author();
@@ -329,8 +329,8 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     rarity: 'legendaire',
     category: 'author',
     secret: false,
-    publicDescription: "Ecrire juste, du premier coup, et n'avoir jamais eu a corriger l'œuvre achevee.",
-    flavor: "A publie une œuvre complete d'une seule traite, sans jamais retoucher un seul chapitre.",
+    publicDescription: "Écrire juste, du premier coup, et n'avoir jamais eu à corriger l'œuvre achevée.",
+    flavor: "A publié une œuvre complète d'une seule traite, sans jamais retoucher un seul chapitre.",
     adminCondition: `Publier une œuvre COMPLETE (statut publie, >= 3 chapitres) dont aucun chapitre n'a ete modifie apres publication (ecart updatedAt-createdAt <= ${FLAWLESS_TOLERANCE_MS} ms pour chaque chapitre). Proxy : sans champ publishedAt, on tolere la meme session brouillon->publication.`,
     evaluate: async (ctx) => {
       const a = await ctx.author();
@@ -347,7 +347,7 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     category: 'reader',
     secret: true,
     publicDescription: '', // jamais expose (trophee cache)
-    flavor: "Une legende parmi les lecteurs. Nul ne sait vraiment comment ce sceau s'obtient.",
+    flavor: "Une légende parmi les lecteurs. Nul ne sait vraiment comment ce sceau s'obtient.",
     adminCondition:
       "SECRET. Cumul : >=100 œuvres terminees ET au moins une œuvre lue dans chaque genre ET une œuvre terminee agee de >5 ans ET commentaires sur >=50 œuvres distinctes ET >=200 œuvres en bibliotheque ET compte age d'au moins 2 ans (activite prolongee) ET combinaison secrete supplementaire : >=100 œuvres terminees couvrant TOUS les genres (double garde). Les seuils exacts ne sont jamais reveles.",
     evaluate: async (ctx) => {
@@ -374,7 +374,7 @@ export const LEGENDARY_DEFS: LegendaryDef[] = [
     category: 'author',
     secret: true,
     publicDescription: '', // jamais expose (trophee cache)
-    flavor: "Une legende parmi les auteurs. Son secret ne se transmet pas — il se merite.",
+    flavor: "Une légende parmi les auteurs. Son secret ne se transmet pas — il se mérite.",
     adminCondition:
       "SECRET. Cumul : auteur actif depuis >=2 ans ET publication reguliere sans interruption (streak hebdomadaire sur >=2 ans) ET >=3 œuvres achevees ET univers developpe (>=3 œuvres reliees) ET forte interaction lecteurs (>=50 j'aime cumules OU >=100 lecteurs distincts) ET aucune sanction de moderation (non signale, non banni, 0 rapport) ET combinaison secrete supplementaire : >=50 chapitres publies. Les seuils exacts ne sont jamais reveles.",
     evaluate: async (ctx) => {

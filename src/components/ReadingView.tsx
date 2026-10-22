@@ -1513,12 +1513,45 @@ export default function ReadingView({
   const handleLikePassage = (index: number) => {
     const key = `${activeChapter.id}_p_${index}`;
     const wasLiked = likedPassagesMe[key];
+    // Optimiste, puis valeur serveur (persistée, visible par tous les lecteurs).
     setLikedPassagesMe(prev => ({ ...prev, [key]: !wasLiked }));
     setPassageLikes(prev => ({
       ...prev,
       [key]: Math.max(0, (prev[key] || 0) + (wasLiked ? -1 : 1))
     }));
+    fetch('/api/passage-likes/toggle', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ storyId: story.id, chapterId: activeChapter.id, paragraphIndex: index }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setLikedPassagesMe(prev => ({ ...prev, [key]: !!d.liked }));
+        setPassageLikes(prev => ({ ...prev, [key]: d.count }));
+      })
+      .catch(() => {});
   };
+
+  // Charge les « j'aime » de passage du chapitre affiché.
+  useEffect(() => {
+    const chId = activeChapter?.id;
+    if (!chId) return;
+    let cancelled = false;
+    fetch(`/api/passage-likes?chapterId=${encodeURIComponent(chId)}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || cancelled) return;
+        const counts: Record<string, number> = {};
+        Object.entries(d.counts || {}).forEach(([i, n]) => { counts[`${chId}_p_${i}`] = Number(n); });
+        const mine: Record<string, boolean> = {};
+        (d.mine || []).forEach((i: number) => { mine[`${chId}_p_${i}`] = true; });
+        setPassageLikes(prev => ({ ...prev, ...counts }));
+        setLikedPassagesMe(prev => ({ ...prev, ...mine }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeChapter?.id]);
 
   const openLyricardCreator = (txt: string) => {
     const activeSelection = window.getSelection()?.toString().trim();
@@ -2742,6 +2775,8 @@ export default function ReadingView({
           {!isImmersive && !isOwnStory && (
             <SimilarStories storyId={story.id} onSelect={onSelectStory} />
           )}
+          {/* Espace libre sous le texte : le lecteur audio flottant ne masque plus les dernières lignes. */}
+          {audiobookEnabled && <div aria-hidden="true" style={{ height: 140 }} />}
 
           {/* Navigation between chapters */}
           <div className="mt-12 pt-8 border-t border-gray-205/60 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">

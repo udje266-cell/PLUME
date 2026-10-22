@@ -97,7 +97,7 @@ export default function AdminDashboard({
         <div className="bg-white dark:bg-[#0E0E14] border border-[#ecebf6] dark:border-purple-900/15 rounded-2xl p-5">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Publications Globales</span>
           <p className="text-2xl font-bold font-mono text-gray-900 dark:text-white mt-1.5">{stories.length}</p>
-          <div className="text-[9px] text-gray-455 mt-1">{stories.filter(s => s.status === 'Publié').length} Récits publiés</div>
+          <div className="text-[9px] text-gray-455 mt-1">{(() => { const n = stories.filter(s => s.status === 'Publié').length; return `${n} récit${n > 1 ? 's' : ''} publié${n > 1 ? 's' : ''}`; })()}</div>
         </div>
 
         <button

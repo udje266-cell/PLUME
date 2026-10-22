@@ -1630,7 +1630,7 @@ const user = freshViewedUser || freshCurrentUser;
           <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase mt-1">
             {currentUser.role === 'Administrateur' && (
               <>
-                PLUME ID: <span className="font-bold text-purple-600">@{user.id}</span>
+                ID <span className="font-bold text-purple-600 normal-case">#{String(user.id).slice(-8).toLowerCase()}</span>
                 {user.gender && (
                   <span className="mx-2 text-zinc-300 dark:text-zinc-700">•</span>
                 )}
@@ -1650,7 +1650,7 @@ const user = freshViewedUser || freshCurrentUser;
                 className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 text-purple-700 dark:text-purple-300 border border-purple-550/20 flex items-center gap-1.5"
               >
                 <span className="text-sm leading-none">{plumePopularity.icon}</span>
-                Niv.{plumePopularity.level} · {plumePopularity.name}
+                Popularité niv.{plumePopularity.level} · {plumePopularity.name}
               </span>
               {plumePopularity.next && (
                 <div className="w-40 max-w-full" title={`${plumePopularity.percentToNext}% vers ${plumePopularity.next.name}`}>

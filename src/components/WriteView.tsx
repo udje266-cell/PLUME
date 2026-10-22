@@ -1080,7 +1080,9 @@ export default function WriteView({
                         <h4 className="font-sans font-bold text-xs text-gray-950 dark:text-gray-50 truncate">{chapter.title}</h4>
                         <p className="text-[10px] text-gray-450 dark:text-gray-400 font-mono mt-0.5">
                           {chapter.isPublished
-                            ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vues`
+                            ? (story.status === 'Publié'
+                              ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vue${(chapter.views || 0) > 1 ? 's' : ''}`
+                              : 'Prêt — visible dès que l\'œuvre sera mise en ligne')
                             : 'Brouillon — non visible des lecteurs'}
                         </p>
                       </div>
@@ -1122,7 +1124,7 @@ export default function WriteView({
                           title="Repasser en brouillon"
                           className="h-8 px-2.5 rounded-lg border border-gray-200 dark:border-zinc-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition"
                         >
-                          En ligne
+                          {story.status === 'Publié' ? 'En ligne' : 'Prêt'}
                         </button>
                       )}
                       <button
@@ -1296,12 +1298,12 @@ export default function WriteView({
                     {/* Taux de complétion */}
                     <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-1.5xl p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Taux de Complétion</span>
+                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lectures / vues</span>
                         <span className="text-[9px] bg-purple-500/10 text-[#7C3AED] rounded px-1.5 py-0.5 font-bold font-mono">{readRatio}%</span>
                       </div>
                       <div>
                         <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{readRatio}%</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Ratio chapitres lus par vue</p>
+                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Chapitres lus par visite de fiche</p>
                       </div>
                     </div>
 
