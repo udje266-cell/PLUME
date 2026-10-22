@@ -492,7 +492,7 @@ export default function WriteView({
   const currentStoryToManage = userStories.find(s => s.id === managingStoryChapters?.id);
 
   return (
-    <div className="lg:max-w-none mx-auto px-4 sm:px-6 lg:px-10 xl:px-16 py-8">
+    <div className="lg:max-w-none mx-auto px-[18px] sm:px-7 lg:px-10 xl:px-16 pt-2 pb-8 text-[#181224] dark:text-zinc-100">
       {coverImageSrc && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
           <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-3xl border border-purple-500/20 shadow-2xl overflow-hidden animate-scale-up">
@@ -1223,55 +1223,47 @@ export default function WriteView({
           ) : (
             /* STANDARD MASTER VIEWS WITH GRILLS & ALIGNEMENTS */
             <div className="space-y-6">
-              {/* COMPACT & ELEGANT HEADER */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-150/80 dark:border-zinc-850 pb-5 text-left">
-                <div>
-                  <h1 className="text-xl md:text-2xl font-sans font-black tracking-tight text-gray-950 dark:text-white flex items-center space-x-2">
-                    <PenTool className="w-5 h-5 text-[#7C3AED]" />
-                    <span>Atelier de Création PLUME</span>
-                  </h1>
-                  <p className="text-xs text-gray-450 dark:text-gray-400 mt-1">Composez vos récits en toute fluidité avec un rendu premium de livre.</p>
+              {/* EN-TÊTE — même langage que Bibliothèque / Messages */}
+              <header className="text-left">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h1 className="font-serif text-[clamp(28px,7.5vw,44px)] font-bold leading-tight tracking-[-0.04em]">Atelier d’écriture</h1>
+                    <p className="mt-1 text-[13px] text-zinc-500 dark:text-zinc-400 sm:text-base">Vos histoires prennent vie ici.</p>
+                  </div>
+                  <button
+                    id="add-story-studio-btn"
+                    onClick={() => {
+                      setSelectedStoryToEdit(null);
+                      setIsCreatingStory(true);
+                    }}
+                    aria-label="Nouvelle histoire"
+                    title="Nouvelle histoire"
+                    className="h-12 w-12 shrink-0 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 shadow-lg shadow-purple-600/20 flex items-center justify-center text-white hover:brightness-110 active:scale-95 transition"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
                 </div>
 
-                <button
-                  id="add-story-studio-btn"
-                  onClick={() => {
-                    setSelectedStoryToEdit(null);
-                    setIsCreatingStory(true);
-                  }}
-                  className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 shadow-xs transition duration-200 active:scale-[0.98] shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Nouvelle Histoire</span>
-                </button>
-              </div>
-
-              {/* CLASSICAL HIGHLIGHTED TABS */}
-              <div className="flex border-b border-gray-150/80 dark:border-zinc-850 pb-px text-left">
-                <button
-                  id="studio-tab-books"
-                  onClick={() => setActiveSubTab('my-books')}
-                  className={`pb-3.5 px-2 text-sm font-bold border-b-2 transition-all duration-150 ${
-                    activeSubTab === 'my-books'
-                      ? 'border-[#7C3AED] text-[#7C3AED] dark:border-purple-400 dark:text-purple-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white'
-                  }`}
-                >
-                  Mes Manuscrits ({userStories.length})
-                </button>
-
-                <button
-                  id="studio-tab-stats"
-                  onClick={() => setActiveSubTab('performance-dashboard')}
-                  className={`pb-3.5 px-2 ml-8 text-sm font-bold border-b-2 transition-all duration-150 ${
-                    activeSubTab === 'performance-dashboard'
-                      ? 'border-[#7C3AED] text-[#7C3AED] dark:border-purple-400 dark:text-purple-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white'
-                  }`}
-                >
-                  Statistiques
-                </button>
-              </div>
+                {/* Onglets en pastilles, comme les états de lecture de la Bibliothèque */}
+                <div role="tablist" aria-label="Atelier" className="mt-4 grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'my-books', btn: 'studio-tab-books', label: 'Mes manuscrits', count: userStories.length },
+                    { id: 'performance-dashboard', btn: 'studio-tab-stats', label: 'Statistiques', count: null },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.id}
+                      id={t.btn}
+                      role="tab"
+                      aria-selected={activeSubTab === t.id}
+                      onClick={() => setActiveSubTab(t.id)}
+                      className={`flex items-center justify-center gap-1.5 rounded-xl px-1 py-2.5 text-xs transition ${activeSubTab === t.id ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm' : 'bg-[#f0eff5] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}`}
+                    >
+                      {t.label}
+                      {t.count !== null && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeSubTab === t.id ? 'bg-white/25' : 'bg-zinc-200/60 dark:bg-zinc-800'}`}>{t.count}</span>}
+                    </button>
+                  ))}
+                </div>
+              </header>
 
               {/* ROUTER INNER BODY */}
               {activeSubTab === 'performance-dashboard' ? (
@@ -1280,77 +1272,77 @@ export default function WriteView({
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     
                     {/* Global Reads */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lectures</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Lectures</span>
                         <Eye className="w-4 h-4 text-[#7C3AED]" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{totalReads}</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Cumul de chapitres lus</p>
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">{totalReads}</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Cumul de chapitres lus</p>
                       </div>
                     </div>
  
                     {/* Lecteurs uniques */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Vues</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Vues</span>
                         <Compass className="w-4 h-4 text-[#7C3AED]" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{totalViews}</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Cumul des visites de fiches</p>
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">{totalViews}</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Cumul des visites de fiches</p>
                       </div>
                     </div>
 
                     {/* Taux de complétion */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Lectures / vues</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Lectures / vues</span>
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{readRatio}%</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Chapitres lus par visite de fiche</p>
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">{readRatio}%</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Chapitres lus par visite de fiche</p>
                       </div>
                     </div>
 
                     {/* Favoris */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Favoris</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Favoris</span>
                         <BookMarked className="w-4 h-4 text-purple-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">
                           {userStories.reduce((acc, st) => acc + (st.favoritesCount || 0), 0)}
                         </p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Ajouts aux bibliothèques</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Ajouts aux bibliothèques</p>
                       </div>
                     </div>
 
                     {/* Commentaires */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Commentaires</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Commentaires</span>
                         <FileText className="w-4 h-4 text-purple-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">{authorWorkComments.length}</p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Retours de lecteurs</p>
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">{authorWorkComments.length}</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Retours de lecteurs</p>
                       </div>
                     </div>
 
                     {/* Croissance Abonnés */}
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-[14px] p-4 flex flex-col justify-between min-h-[105px] transition-all hover:border-[#7C3AED]/25 shadow-xs">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 flex flex-col justify-between min-h-[105px]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Abonnés</span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Abonnés</span>
                         <Users className="w-4 h-4 text-purple-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-gray-955 dark:text-white font-mono leading-none">
+                        <p className="font-serif text-3xl font-bold leading-none text-zinc-950 dark:text-white">
                           {currentUser.followers?.length || 0}
                         </p>
-                        <p className="text-[9px] text-gray-455 dark:text-gray-400 mt-1.5">Communauté consolidée</p>
+                        <p className="text-[10px] text-zinc-400 mt-1.5">Communauté consolidée</p>
                       </div>
                     </div>
 
@@ -1360,9 +1352,9 @@ export default function WriteView({
                       compteurs bruts ne donnent jamais — OÙ les lecteurs
                       décrochent (lectures COMPLÈTES par chapitre). */}
                   {authorStats && authorStats.some((s) => s.chapters.length > 0) && (
-                    <div className="bg-white dark:bg-[#0E0E14] border border-gray-200/50 dark:border-purple-900/20 rounded-2xl p-6 space-y-6">
+                    <div className="rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 sm:p-6 space-y-6">
                       <div>
-                        <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider">Parcours de lecture par chapitre</h3>
+                        <h3 className="font-serif text-xl font-semibold tracking-tight text-zinc-950 dark:text-white">Parcours de lecture par chapitre</h3>
                         <p className="text-[10px] text-gray-400 mt-1">
                           Lecteurs ayant lu chaque chapitre <span className="font-bold">en entier</span> — là où la barre chute, c'est là qu'on décroche.
                         </p>
@@ -1390,8 +1382,8 @@ export default function WriteView({
                         return (
                           <div key={s.id} className="space-y-2">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">{s.title}</span>
-                              <span className="text-[9px] font-mono text-gray-400 whitespace-nowrap">
+                              <span className="font-serif text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{s.title}</span>
+                              <span className="text-[9px] text-gray-400 whitespace-nowrap">
                                 {s.readers} lecteur{s.readers > 1 ? 's' : ''} · complétion {s.completion}%
                               </span>
                             </div>
@@ -1403,17 +1395,17 @@ export default function WriteView({
                                 const isDrop = i === dropIndex;
                                 return (
                                   <div key={c.id} className="flex items-center gap-2" title={c.title}>
-                                    <span className="w-10 text-[9px] font-mono text-gray-400 text-right shrink-0">Ch. {i + 1}</span>
-                                    <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
-                                      <div className={`h-full rounded-full transition-all ${isDrop ? 'bg-amber-500' : 'bg-purple-600'}`} style={{ width: `${(base(c) / maxReads) * 100}%` }} />
+                                    <span className="w-10 text-[9px] text-gray-400 text-right shrink-0">Ch. {i + 1}</span>
+                                    <div className="flex-1 h-2.5 bg-purple-100 dark:bg-purple-950 rounded-full overflow-hidden relative">
+                                      <div className={`h-full rounded-full transition-all ${isDrop ? 'bg-amber-500' : 'bg-gradient-to-r from-purple-500 to-violet-600'}`} style={{ width: `${(base(c) / maxReads) * 100}%` }} />
                                     </div>
-                                    <span className="w-24 text-[9px] font-mono text-gray-500 dark:text-gray-400 shrink-0 text-right">
+                                    <span className="w-24 text-[9px] text-gray-500 dark:text-gray-400 shrink-0 text-right">
                                       {hasTelemetry
                                         ? <>{starters}→{finishers}{chCompletion !== null ? ` · ${chCompletion}%` : ''}</>
                                         : <>{c.fullReads} lecture{c.fullReads > 1 ? 's' : ''}</>}
                                     </span>
                                     {hasTelemetry && (c.avgReadSec || 0) > 0 && (
-                                      <span className="w-12 text-[9px] font-mono text-gray-400 shrink-0 text-right">{fmtSec(c.avgReadSec || 0)}</span>
+                                      <span className="w-12 text-[9px] text-gray-400 shrink-0 text-right">{fmtSec(c.avgReadSec || 0)}</span>
                                     )}
                                     {isDrop && (
                                       <span className="text-[8px] font-black uppercase text-amber-600 bg-amber-500/15 rounded px-1 py-0.5 shrink-0">décrochage</span>
@@ -1433,8 +1425,8 @@ export default function WriteView({
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Visual bar completion */}
-                    <div className="lg:col-span-7 bg-white dark:bg-[#0E0E14] border border-gray-200/50 dark:border-purple-900/20 rounded-2xl p-6">
-                      <h3 className="font-bold text-xs text-gray-400 mb-4 uppercase tracking-wider">Résonance par manuscrit</h3>
+                    <div className="lg:col-span-7 rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 sm:p-6">
+                      <h3 className="font-serif text-xl font-semibold tracking-tight text-zinc-950 dark:text-white mb-4">Résonance par manuscrit</h3>
                       
                       {userStories.length === 0 ? (
                         <div className="text-center py-12 text-xs text-gray-400">Aucun manuscrit publié à analyser.</div>
@@ -1445,12 +1437,12 @@ export default function WriteView({
                             return (
                               <div key={st.id} className="space-y-1.5">
                                 <div className="flex justify-between text-xs font-semibold">
-                                  <span className="text-gray-700 dark:text-gray-200">{st.title}</span>
-                                  <span className="text-purple-600 font-mono font-bold">{st.reads} lectures</span>
+                                  <span className="font-serif text-sm text-zinc-900 dark:text-zinc-100">{st.title}</span>
+                                  <span className="text-purple-700 dark:text-purple-400 font-semibold">{st.reads} lectures</span>
                                 </div>
-                                <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                                <div className="w-full bg-purple-100 dark:bg-purple-950 h-2 rounded-full overflow-hidden">
                                   <div 
-                                    className="bg-purple-600 h-full rounded-full transition-all"
+                                    className="bg-gradient-to-r from-purple-500 to-violet-600 h-full rounded-full transition-all"
                                     style={{ width: `${Math.max(score, 4)}%` }}
                                   />
                                 </div>
@@ -1462,18 +1454,18 @@ export default function WriteView({
                     </div>
 
                     {/* Micro comments dashboard */}
-                    <div className="lg:col-span-5 bg-white dark:bg-[#0E0E14] border border-gray-200/50 dark:border-purple-900/20 rounded-2xl p-6">
-                      <h3 className="font-bold text-xs text-gray-400 mb-4 uppercase tracking-wider">Retours constructifs ({authorWorkComments.length})</h3>
+                    <div className="lg:col-span-5 rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-4 sm:p-6">
+                      <h3 className="font-serif text-xl font-semibold tracking-tight text-zinc-950 dark:text-white mb-4">Retours constructifs ({authorWorkComments.length})</h3>
                       
                       <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
                         {authorWorkComments.length === 0 ? (
                           <div className="text-center py-12 text-xs text-gray-400">Aucun commentaire direct.</div>
                         ) : (
                           authorWorkComments.map(c => (
-                            <div key={c.id} className="p-3 bg-gray-55 dark:bg-zinc-900/40 rounded-xl border border-gray-150 dark:border-[#2a2a3a] text-xs">
+                            <div key={c.id} className="p-3 bg-white dark:bg-zinc-950/60 rounded-xl text-xs">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="font-bold text-gray-800 dark:text-gray-200">{c.username}</span>
-                                <span className="text-[9px] text-gray-400 font-mono">{new Date(c.date).toLocaleDateString('fr-FR')}</span>
+                                <span className="text-[9px] text-zinc-400">{new Date(c.date).toLocaleDateString('fr-FR')}</span>
                               </div>
                               <p className="text-gray-600 dark:text-gray-400 italic">"{c.content}"</p>
                               <div className="mt-2 text-[10px] text-purple-600 dark:text-purple-400 flex items-center space-x-1 font-bold">
@@ -1491,11 +1483,11 @@ export default function WriteView({
                 /* MANUSCRIPTS VIEW WITH 60% VISUAL COVER RENDER */
                 <div className="space-y-6">
                   {userStories.length === 0 ? (
-                    <div className="text-center py-16 bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/15 rounded-2xl flex flex-col items-center justify-center px-6">
+                    <div className="text-center py-12 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 flex flex-col items-center justify-center px-6">
                       <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-600 mb-3 animate-pulse">
                         <BookOpen className="w-6 h-6 hover:scale-105 transition" />
                       </div>
-                      <h3 className="font-sans font-black text-sm text-gray-950 dark:text-[#F5F5F5] mb-1">Votre plume attend de s'exercer</h3>
+                      <h3 className="font-serif text-lg font-semibold text-zinc-950 dark:text-white mb-1">Votre plume attend de s'exercer</h3>
                       <p className="text-xs text-gray-400 max-w-xs mb-4 leading-relaxed text-center">Créez votre tout premier manuscrit et invitez la communauté à vous lire !</p>
                       
                       <button
@@ -1504,26 +1496,24 @@ export default function WriteView({
                           setSelectedStoryToEdit(null);
                           setIsCreatingStory(true);
                         }}
-                        className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl px-5 py-2.5 text-xs font-bold transition duration-200 outline-none"
+                        className="bg-gradient-to-r from-violet-600 to-purple-600 hover:brightness-110 text-white rounded-xl px-5 py-2.5 text-xs font-semibold transition duration-200 outline-none"
                       >
                         Créer mon premier manuscrit
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-left">
                       {userStories.map((story) => {
                         const isSelected = selectedStoryToEdit?.id === story.id;
                         return (
                           <div 
                             key={story.id} 
-                            className={`bg-white dark:bg-[#0E0E14] border rounded-2xl p-4.5 flex gap-4 sm:gap-5 transition-all duration-200 ${
-                              isSelected 
-                                ? 'border-[#7C3AED] ring-4 ring-[#7C3AED]/10' 
-                                : 'border-gray-150 dark:border-purple-900/15 hover:border-[#7C3AED]/25 hover:shadow-xs'
+                            className={`rounded-2xl p-3 sm:p-4 flex gap-3 sm:gap-5 bg-[#f6f4fb] dark:bg-zinc-900/60 shadow-sm transition-all duration-200 ${
+                              isSelected ? 'ring-2 ring-purple-500/60' : ''
                             }`}
                           >
                             {/* LARGE EMBEDDED COVER COMPOSITION (approx. 60% relative size in layout card) */}
-                            <div className="w-[44%] h-44 sm:h-52 rounded-xl overflow-hidden bg-gray-50 dark:bg-zinc-900/60 flex-shrink-0 relative border border-gray-150/15 dark:border-zinc-800/10">
+                            <div className="w-[104px] sm:w-32 aspect-[0.66] self-start rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-900 flex-shrink-0 relative shadow-sm">
                               <img
                                 src={story.cover}
                                 alt={story.title}
@@ -1536,16 +1526,16 @@ export default function WriteView({
                                 }}
                               />
                               <div className="absolute top-2 left-2">
-                                <span className={`text-[8.5px] px-2 py-0.5 rounded-md font-extrabold uppercase shadow-xs ${
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide shadow-sm ${
                                   story.status === 'Publié' 
-                                    ? 'bg-[#7C3AED] text-white' 
-                                    : 'bg-gray-500 text-white'
+                                    ? 'bg-purple-600 text-white' 
+                                    : 'bg-white/95 text-zinc-700'
                                 }`}>
                                   {story.status}
                                 </span>
                               </div>
                               <div className="absolute bottom-2 right-2">
-                                <span className="text-[8.5px] px-2 py-0.5 rounded-md font-black bg-black/60 text-white shadow-xs backdrop-blur-xs whitespace-nowrap">
+                                <span className="text-[8px] px-1.5 py-0.5 rounded-full font-semibold bg-black/60 text-white backdrop-blur-xs whitespace-nowrap">
                                   {!story.ageRating || story.ageRating === 'all' ? 'Tout public' : `${story.ageRating}+`}
                                 </span>
                               </div>
@@ -1555,7 +1545,7 @@ export default function WriteView({
                             <div className="flex-1 flex flex-col justify-between min-w-0">
                               <div className="space-y-1">
                                 <div className="flex items-start justify-between gap-1">
-                                  <span className="text-[9px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest block truncate">
+                                  <span className="text-[10px] font-medium text-purple-700 dark:text-purple-400 block truncate pt-1">
                                     {story.genre}
                                   </span>
                                   
@@ -1643,32 +1633,32 @@ export default function WriteView({
                                   </div>
                                 </div>
                                 
-                                <h3 className="font-serif font-black text-xs sm:text-base text-gray-950 dark:text-gray-50 leading-snug line-clamp-2">
+                                <h3 className="font-serif text-lg font-semibold leading-tight text-zinc-950 dark:text-white line-clamp-2">
                                   {story.title}
                                 </h3>
                                 
-                                <div className="flex items-center gap-1.5 text-[10px] text-gray-450 dark:text-gray-400 font-mono pt-1">
+                                <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400 pt-1">
                                   <Eye className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>{story.reads} lectures</span>
                                 </div>
                               </div>
 
-                              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-zinc-900/40 space-y-2">
+                              <div className="mt-3 space-y-2">
                                 <div className="grid grid-cols-2 gap-2">
                                   <button
                                     id={`edit-story-meta-${story.id}`}
                                     onClick={() => handleOpenEditStory(story)}
-                                    className="h-8.5 min-w-0 px-1 whitespace-nowrap rounded-xl border border-gray-150 dark:border-zinc-800 text-[11px] font-bold text-gray-805 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5"
+                                    className="h-9 min-w-0 px-1 whitespace-nowrap rounded-xl bg-white dark:bg-zinc-950 text-[11px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-purple-50 dark:hover:bg-zinc-800 transition duration-150 flex items-center justify-center gap-1.5 shadow-xs"
                                     title="Modifier les options du livre"
                                   >
-                                    <Edit className="w-3.5 h-3.5 text-gray-500 shrink-0 max-[380px]:hidden" />
+                                    <Edit className="w-3.5 h-3.5 text-zinc-400 shrink-0 max-[380px]:hidden" />
                                     <span>Modifier</span>
                                   </button>
 
                                   <button
                                     id={`manage-chapters-studio-${story.id}`}
                                     onClick={() => setManagingStoryChapters(story)}
-                                    className="h-8.5 min-w-0 px-1 whitespace-nowrap bg-purple-500/10 hover:bg-purple-500/15 text-[#7C3AED] dark:text-purple-300 text-[11px] font-bold border border-purple-500/10 rounded-xl transition duration-150 flex items-center justify-center gap-1.5"
+                                    className="h-9 min-w-0 px-1 whitespace-nowrap bg-gradient-to-r from-violet-600 to-purple-600 hover:brightness-110 text-white text-[11px] font-semibold rounded-xl transition duration-150 flex items-center justify-center gap-1.5 shadow-sm"
                                     title="Gérer les chapitres du livre"
                                   >
                                     <FileText className="w-3.5 h-3.5 shrink-0 max-[380px]:hidden" />
@@ -1679,10 +1669,10 @@ export default function WriteView({
                                 <button
                                   id={`publish-toggle-${story.id}`}
                                   onClick={() => handleToggleStoryPublish(story)}
-                                  className={`w-full h-8 px-2.5 rounded-lg border text-[10px] font-bold transition duration-150 flex items-center justify-center gap-1.5 ${
+                                  className={`w-full h-9 px-2.5 rounded-xl border text-[11px] font-semibold transition duration-150 flex items-center justify-center gap-1.5 ${
                                     story.status === 'Publié' 
-                                      ? 'bg-purple-600/10 border-purple-500/20 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20' 
-                                      : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-550 dark:text-zinc-400 hover:bg-zinc-200/50'
+                                      ? 'border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-950' 
+                                      : 'border-purple-400 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/30'
                                   }`}
                                   title={story.status === 'Publié' ? 'Mettre en Brouillon' : 'Publier l’œuvre'}
                                 >

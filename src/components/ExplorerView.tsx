@@ -239,18 +239,13 @@ export default function ExplorerView({
     : [];
 
   return (
-    <div className="max-w-xl lg:max-w-none mx-auto px-4 lg:px-10 xl:px-16 py-6 space-y-6 animate-fade-in text-left select-none pb-32">
+    <div className="max-w-xl lg:max-w-none mx-auto px-[18px] sm:px-7 lg:px-10 xl:px-16 pt-2 space-y-5 animate-fade-in text-left select-none pb-32 text-[#181224] dark:text-zinc-100">
       
       {/* 1. Header Banner */}
-      <div className="pb-4 border-b border-gray-100 dark:border-purple-900/15">
-        <h2 className="font-sans font-black text-lg tracking-tight text-gray-950 dark:text-white flex items-center space-x-2">
-          <BookOpen className="w-5 h-5 text-purple-600" />
-          <span>Explorer</span>
-        </h2>
-        <p className="text-[11px] text-gray-400 mt-1">
-          Toutes les œuvres de PLUME : cherche, filtre par genre et garde tes filtres préférés.
-        </p>
-      </div>
+      <header>
+        <h1 className="font-serif text-[clamp(28px,7.5vw,44px)] font-bold leading-tight tracking-[-0.04em]">Explorer</h1>
+        <p className="mt-1 text-[13px] text-zinc-500 dark:text-zinc-400 sm:text-base">Toutes les histoires de PLUME, à portée de main.</p>
+      </header>
 
       {/* Mise en page DESKTOP : filtres a gauche (colonne collante) + resultats
           a droite. Sur mobile, tout reste empile (styles lg: uniquement). */}
@@ -284,18 +279,18 @@ export default function ExplorerView({
       )}
 
       {/* 3. Search block */}
-      <div className="space-y-3 bg-gray-50 dark:bg-[#0E0E14] border border-gray-150 dark:border-purple-900/20 p-4 rounded-2xl shadow-sm">
+      <div className="space-y-3 rounded-2xl bg-[#f6f4fb] dark:bg-zinc-900/60 p-3">
         
         {/* Search input bar */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
           <input
             id="explorer-search-field"
             type="text"
             placeholder="Titre, auteur, mot-clé, tag…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 rounded-xl pl-9 pr-8 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-600 text-gray-900 dark:text-white"
+            className="h-11 w-full rounded-[17px] bg-white dark:bg-zinc-950 pl-11 pr-8 text-xs outline-none focus:ring-2 focus:ring-purple-500/40 text-zinc-900 dark:text-white"
           />
           {searchQuery && (
             <button
@@ -310,12 +305,12 @@ export default function ExplorerView({
         {/* Dropdown selectors for exact Genres */}
         <div className="flex items-center gap-2 pt-1 pb-1">
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 font-sans">Genre littéraire</label>
+            <label className="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Genre littéraire</label>
             <select
               id="explorer-genre-dropdown"
               value={selectedGenre}
               onChange={(e) => setSelectedGenre(e.target.value)}
-              className="w-full bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 text-[11px] rounded-xl px-2.5 py-1.5 focus:outline-none text-gray-800 dark:text-gray-100"
+              className="w-full bg-white dark:bg-zinc-950 text-[11px] rounded-xl px-2.5 py-2 outline-none focus:ring-2 focus:ring-purple-500/40 text-zinc-800 dark:text-zinc-100"
             >
               <option value="Tous">Tous les genres</option>
               {ALL_SPEC_GENRES.map(g => <option key={g} value={g}>{g}</option>)}
@@ -323,12 +318,12 @@ export default function ExplorerView({
           </div>
 
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 font-sans">Trier par</label>
+            <label className="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Trier par</label>
             <select
               id="explorer-sort-dropdown"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="w-full bg-white dark:bg-black border border-gray-150 dark:border-purple-900/25 text-[11px] rounded-xl px-2.5 py-1.5 focus:outline-none text-gray-800 dark:text-gray-100"
+              className="w-full bg-white dark:bg-zinc-950 text-[11px] rounded-xl px-2.5 py-2 outline-none focus:ring-2 focus:ring-purple-500/40 text-zinc-800 dark:text-zinc-100"
             >
               <option value="trending">Tendances</option>
               <option value="reads">Plus populaires</option>
@@ -340,8 +335,8 @@ export default function ExplorerView({
         </div>
 
         {/* Actions row: Save filter button */}
-        <div className="pt-2 border-t border-gray-100 dark:border-zinc-850/50 flex justify-between items-center">
-          <span className="text-[10px] font-mono text-gray-400 flex items-center gap-2">
+        <div className="pt-1 flex justify-between items-center gap-2">
+          <span className="text-[11px] text-zinc-500 flex items-center gap-2">
             {filteredStories.length} résultat{filteredStories.length > 1 ? 's' : ''} filtré{filteredStories.length > 1 ? 's' : ''}
             {hasActiveFilters && (
               <button
@@ -358,7 +353,7 @@ export default function ExplorerView({
             <button
               id="show-save-filter-btn"
               onClick={() => setShowSaveDialog(true)}
-              className="px-3 py-1 bg-white hover:bg-gray-100 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg text-[10px] font-black uppercase tracking-wider text-gray-600 dark:text-gray-300 flex items-center space-x-1 transition"
+              className="shrink-0 px-2.5 py-1.5 rounded-xl border border-purple-400 text-[11px] text-purple-700 dark:text-purple-300 flex items-center gap-1 transition hover:bg-purple-50 dark:hover:bg-purple-950/30"
             >
               <BookmarkCheck className="w-3.5 h-3.5" />
               <span>Sauvegarder ce filtre</span>
@@ -404,7 +399,7 @@ export default function ExplorerView({
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 px-1">
             <UserCheck className="w-3.5 h-3.5 text-purple-500" />
-            <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <h3 className="font-serif text-xl font-semibold tracking-tight text-zinc-950 dark:text-white">
               Profils ({matchedUsers.length})
             </h3>
           </div>
@@ -414,7 +409,7 @@ export default function ExplorerView({
                 key={u.id}
                 id={`search-profile-${u.id}`}
                 onClick={() => onViewProfile?.(u.id)}
-                className="flex items-center gap-3 bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-150/50 dark:border-purple-900/15 p-2.5 hover:shadow-md transition cursor-pointer"
+                className="flex items-center gap-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 p-2.5 hover:shadow-md transition cursor-pointer"
               >
                 <img
                   src={optimizedImage(u.avatar, 64, { square: true })}
@@ -447,9 +442,9 @@ export default function ExplorerView({
 
       {/* 4. Results List / Grid */}
       {sortedStories.length === 0 && matchedUsers.length === 0 ? (
-        <div className="py-16 text-center bg-gray-50/50 dark:bg-[#0E0E14] border border-gray-150/40 dark:border-purple-900/15 rounded-2xl">
+        <div className="py-12 px-5 text-center rounded-2xl bg-purple-50/60 dark:bg-purple-950/20">
           <SlidersHorizontal className="w-10 h-10 mx-auto text-purple-400 stroke-1" />
-          <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300 mt-2">Aucun résultat trouvé</h4>
+          <h4 className="font-serif text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-2">Aucun résultat trouvé</h4>
           <p className="text-[11px] text-gray-400 mt-1 max-w-xs mx-auto text-center">
             Modifiez la recherche, changez de genre ou désactivez les filtres pour découvrir de nouvelles œuvres.
           </p>
@@ -457,24 +452,24 @@ export default function ExplorerView({
             <button
               id="explorer-clear-filters-empty"
               onClick={resetFilters}
-              className="mt-3 px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black uppercase tracking-wider transition"
+              className="mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:brightness-110 text-white text-xs font-semibold transition"
             >
               Réinitialiser les filtres
             </button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 lg:gap-4 pb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-5 pb-8">
           {sortedStories.map((story) => (
             <div
               key={story.id}
               id={`search-story-${story.id}`}
-              className="bg-gray-50 dark:bg-[#0E0E14] rounded-2xl border border-gray-150/50 dark:border-purple-900/15 overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
+              className="min-w-0 flex flex-col group"
             >
               {/* Aspect 2:3 Cover container with responsive tags */}
               <div 
                 onClick={() => onSelectStory(story)}
-                className="relative aspect-[2/3] w-full bg-zinc-100 dark:bg-zinc-900 cursor-pointer overflow-hidden"
+                className="relative aspect-[2/3] w-full rounded-xl bg-zinc-100 dark:bg-zinc-900 cursor-pointer overflow-hidden shadow-sm"
               >
                 <img 
                   src={optimizedImage(story.cover, 240)} 
@@ -487,7 +482,7 @@ export default function ExplorerView({
                     Troncature propre par CSS si vraiment long, jamais coupée en
                     plein mot par un split(' '). */}
                 <div className="absolute top-2 left-2 max-w-[62%]">
-                  <span className="block truncate text-[8px] px-2 py-0.5 font-bold uppercase rounded-md bg-purple-600 text-white shadow-sm">
+                  <span className="block truncate text-[8px] px-1.5 py-1 rounded-full bg-white/95 text-zinc-700 shadow-sm">
                     {story.genre}
                   </span>
                 </div>
@@ -495,7 +490,7 @@ export default function ExplorerView({
                 {story.ageRating && story.ageRating !== 'all' && (
                   <div className="absolute top-2 right-2">
                     {/* Âge : chip discret (l'accent violet est réservé au genre). */}
-                    <span className="text-[8px] px-1.5 py-0.5 font-bold rounded-md bg-black/45 text-white/90 backdrop-blur-[2px]">
+                    <span className="text-[8px] px-1.5 py-1 rounded-full bg-black/50 text-white/90 backdrop-blur-[2px]">
                       {story.ageRating}+
                     </span>
                   </div>
@@ -505,7 +500,7 @@ export default function ExplorerView({
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-90" />
 
                 {/* Statistics Overlay at cover bottom */}
-                <div className="absolute bottom-2 left-2 right-2 text-left text-white flex items-center justify-between font-mono text-[9px]">
+                <div className="absolute bottom-2 left-2 right-2 text-left text-white flex items-center justify-between text-[10px]">
                   <span className="flex items-center space-x-0.5">
                     <Eye className="w-3 h-3 text-gray-300" />
                     <span>{story.reads}</span>
@@ -522,10 +517,10 @@ export default function ExplorerView({
               </div>
 
               {/* Title & Author Info Section */}
-              <div className="p-3 text-left space-y-1">
+              <div className="pt-1.5 text-left space-y-0.5">
                 <h4 
                   onClick={() => onSelectStory(story)}
-                  className="font-serif font-black text-xs text-gray-900 dark:text-white line-clamp-1 hover:text-purple-600 hover:underline cursor-pointer"
+                  className="font-serif text-base font-semibold leading-tight text-zinc-950 dark:text-white line-clamp-2 hover:text-purple-600 cursor-pointer"
                 >
                   {story.title}
                 </h4>
@@ -548,7 +543,7 @@ export default function ExplorerView({
                         onOpenDiscussion(story.authorId);
                       }
                     }}
-                    className="text-[10px] text-gray-400 line-clamp-1 italic hover:text-[#7C3AED] hover:underline cursor-pointer transition-colors font-semibold"
+                    className="text-[10px] text-zinc-400 line-clamp-1 hover:text-purple-600 cursor-pointer transition-colors"
                     title="Consulter le profil de l'auteur"
                   >
                     Par {story.authorName}
