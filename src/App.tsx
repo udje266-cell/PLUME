@@ -830,7 +830,7 @@ export default function App() {
       joinRoom();
     }
 
-    socket.on('connect', joinRoom);
+    socket.on('connect', () => { joinRoom(); window.dispatchEvent(new Event('plume:reading-progress')); });
 
     socket.on('new_notification', (notification: any) => {
       const mapped = mapServerNotification(notification);
@@ -1004,6 +1004,7 @@ export default function App() {
 
     // Compteurs de récit (likes/favoris) en temps réel → la stat « Mentions »
     // du profil se met à jour sans rafraîchissement.
+    socket.on('reading_progress_changed', () => window.dispatchEvent(new Event('plume:reading-progress')));
     socket.on('story_stats', ({ storyId, likes, favoritesCount }: { storyId: string; likes: number; favoritesCount: number }) => {
       setStories((prev) => prev.map((s) => s.id === storyId ? { ...s, likes, favoritesCount } : s));
     });
@@ -1169,6 +1170,7 @@ export default function App() {
       socket.off('message_delivered');
       socket.off('message_updated');
       socket.off('story_stats');
+      socket.off('reading_progress_changed');
       socket.off('block_status');
       socket.off('group_created');
       socket.off('group_updated');
@@ -1412,6 +1414,31 @@ export default function App() {
   const [startChapterIndex, setStartChapterIndex] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [viewedUser, setViewedUser] = useState<User | null>(null);
+
+  // Refresh both profile snapshots when XP changes, without reopening the profile.
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        for (const id of new Set([viewedUser?.id, currentUser?.id].filter(Boolean))) {
+          try {
+            const response = await fetch(`/api/users/${encodeURIComponent(id!)}`, { headers: authHeaders() });
+            if (!response.ok || disposed) continue;
+            const fresh: User = await response.json();
+            if (disposed) return;
+            setViewedUser(prev => prev?.id === fresh.id ? { ...prev, ...fresh } : prev);
+            setCurrentUser(prev => prev?.id === fresh.id ? { ...prev, ...fresh } : prev);
+            setAllUsers(prev => prev.map(u => u.id === fresh.id ? { ...u, ...fresh } : u));
+          } catch { /* retain last known profile while offline */ }
+        }
+      }, 300);
+    };
+    window.addEventListener('plume:reading-progress', refresh);
+    refresh();
+    return () => { disposed = true; clearTimeout(timer); window.removeEventListener('plume:reading-progress', refresh); };
+  }, [viewedUser?.id, currentUser?.id]);
 
   const handleViewUserProfile = (userId: string) => {
     const target = allUsers.find(u => u.id === userId) || (userId === currentUser?.id ? currentUser : null);

@@ -1,3 +1,4 @@
+import LiveReadingProgress from './LiveReadingProgress';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -2081,6 +2082,7 @@ export default function ReadingView({
 
   return (
     <div ref={readerRootRef} className={`min-h-screen pb-24 transition-colors duration-500 ${T.dark ? 'dark' : ''}`} style={{ background: T.bg, color: T.fg }}>
+      {!isImmersive && <div className="max-w-3xl mx-auto px-3"><LiveReadingProgress storyId={story.id} /></div>}
       {/* Filtre lumière bleue (teinte chaude par-dessus tout le lecteur). */}
       {prefs.warmth > 0 && <div aria-hidden="true" className="fixed inset-0 pointer-events-none z-[60]" style={{ background: '#ff9a3c', opacity: prefs.warmth * 0.6, mixBlendMode: 'multiply' }} />}
       

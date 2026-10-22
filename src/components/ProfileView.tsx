@@ -1,3 +1,4 @@
+import LiveReadingProgress from './LiveReadingProgress';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1979,6 +1980,8 @@ const user = freshViewedUser || freshCurrentUser;
           )}
         </div>
       </div>
+
+      <LiveReadingProgress userId={user.id} />
 
       {/* NIVEAUX (XP) — deux jauges séparées Lecteur / Auteur, selon le rôle */}
       {canSeePalmares && (() => {

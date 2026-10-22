@@ -1,3 +1,4 @@
+import LiveReadingProgress from './LiveReadingProgress';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -2013,6 +2014,7 @@ export default function MessagesView({
             </div>
           </div>
 
+          {activeGroupId && <LiveReadingProgress groupId={activeGroupId} />}
           {activeGroupId && activeGroup?.storyId && (() => {
             const story = stories.find(s => s.id === activeGroup.storyId);
             if (!story) return null;

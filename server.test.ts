@@ -51,6 +51,7 @@ vi.mock('./src/server/prisma', () => {
         upsert: vi.fn(),
         count: vi.fn(),
       },
+      readingProgress: { findMany: vi.fn(), upsert: vi.fn() },
       readingHistory: {
         findFirst: vi.fn(),
         create: vi.fn(),
@@ -750,4 +751,38 @@ describe('API Integration Tests (Express routes)', () => {
       expect(res.body.error).toBe('Non connecté');
     });
   });
+  describe('Lecture en direct', () => {
+    const token = jwt.sign({ userId: 'viewer' }, JWT_SECRET, { expiresIn: '1h' });
+    const get = (query: string) => request(app).get(`/api/live-reading${query}`).set('Authorization', `Bearer ${token}`);
+    beforeEach(() => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'viewer', role: 'Lecteur' } as any);
+      vi.mocked(prisma.readingProgress.findMany).mockResolvedValue([]);
+    });
+    it('refuse les visiteurs anonymes', async () => {
+      await request(app).get('/api/live-reading?storyId=s').expect(401);
+    });
+    it('refuse les filtres absents ou ambigus', async () => {
+      await get('').expect(400);
+      await get('?storyId=s&userId=u').expect(400);
+      expect(prisma.readingProgress.findMany).not.toHaveBeenCalled();
+    });
+    it('refuse un groupe dont le visiteur ne fait pas partie', async () => {
+      vi.mocked(prisma.readingGroup.findUnique).mockResolvedValue({ storyId: 's', members: [{ id: 'other' }] } as any);
+      await get('?groupId=g').expect(403);
+      expect(prisma.readingProgress.findMany).not.toHaveBeenCalled();
+    });
+    it('borne le groupe aux membres et à son récit, sans cache de données privées', async () => {
+      vi.mocked(prisma.readingGroup.findUnique).mockResolvedValue({ storyId: 's', members: [{ id: 'viewer' }, { id: 'reader' }] } as any);
+      const response = await get('?groupId=g').expect(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(prisma.readingProgress.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ storyId: 's', userId: { in: ['viewer', 'reader'] },
+          chapter: { isPublished: true }, story: { status: 'PUBLIE' },
+          user: { isBanned: false, OR: [{ id: 'viewer' }, { showBooksRead: true, privateProfile: false,
+            blockedBy: { none: { blockerId: 'viewer' } }, blockedUsers: { none: { blockedId: 'viewer' } } }] },
+        }), distinct: ['userId'], take: 100,
+      }));
+    });
+  });
+
 });

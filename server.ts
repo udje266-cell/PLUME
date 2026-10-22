@@ -1064,34 +1064,6 @@ const XP = {
   likeReceived: 3, favoriteReceived: 5, commentReceived: 4, followerGained: 10,
 };
 
-/** Ajoute de l'XP à une jauge (lecteur/auteur). Best-effort, jamais bloquant. */
-async function awardXp(userId: string | undefined, pool: 'reader' | 'author', amount: number): Promise<void> {
-  if (!userId || amount <= 0) return;
-  try {
-    const field = pool === 'author' ? 'authorXp' : 'readerXp';
-    await prisma.user.update({ where: { id: userId }, data: { [field]: { increment: amount } } });
-  } catch { /* l'XP ne doit jamais casser l'action principale */ }
-}
-
-/**
- * Ajoute de l'XP avec un PLAFOND JOURNALIER par type d'action (anti-abus).
- * Utilise User.xpMeta = { date: 'YYYY-MM-DD', counters: { [key]: n } }.
- */
-async function awardCappedXp(userId: string | undefined, pool: 'reader' | 'author', amount: number, key: string, dailyMax: number): Promise<void> {
-  if (!userId || amount <= 0) return;
-  try {
-    const u = await prisma.user.findUnique({ where: { id: userId }, select: { xpMeta: true } });
-    const today = new Date().toISOString().slice(0, 10);
-    let meta: any = (u?.xpMeta as any) || {};
-    if (meta.date !== today || typeof meta.counters !== 'object') meta = { date: today, counters: {} };
-    const used = meta.counters[key] || 0;
-    if (used >= dailyMax) return; // plafond atteint pour aujourd'hui
-    meta.counters[key] = used + 1;
-    await prisma.user.update({ where: { id: userId }, data: { xpMeta: meta } });
-    await awardXp(userId, pool, amount);
-  } catch { /* best-effort */ }
-}
-
 export async function createServerInstance() {
   const app = express();
   // Nécessaire pour obtenir la vraie IP client derrière un proxy (Render, etc.)
@@ -1120,6 +1092,36 @@ export async function createServerInstance() {
   const io = new Server(httpServer, {
     cors: { origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE'] },
   });
+
+  /** Ajoute de l'XP à une jauge (lecteur/auteur). Best-effort, jamais bloquant. */
+  async function awardXp(userId: string | undefined, pool: 'reader' | 'author', amount: number): Promise<void> {
+    if (!userId || amount <= 0) return;
+    try {
+      const field = pool === 'author' ? 'authorXp' : 'readerXp';
+      await prisma.user.update({ where: { id: userId }, data: { [field]: { increment: amount } } });
+      io.emit('reading_progress_changed');
+    } catch { /* l'XP ne doit jamais casser l'action principale */ }
+  }
+
+  /**
+   * Ajoute de l'XP avec un PLAFOND JOURNALIER par type d'action (anti-abus).
+   * Utilise User.xpMeta = { date: 'YYYY-MM-DD', counters: { [key]: n } }.
+   */
+  async function awardCappedXp(userId: string | undefined, pool: 'reader' | 'author', amount: number, key: string, dailyMax: number): Promise<void> {
+    if (!userId || amount <= 0) return;
+    try {
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { xpMeta: true } });
+      const today = new Date().toISOString().slice(0, 10);
+      let meta: any = (u?.xpMeta as any) || {};
+      if (meta.date !== today || typeof meta.counters !== 'object') meta = { date: today, counters: {} };
+      const used = meta.counters[key] || 0;
+      if (used >= dailyMax) return; // plafond atteint pour aujourd'hui
+      meta.counters[key] = used + 1;
+      await prisma.user.update({ where: { id: userId }, data: { xpMeta: meta } });
+      await awardXp(userId, pool, amount);
+    } catch { /* best-effort */ }
+  }
+
 
   // Multi-instances : sans cet adaptateur, une notification temps réel émise par
   // l'instance A n'atteint pas un client connecté à l'instance B. Avec Redis,
@@ -6635,6 +6637,49 @@ export async function createServerInstance() {
     }
   });
 
+  // Snapshot filtered on EVERY request: privacy changes and blocks take effect immediately.
+  app.get('/api/live-reading', requireAuth, async (req: any, res) => {
+    try {
+      const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+      let storyId = typeof req.query.storyId === 'string' ? req.query.storyId : undefined;
+      const groupId = typeof req.query.groupId === 'string' ? req.query.groupId : undefined;
+      if ([userId, storyId, groupId].filter(Boolean).length !== 1) {
+        return res.status(400).json({ error: 'Un seul filtre est requis.' });
+      }
+      let memberIds: string[] | undefined;
+      if (groupId) {
+        const group = await prisma.readingGroup.findUnique({
+          where: { id: groupId }, select: { storyId: true, members: { select: { id: true } } },
+        });
+        if (!group || !group.members.some(m => m.id === req.user.id)) return res.sendStatus(403);
+        if (!group.storyId) return res.json([]);
+        storyId = group.storyId;
+        memberIds = group.members.map(m => m.id);
+      }
+      const rows = await prisma.readingProgress.findMany({
+        where: {
+          ...(userId ? { userId } : memberIds ? { userId: { in: memberIds } } : {}),
+          ...(storyId ? { storyId } : {}),
+          lastReadAt: { gte: new Date(Date.now() - 5 * 60_000) },
+          chapter: { isPublished: true }, story: { status: 'PUBLIE' },
+          user: { isBanned: false, OR: [
+            { id: req.user.id },
+            { showBooksRead: true, privateProfile: false,
+              blockedBy: { none: { blockerId: req.user.id } },
+              blockedUsers: { none: { blockedId: req.user.id } } },
+          ] },
+        },
+        orderBy: { lastReadAt: 'desc' }, distinct: ['userId'], take: 100,
+        select: { userId: true, storyId: true, chapterId: true, progressPercent: true, lastReadAt: true,
+          user: { select: { username: true } }, story: { select: { title: true } }, chapter: { select: { title: true } } },
+      });
+      res.set('Cache-Control', 'no-store').json(rows);
+    } catch (error) {
+      console.error('[LIVE-READING]', error);
+      res.status(500).json({ error: 'Progression indisponible.' });
+    }
+  });
+
   app.post('/api/chapters/:id/progress', requireAuth, async (req: any, res) => {
     try {
       const chapter = await prisma.chapter.findUnique({ where: { id: req.params.id }, include: { story: { select: { authorId: true } } } });
@@ -6653,6 +6698,7 @@ export async function createServerInstance() {
         create: { userId: req.user.id, storyId: chapter.storyId, chapterId: chapter.id, progressPercent },
         include: { story: true, chapter: true },
       });
+      io.emit('reading_progress_changed');
       res.json({ ...progress, story: { ...progress.story, tags: parseJsonArray(progress.story.tags) }, chapter: serializeChapter(progress.chapter) });
     } catch (error) {
       console.error(error);
