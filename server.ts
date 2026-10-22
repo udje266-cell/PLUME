@@ -1437,7 +1437,12 @@ export async function createServerInstance() {
     // CSP (bloquante) uniquement sur les reponses de DOCUMENT/ASSET (pas l'API
     // JSON) : c'est la page chargee qui declenche/évalue la politique.
     if (!req.path.startsWith('/api')) {
-      res.setHeader('Content-Security-Policy', CSP_POLICY);
+      // Vite injects its React refresh preamble and uses a local ws: HMR socket.
+      // Keep the stricter production policy for deployed builds.
+      const policy = process.env.NODE_ENV === 'production' ? CSP_POLICY : CSP_POLICY
+        .replace("script-src 'self'", "script-src 'self' 'unsafe-inline'")
+        .replace("connect-src 'self'", "connect-src 'self' ws:");
+      res.setHeader('Content-Security-Policy', policy);
     }
     next();
   });
