@@ -148,3 +148,5 @@ svg.layer { overflow: visible; }
 .store-txt { display: flex; flex-direction: column; line-height: 1.05; }
 .store-small { font-family: "Inter", sans-serif; font-size: 24px; font-weight: 600; color: #4c3f6b; }
 .store-big { font-family: "Montserrat", sans-serif; font-size: 48px; font-weight: 700; letter-spacing: 0.02em; }
+
+.kw { border-radius: 6px; background-color: rgba(124, 58, 237, 0); }

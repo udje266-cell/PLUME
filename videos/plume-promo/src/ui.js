@@ -73,7 +73,7 @@
     { t: "Code Rouge", a: "Yann B.", c1: "#3B0A0A", c2: "#DC2626", m: "bolt" },
     { t: "Les Murmures du Fleuve", a: "Moussa T.", c1: "#042F3A", c2: "#0891B2", m: "wave" },
     { t: "Sous la Pluie d'Étoiles", a: "Léa M.", c1: "#2E1065", c2: "#A855F7", m: "stars" },
-    { t: "Le Royaume Oublié", a: "Kofi A.", c1: "#052E16", c2: "#16A34A", m: "mount" },
+    { t: "Le Royaume Oublié", a: "Kofi A.", c1: "#052E16", c2: "#15803D", m: "mount" },
   ];
   function motif(m) {
     switch (m) {
@@ -283,7 +283,7 @@
             <span id="rd-pause-i" style="position:absolute;left:22px;top:22px">${pauseIco(40, "#fff")}</span>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:700;letter-spacing:0.14em;color:#c4b5fd">LIVRE AUDIO</div>
+            <div style="font-size:16px;font-weight:700;letter-spacing:0.14em;color:#c4b5fd">LIVRE AUDIO · VOIX NATURELLE</div>
             <div style="font-family:'Source Serif 4',serif;font-weight:600;font-size:26px;margin-top:4px;white-space:nowrap">Chapitre 3 · La forge</div>
           </div>
           <span style="font-size:19px;font-weight:700;padding:8px 14px;border-radius:16px;background:rgba(255,255,255,0.12)">1,0×</span>
@@ -454,6 +454,11 @@
   // S5 : couverture choisie + note
   sf.insertAdjacentHTML("beforeend", `<div id="sat5-cv" class="sat" style="left:12px;top:700px;width:230px;height:345px">${cover(0, 230, 345)}</div>
     <div id="sat5-rate" class="sat" style="left:60px;top:1080px;height:70px;border-radius:35px;background:#f5f0ff;color:#140b22;display:flex;align-items:center;gap:10px;padding:0 24px;font-size:26px;font-weight:700;box-shadow:0 14px 34px rgba(10,4,24,0.45)">${ico("star", 30, "#f59e0b")}4,8 · 24 chapitres</div>`);
+  // S6 : pastille « voix naturelle · ElevenLabs »
+  sf.insertAdjacentHTML("beforeend", `<div id="sat6-voice" class="sat" style="left:24px;top:1430px;height:118px;border-radius:59px;background:#f5f0ff;color:#140b22;display:flex;align-items:center;gap:18px;padding:0 34px 0 18px;box-shadow:0 20px 50px rgba(124,58,237,0.45)">
+      <span style="width:82px;height:82px;border-radius:41px;background:#140b22;display:flex;align-items:center;justify-content:center;gap:5px">${Array.from({ length: 5 }, () => '<i class="vb" style="display:block;width:7px;height:40px;border-radius:4px;background:#a78bfa;transform-origin:50% 50%"></i>').join("")}</span>
+      <span style="display:flex;flex-direction:column;line-height:1.1"><span style="font-family:'Source Serif 4',serif;font-weight:900;font-size:36px">Voix naturelle</span><span style="font-size:22px;font-weight:700;letter-spacing:0.06em;color:#5b21b6">par ElevenLabs</span></span>
+    </div>`);
   // S6 : ondes sonores (anneaux) — dans le fond
   $("#rings").innerHTML = Array.from({ length: 5 }, (_, i) => `<div class="ring" id="ring${i}"></div>`).join("");
   // S7 : carte statistiques auteur
@@ -492,6 +497,11 @@
   // rayons du logo
   $("#s2-rays").innerHTML = Array.from({ length: 14 }, () => `<i class="ray"></i>`).join("");
   // phrase surlignée (thème sépia uniquement)
+  // mots du karaoké (thème sépia) : chaque mot alphabétique devient un <span>
+  [["#rd-sepia .rd-p0", "kw0"], ["#rd-sepia .rd-p1", "kw1"]].forEach(([sel, cls]) => {
+    const p = $(sel);
+    p.innerHTML = p.textContent.split(" ").map((w) => (/[A-Za-zÀ-ÿœ]/.test(w) ? `<span class="kw ${cls}">${w}</span>` : w)).join(" ");
+  });
   const p2 = $("#rd-sepia .rd-p2");
   p2.innerHTML = p2.innerHTML.replace("vive comme un cœur qui recommence à battre.", '<span id="rd-target">vive comme un cœur qui recommence à battre.</span>');
 

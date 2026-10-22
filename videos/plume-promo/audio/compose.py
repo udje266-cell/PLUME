@@ -14,7 +14,13 @@ import soundfile as sf
 from scipy.signal import butter, sosfilt, fftconvolve
 
 SR = 44100
-DUR = 92.0
+DUR = 100.0
+D = 8.0  # la scène « livre audio » a été rallongée de 8 s pour la voix ElevenLabs
+
+
+def S(t):
+    """Temps d'origine (vidéo de 92 s) → temps réel : tout ce qui suit 47,3 s est décalé de D."""
+    return t + D if t >= 47.3 else t
 N = int(SR * DUR)
 BEAT = 0.5
 BAR = 2.0
@@ -61,9 +67,9 @@ CH = {
     "G": dict(bass=43, pad=[55, 59, 62, 67], arp=[67, 71, 74, 79]),
 }
 LOOP = ["Am", "F", "C", "G"]
-NBARS = 46
+NBARS = 50
 chords = [LOOP[i % 4] for i in range(NBARS)]
-chords[42], chords[43], chords[44], chords[45] = "F", "G", "C", "C"
+chords[46], chords[47], chords[48], chords[49] = "F", "G", "C", "C"
 
 
 def chord_at(t):
@@ -75,14 +81,14 @@ def in_range(t, ranges):
     return any(a <= t < b for a, b in ranges)
 
 
-DRUMS = [(8, 14), (14, 38), (48, 77.5), (78, 84)]
-HATS = [(14, 38), (48, 77.5), (78, 84)]
-SHAKER = [(24, 38), (58, 77.5), (78, 84)]
-CLAP = [(48, 77.5), (78, 84)]
-BASS8 = [(14, 38), (48, 77.5), (78, 84)]
-ARP16 = [(14, 38), (44.5, 48), (48, 77.5), (78, 84)]
-LEAD = [(64, 70), (78, 84)]
-BREAK_PULSE = [(44.5, 48)]
+DRUMS = [(8, 14), (14, 38), (56, 85.5), (86, 92)]
+HATS = [(14, 38), (56, 85.5), (86, 92)]
+SHAKER = [(24, 38), (66, 85.5), (86, 92)]
+CLAP = [(56, 85.5), (86, 92)]
+BASS8 = [(14, 38), (56, 85.5), (86, 92)]
+ARP16 = [(14, 38), (56, 85.5), (86, 92)]
+LEAD = [(72, 78), (86, 92)]
+BREAK_PULSE = []
 
 # ---------------------------------------------------------------- instruments
 
@@ -259,12 +265,12 @@ def mus(sig, t0, gain=1.0, pan=0.0, send=0.25):
 # pads (sauf silence avant le drop final)
 for b in range(NBARS):
     t0 = b * BAR
-    if 77.5 <= t0 < 78:
+    if 85.5 <= t0 < 86:
         continue
     c = CH[chords[b]]
-    g = 0.55 if t0 < 8 else (0.7 if 38 <= t0 < 48 else 0.9)
-    durb = BAR if b < 44 else 4.0
-    if b == 45:
+    g = 0.55 if t0 < 8 else (0.7 if 38 <= t0 < 56 else 0.9)
+    durb = BAR if b < 48 else 4.0
+    if b == 49:
         continue
     for k, m in enumerate(c["pad"]):
         mus(pad_note(m, durb + 0.05), t0, g, pan=[-0.5, -0.15, 0.15, 0.5][k], send=0.4)
@@ -272,20 +278,20 @@ for b in range(NBARS):
 # piano : intro + pont (lecture) + outro, croches douces
 for b in range(NBARS):
     t0 = b * BAR
-    if not (t0 < 8 or 38 <= t0 < 48 or t0 >= 84):
+    if not (t0 < 8 or 38 <= t0 < 56 or t0 >= 92):
         continue
     c = CH[chords[b]]
     notes = [c["pad"][0] - 12, c["pad"][1], c["pad"][2], c["pad"][3], c["pad"][2], c["pad"][1], c["pad"][3], c["pad"][2]]
     for i, m in enumerate(notes):
         t = t0 + i * BEAT / 2 * 2  # croches (0,25 s) sur 2 s → 8 notes
         t = t0 + i * 0.25
-        if t >= 88.0:
+        if t >= 96.0:
             break
         mus(piano_note(m, vel=0.75 if i % 2 else 0.95), t, 0.8, pan=-0.2 + 0.4 * (i % 2), send=0.35)
 # accord final
 for m in [48, 55, 60, 64, 67, 72]:
-    mus(piano_note(m, dur=4.5, vel=1.0), 88.0, 0.9, pan=(m - 60) / 30, send=0.6)
-    mus(pad_note(m, 3.2, att=0.2, rel=1.0), 88.0, 0.6, pan=(m - 60) / 30, send=0.5)
+    mus(piano_note(m, dur=4.5, vel=1.0), 96.0, 0.9, pan=(m - 60) / 30, send=0.6)
+    mus(pad_note(m, 3.2, att=0.2, rel=1.0), 96.0, 0.6, pan=(m - 60) / 30, send=0.5)
 
 # motif de cloche (la plume écrit)
 for t, m in [(1.0, 76), (2.0, 81), (2.5, 79), (3.0, 76), (4.2, 72), (4.7, 76), (5.2, 84), (6.2, 83)]:
@@ -302,7 +308,7 @@ for b in range(NBARS):
             continue
         m = c["arp"][pat[i % 8]]
         acc = 1.0 if i % 4 == 0 else 0.7
-        bright = 2500 if in_range(t, [(38, 48)]) else 4200
+        bright = 4200
         mus(pluck(m, vel=acc, bright=bright), t, 0.75, pan=0.45 if i % 2 else -0.45, send=0.3)
 
 # lead (refrain)
@@ -357,23 +363,23 @@ for i in range(int(DUR / 0.125)):
     if in_range(t, SHAKER):
         add(drums, shaker(1.0 if i % 2 else 0.6), t)
 # claps du slogan + slams finaux
-for t in (10.0, 10.5, 11.0, 78.5, 79.0, 79.5, 86.0, 86.5, 87.0):
+for t in (10.0, 10.5, 11.0, 86.5, 87.0, 87.5, 94.0, 94.5, 95.0):
     add(drums, clap(1.3), t)
     add(verb_send, clap(), t, 0.5)
 # roulement de caisse claire (montée 74 → 77,5)
-t = 74.0
-while t < 77.5:
-    span = (t - 74.0) / 3.5
+t = 82.0
+while t < 85.5:
+    span = (t - 82.0) / 3.5
     step = 0.25 if span < 0.4 else (0.125 if span < 0.75 else 0.0625)
     add(drums, snare(0.35 + 0.65 * span), t)
     t += step
 # montées, impacts
 add(verb_send, reverse_swell(2.0), 6.0, 0.5)
-for t0, d in [(5.6, 2.4), (12.4, 1.6), (36.0, 2.0), (74.0, 3.95), (82.0, 2.4)]:
+for t0, d in [(5.6, 2.4), (12.4, 1.6), (36.0, 2.0), (53.4, 2.0), (82.0, 3.95), (90.0, 2.4)]:
     sig = riser(d)
     add(music_L, sig, t0, 0.8)
     add(music_R, sig, t0, 0.8)
-for t in (8.0, 78.0, 84.45):
+for t in (8.0, 86.0, 92.45):
     add(drums, impact(), t, 0.9)
     add(verb_send, impact(), t, 0.08)
 
@@ -405,6 +411,36 @@ rev_r = fftconvolve(send, ir_r)[:N] * 0.9
 L = music_L + bass_bus + drums * 0.95 + rev_l
 R = music_R + bass_bus + drums * 0.95 + rev_r
 
+# ---------------------------------------------------------------- voix ElevenLabs
+import json as _json
+VOICE = _json.loads((ROOT / "assets" / "audio" / "voice.json").read_text(encoding="utf-8"))
+
+
+def load_mono(p):
+    wav = subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-f", "wav", "-ac", "1", "-ar", str(SR), "-"], capture_output=True, check=True).stdout
+    x, _ = sf.read(io.BytesIO(wav))
+    return x
+
+
+vduck = np.ones(N)
+vtrack = np.zeros(N)
+for i, vs in enumerate(VOICE["vs"]):
+    v = load_mono(ROOT / "assets" / "audio" / f"voice-p{i}.mp3")
+    v = hp(v, 80)
+    add(vtrack, v, vs)
+    a0, a1 = int((vs - 0.35) * SR), int((vs + len(v) / SR + 0.15) * SR)
+    vduck[a0:a1] = 0.36  # ≈ -9 dB sous la voix
+# lissage du ducking (attaque/relâche)
+k = int(0.25 * SR)
+vduck = np.convolve(vduck, np.ones(k) / k, "same")
+L *= vduck
+R *= vduck
+vrms = np.sqrt(np.mean(vtrack[vtrack != 0] ** 2))
+vtrack *= 0.22 / max(vrms, 1e-6)
+rv = fftconvolve(vtrack, ir_l)[:N] * 0.06
+L += vtrack + rv
+R += vtrack + rv
+
 # ---------------------------------------------------------------- SFX
 SFX_DIR = ROOT / "assets" / "sfx"
 _cache = {}
@@ -427,7 +463,7 @@ def load(name):
 
 def sfx(name, t, gain=0.5, peak_align=False):
     x, onset = load(name)
-    t0 = t - onset / SR
+    t0 = S(t) - onset / SR
     add(L, x[:, 0], t0, gain)
     add(R, x[:, 1], t0, gain)
 
@@ -506,7 +542,7 @@ for name, t, g in EVENTS:
 mix = np.stack([L, R], axis=1)
 mix = hp(mix.T, 28).T
 # fondu de fin
-fade0 = int(90.3 * SR)
+fade0 = int(98.3 * SR)
 mix[fade0:] *= np.linspace(1, 0, N - fade0)[:, None] ** 1.5
 mix[: int(0.02 * SR)] *= np.linspace(0, 1, int(0.02 * SR))[:, None]
 # compression douce + limiteur

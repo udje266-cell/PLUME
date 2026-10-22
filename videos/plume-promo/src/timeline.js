@@ -9,7 +9,7 @@
   const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
 
   function build() {
-    const tl = gsap.timeline({ paused: true });
+    let tl = gsap.timeline({ paused: true });
 
     /* ---------- mesures (avant toute transformation) ---------- */
     const line1 = q("#s1-line1");
@@ -106,20 +106,20 @@
 
     /* ================= FOND ================= */
     tl.fromTo("#glow-a", { x: 0, y: 0, scale: 1 }, { x: 200, y: 280, scale: 1.18, duration: 46, ease: "sine.inOut" }, 0);
-    tl.to("#glow-a", { x: -40, y: 60, scale: 1.05, duration: 46, ease: "sine.inOut" }, 46);
+    tl.to("#glow-a", { x: -40, y: 60, scale: 1.05, duration: 54, ease: "sine.inOut" }, 46);
     tl.fromTo("#glow-b", { x: 0, y: 0, scale: 1 }, { x: -280, y: -420, scale: 1.25, duration: 46, ease: "sine.inOut" }, 0);
-    tl.to("#glow-b", { x: -60, y: -120, scale: 1.1, duration: 46, ease: "sine.inOut" }, 46);
+    tl.to("#glow-b", { x: -60, y: -120, scale: 1.1, duration: 54, ease: "sine.inOut" }, 46);
     tl.fromTo("#glow-c", { opacity: 0 }, { opacity: 0.85, duration: 0.6, ease: "sine.inOut" }, 40.1);
-    tl.to("#glow-c", { opacity: 0, duration: 1.5, ease: "sine.inOut" }, 47.0);
+    tl.to("#glow-c", { opacity: 0, duration: 1.5, ease: "sine.inOut" }, 54.6);
     ghost("#g-histoire", 0.4, 8);
     ghost("#g-plume", 8.6, 14);
     ghost("#g-decouvrir", 15.0, 24);
     ghost("#g-explorer", 24.4, 32);
     ghost("#g-choisir", 32.3, 38);
-    ghost("#g-lire", 38.4, 48);
-    ghost("#g-ecrire", 48.4, 58);
-    ghost("#g-ensemble", 58.4, 70);
-    ghost("#g-progresser", 70.4, 78);
+    ghost("#g-lire", 38.4, 56);
+    ghost("#g-ecrire", 56.4, 66);
+    ghost("#g-ensemble", 66.4, 78);
+    ghost("#g-progresser", 78.4, 86);
 
     /* ================= S1 — la plume écrit (0 → 8) ================= */
     const fw = "#s1-feather-wrap", wob = "#s1-feather-wobble";
@@ -331,33 +331,68 @@
     press("#rd-play", 44.95, 0.88);
     tl.to("#rd-play-i", { opacity: 0, duration: 0.12 }, 45.0);
     tl.to("#rd-pause-i", { opacity: 1, duration: 0.12 }, 45.02);
-    // ondes + progression
+    // ===== livre audio : vraie voix ElevenLabs (données inlinées par build.py)
+    const V = window.__plumeVoice;
+    const VEND = 55.3;
+    const SPAN = VEND - 45.0;
     const bars = qa("#rd-wave .wv");
     const wv = { t: 0 };
     tl.fromTo(wv, { t: 0 }, {
-      t: 3.0, duration: 3.0, ease: "none", immediateRender: false,
+      t: SPAN, duration: SPAN, ease: "none", immediateRender: false,
       onUpdate: () => {
-        const T = wv.t, played = 13 + Math.floor(T * 3.2);
+        const T = wv.t, played = 13 + Math.floor((T / SPAN) * 21);
+        const k = Math.min(V.env.length - 1, Math.max(0, Math.floor((45.0 + T - V.envStart) * V.fps)));
+        const e = V.env[k];
         for (let i = 0; i < bars.length; i++) {
-          const s = 0.22 + 0.78 * Math.abs(Math.sin(T * 7.3 + i * 0.9) * Math.sin(T * 3.1 + i * 0.37 + 1.3));
+          const w = Math.abs(0.6 * Math.sin(T * 9.1 + i * 0.9) + 0.4 * Math.sin(T * 4.3 + i * 0.37 + 1.3));
+          const s = 0.14 + 0.86 * Math.min(1, e * (0.45 + 0.8 * w));
           bars[i].style.transform = `scaleY(${s.toFixed(3)})`;
           bars[i].style.background = i < played ? "#a78bfa" : "rgba(255,255,255,0.28)";
         }
       },
     }, 45.0);
-    if (paraRects.length >= 3) {
-      const P0 = paraRects[0];
+    // karaoké : le paragraphe lu, puis chaque mot au moment où la voix le prononce
+    if (paraRects.length >= 2) {
+      const P0 = paraRects[0], P1 = paraRects[1];
       tl.set("#rd-karaoke", { y: P0.y - 190 - 8, scaleY: (P0.h + 16) / 150, transformOrigin: "50% 0%" }, 45.05);
       tl.to("#rd-karaoke", { opacity: 1, duration: 0.3 }, 45.1);
-      [1, 2].forEach((pi, j) => {
-        const P = paraRects[pi];
-        tl.to("#rd-karaoke", { y: P.y - 190 - 8, scaleY: (P.h + 16) / 150, duration: 0.45, ease: "power3.inOut" }, 46.1 + j * 1.0);
-      });
+      tl.to("#rd-karaoke", { y: P1.y - 190 - 8, scaleY: (P1.h + 16) / 150, duration: 0.45, ease: "power3.inOut" }, V.vs[1] - 0.35);
     }
-    tl.fromTo("#rd-sepia .rd-prog", { scaleX: 0.42 }, { scaleX: 0.5, duration: 3, ease: "none" }, 45.0);
-    qa("#rings .ring").forEach((r, i) => {
-      tl.fromTo(r, { scale: 0.55, opacity: 0.8 }, { scale: 1.95, opacity: 0, duration: 2.2, ease: "power1.out", immediateRender: false }, 45.2 + i * 0.5);
+    [[qa("#rd-sepia .kw0"), V.words, V.vs[0]], [qa("#rd-sepia .kw1"), V.words1, V.vs[1]]].forEach(([els, ws, vs]) => {
+      els.forEach((el, i) => {
+        const w = ws[Math.min(i, ws.length - 1)];
+        tl.to(el, { color: "#5b21b6", backgroundColor: "rgba(124,58,237,0.2)", duration: 0.06, ease: "none" }, vs + w[1]);
+        tl.to(el, { backgroundColor: "rgba(124,58,237,0)", duration: 0.3, ease: "power1.out" }, vs + Math.max(w[2], w[1] + 0.12));
+      });
     });
+    tl.fromTo("#rd-sepia .rd-prog", { scaleX: 0.42 }, { scaleX: 0.56, duration: SPAN, ease: "none" }, 45.0);
+    qa("#rings .ring").forEach((r, i) => {
+      const t0 = 45.2 + i * 0.44;
+      const reps = Math.max(0, Math.floor((54.9 - t0) / 2.2) - 1);
+      tl.fromTo(r, { scale: 0.55, opacity: 0.8 }, { scale: 1.95, opacity: 0, duration: 2.2, ease: "power1.out", repeat: reps, immediateRender: false }, t0);
+    });
+    // la caméra s'approche du texte pendant la lecture
+    tl.to("#phone-cam", { scale: 1.1, y: 40, duration: 5, ease: "sine.inOut" }, 45.4);
+    tl.to("#phone-cam", { scale: 1, y: 0, duration: 0.6, ease: "power2.inOut" }, 54.7);
+    // pastille « voix naturelle · ElevenLabs »
+    tl.fromTo("#sat6-voice", { scale: 0.3, opacity: 0, x: -60 }, { scale: 1, opacity: 1, x: 0, duration: 0.7, ease: "back.out(1.8)" }, 45.7);
+    tl.to("#sat6-voice", { y: -24, duration: 1.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 46.5);
+    const vb = qa("#sat6-voice .vb");
+    const vv = { t: 0 };
+    tl.fromTo(vv, { t: 0 }, {
+      t: 9.6, duration: 9.6, ease: "none", immediateRender: false,
+      onUpdate: () => {
+        const k = Math.min(V.env.length - 1, Math.max(0, Math.floor((45.7 + vv.t - V.envStart) * V.fps)));
+        const e = V.env[k];
+        vb.forEach((b, i) => { b.style.transform = `scaleY(${(0.2 + 0.8 * Math.min(1, e * (0.6 + 0.5 * Math.abs(Math.sin(vv.t * 8 + i * 1.3))))).toFixed(3)})`; });
+      },
+    }, 45.7);
+    tl.to("#sat6-voice", { x: -500, opacity: 0, duration: 0.45, ease: "power3.in" }, 55.0);
+
+    /* ---- tout ce qui suit est décalé de D s (scène audio rallongée pour la voix) ---- */
+    const D = 8;
+    const master = tl;
+    tl = gsap.timeline();
     // → S7 : retournement 3D du téléphone
     hlOut("hl-s6c", 47.5);
     tl.to("#phone-cam", { rotationY: 90, duration: 0.32, ease: "power2.in" }, 47.55);
@@ -567,7 +602,8 @@
     tl.set("#fade-out", { visibility: "inherit" }, 90.5);
     tl.fromTo("#fade-out", { opacity: 0 }, { opacity: 1, duration: 1.4, ease: "power1.inOut" }, 90.55);
 
-    window.__timelines["main"] = tl;
+    master.add(tl, D);
+    window.__timelines["main"] = master;
     if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
   }
 
