@@ -3935,7 +3935,7 @@ export default function App() {
                   key={selectedStoryForReading.id}
                   story={selectedStoryForReading}
                   initialChapterIndex={startChapterIndex ?? undefined}
-                  onBack={() => { setSelectedStoryForReading(null); setStartChapterIndex(null); }}
+                  onBack={() => { const st = selectedStoryForReading; setSelectedStoryForReading(null); setStartChapterIndex(null); if (st) setSelectedStoryForDetail(st); }}
                   onSelectStory={handleSelectStoryForReading}
                   currentUser={currentUser!}
                   onToggleFeatured={handleToggleStoryFeatured}

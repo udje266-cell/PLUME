@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, RotateCcw, Check, Headphones, Volume2, Film, Sun, Coffee, Play, Pause } from 'lucide-react';
+import { X, RotateCcw, Check, Headphones, Volume2, Film, Sun, Coffee, Play, Pause, Maximize2 } from 'lucide-react';
 import {
   ReaderPrefs, ReaderTheme, READER_THEMES, THEME_ORDER, READER_FONTS, resolveTheme,
 } from '../utils/readerPrefs';
@@ -30,6 +30,7 @@ interface Props {
   setAudiobookEnabled: (v: boolean) => void;
   speechRate: number;
   setSpeechRate: (v: number) => void;
+  onImmersive: () => void;
 }
 
 const SOUNDS: { id: Soundscape; label: string }[] = [
@@ -176,6 +177,7 @@ export default function ReaderSettingsSheet(p: Props) {
             <input type="range" min={0} max={0.45} step={0.05} value={prefs.warmth} onChange={(e) => p.setPrefs({ warmth: Number(e.target.value) })} className="w-full mb-2" style={{ accentColor: T.accent }} />
             <Toggle T={T} on={prefs.keepAwake} onClick={() => p.setPrefs({ keepAwake: !prefs.keepAwake })} icon={<Coffee className="w-4 h-4" />} label="Garder l’écran allumé" hint="L’écran ne se met pas en veille pendant la lecture." />
             <Toggle T={T} on={p.cinema} onClick={() => p.setCinema(!p.cinema)} icon={<Film className="w-4 h-4" />} label="Mode cinéma" hint="Seul le paragraphe en cours reste net." />
+            <Toggle T={T} on={false} onClick={p.onImmersive} icon={<Maximize2 className="w-4 h-4" />} label="Mode immersion" hint="Plein écran, sans aucune barre. Touchez « Fermer » en haut pour sortir." />
           </Section>
 
           {/* Audio */}

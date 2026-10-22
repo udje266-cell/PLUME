@@ -1533,6 +1533,21 @@ export default function ReadingView({
 
   useEffect(() => { setCommentParagraph(null); setToolsIdx(null); }, [activeChapter?.id]);
 
+  // Le fond de page suit le thème de lecture (sinon une bande blanche
+  // apparaissait sous le texte en thème sombre).
+  useEffect(() => {
+    // On repeint aussi les conteneurs de l'app (fond blanc par défaut) situés
+    // sous la page de lecture, puis on restaure en quittant.
+    const touched: { el: HTMLElement; prev: string }[] = [];
+    let el: HTMLElement | null = readerRootRef.current?.parentElement || null;
+    while (el && el !== document.documentElement) {
+      touched.push({ el, prev: el.style.background });
+      el.style.background = T.bg;
+      el = el.parentElement;
+    }
+    return () => { touched.forEach(({ el, prev }) => { el.style.background = prev; }); };
+  }, [T.bg]);
+
   // Split chapter text into readable paragraphs
   const paragraphs = activeChapter ? contentToParagraphs(activeChapter.content) : [];
 
@@ -2130,6 +2145,7 @@ export default function ReadingView({
         setAudiobookEnabled={setAudiobookEnabled}
         speechRate={speechRate}
         setSpeechRate={setSpeechRate}
+        onImmersive={() => { setIsSettingsOpen(false); setIsImmersive(true); }}
       />
 
       {/* 2. FLOATING FLOATING IMMERSIVE CLOSE TOOL - SHOWN EXCLUSIVELY DURING FOCUS/IMMERSIVE MODE */}
@@ -2151,7 +2167,7 @@ export default function ReadingView({
           barre de navigation du bas (qui a un z-index extreme). Visible des que
           la fonctionnalite est activee (l'indisponibilite eventuelle de la
           synthese est signalee au moment du clic). */}
-      {audiobookEnabled && createPortal(
+      {audiobookEnabled && !isSettingsOpen && !isChaptersOpen && !isCommentsOpen && !noteEditor && createPortal(
         <div className="fixed right-3 z-[2147483000] animate-fade-in select-none" style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}>
           {audioMini ? (
             // REPLIÉ : petite pastille discrète (icône casque) — tap pour rouvrir.
@@ -2272,8 +2288,8 @@ export default function ReadingView({
               lignes de majuscules mono) + le titre serif mis en avant, et on
               sort lectures/likes du seuil de lecture (ils vivent sur la fiche).
               Il ne reste que ce qui prepare la lecture : reperage + duree. */}
-          <div className="text-center mb-10 border-b border-gray-205/40 dark:border-zinc-800 pb-8">
-            <span className="text-[10px] uppercase font-mono tracking-[0.16em] text-[#7C3AED] dark:text-purple-400 font-bold block mb-3 leading-none">
+          <div className="text-center mb-10 pb-8" style={{ borderBottom: `1px solid ${T.line}` }}>
+            <span className="text-[10px] uppercase font-mono tracking-[0.16em] font-bold block mb-3 leading-none" style={{ color: T.accent }}>
               {tomeLabel
                 ? `Tome ${tomeLabel.tomeNumber} · Chapitre ${tomeLabel.chapterInTome}`
                 : `Chapitre ${activeChapterIndex + 1} sur ${story.chapters.length}`}
@@ -2284,7 +2300,7 @@ export default function ReadingView({
             </h2>
 
             {!isImmersive && (
-              <div className="flex items-center justify-center gap-2 text-[11px] text-gray-450 select-none">
+              <div className="flex items-center justify-center gap-2 text-[11px] select-none" style={{ color: T.muted }}>
                 <span>{paragraphs.length} paragraphes</span>
                 <span className="opacity-40">·</span>
                 <span>{Math.round(plainFromHtml(activeChapter.content).length / 5)} mots</span>

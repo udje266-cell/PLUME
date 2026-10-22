@@ -2,6 +2,65 @@
 @import url('https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Bitter:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Archivo:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;700&family=Fira+Code:wght@400;700&display=swap');
 @import "tailwindcss";
 
+/* Nuances intermédiaires utilisées dans l'app (ex. gray-805, zinc-850) :
+   absentes de Tailwind, elles étaient ignorées (fonds blancs en mode sombre). */
+@theme {
+  --color-cyan-550: color-mix(in oklab, var(--color-cyan-500) 50%, var(--color-cyan-600));
+  --color-emerald-550: color-mix(in oklab, var(--color-emerald-500) 50%, var(--color-emerald-600));
+  --color-gray-105: color-mix(in oklab, var(--color-gray-100) 95%, var(--color-gray-200));
+  --color-gray-150: color-mix(in oklab, var(--color-gray-100) 50%, var(--color-gray-200));
+  --color-gray-205: color-mix(in oklab, var(--color-gray-200) 95%, var(--color-gray-300));
+  --color-gray-250: color-mix(in oklab, var(--color-gray-200) 50%, var(--color-gray-300));
+  --color-gray-255: color-mix(in oklab, var(--color-gray-200) 45%, var(--color-gray-300));
+  --color-gray-450: color-mix(in oklab, var(--color-gray-400) 50%, var(--color-gray-500));
+  --color-gray-455: color-mix(in oklab, var(--color-gray-400) 45%, var(--color-gray-500));
+  --color-gray-55: color-mix(in oklab, var(--color-gray-50) 90%, var(--color-gray-100));
+  --color-gray-550: color-mix(in oklab, var(--color-gray-500) 50%, var(--color-gray-600));
+  --color-gray-650: color-mix(in oklab, var(--color-gray-600) 50%, var(--color-gray-700));
+  --color-gray-705: color-mix(in oklab, var(--color-gray-700) 95%, var(--color-gray-800));
+  --color-gray-750: color-mix(in oklab, var(--color-gray-700) 50%, var(--color-gray-800));
+  --color-gray-805: color-mix(in oklab, var(--color-gray-800) 95%, var(--color-gray-900));
+  --color-gray-850: color-mix(in oklab, var(--color-gray-800) 50%, var(--color-gray-900));
+  --color-gray-855: color-mix(in oklab, var(--color-gray-800) 45%, var(--color-gray-900));
+  --color-gray-905: color-mix(in oklab, var(--color-gray-900) 90%, var(--color-gray-950));
+  --color-gray-909: color-mix(in oklab, var(--color-gray-900) 82%, var(--color-gray-950));
+  --color-gray-955: var(--color-gray-950);
+  --color-green-505: color-mix(in oklab, var(--color-green-500) 95%, var(--color-green-600));
+  --color-orange-650: color-mix(in oklab, var(--color-orange-600) 50%, var(--color-orange-700));
+  --color-purple-305: color-mix(in oklab, var(--color-purple-300) 95%, var(--color-purple-400));
+  --color-purple-350: color-mix(in oklab, var(--color-purple-300) 50%, var(--color-purple-400));
+  --color-purple-405: color-mix(in oklab, var(--color-purple-400) 95%, var(--color-purple-500));
+  --color-purple-450: color-mix(in oklab, var(--color-purple-400) 50%, var(--color-purple-500));
+  --color-purple-505: color-mix(in oklab, var(--color-purple-500) 95%, var(--color-purple-600));
+  --color-purple-550: color-mix(in oklab, var(--color-purple-500) 50%, var(--color-purple-600));
+  --color-purple-605: color-mix(in oklab, var(--color-purple-600) 95%, var(--color-purple-700));
+  --color-purple-650: color-mix(in oklab, var(--color-purple-600) 50%, var(--color-purple-700));
+  --color-purple-655: color-mix(in oklab, var(--color-purple-600) 45%, var(--color-purple-700));
+  --color-purple-750: color-mix(in oklab, var(--color-purple-700) 50%, var(--color-purple-800));
+  --color-purple-905: color-mix(in oklab, var(--color-purple-900) 90%, var(--color-purple-950));
+  --color-red-650: color-mix(in oklab, var(--color-red-600) 50%, var(--color-red-700));
+  --color-red-750: color-mix(in oklab, var(--color-red-700) 50%, var(--color-red-800));
+  --color-teal-850: color-mix(in oklab, var(--color-teal-800) 50%, var(--color-teal-900));
+  --color-violet-850: color-mix(in oklab, var(--color-violet-800) 50%, var(--color-violet-900));
+  --color-zinc-150: color-mix(in oklab, var(--color-zinc-100) 50%, var(--color-zinc-200));
+  --color-zinc-155: color-mix(in oklab, var(--color-zinc-100) 45%, var(--color-zinc-200));
+  --color-zinc-250: color-mix(in oklab, var(--color-zinc-200) 50%, var(--color-zinc-300));
+  --color-zinc-405: color-mix(in oklab, var(--color-zinc-400) 95%, var(--color-zinc-500));
+  --color-zinc-450: color-mix(in oklab, var(--color-zinc-400) 50%, var(--color-zinc-500));
+  --color-zinc-455: color-mix(in oklab, var(--color-zinc-400) 45%, var(--color-zinc-500));
+  --color-zinc-550: color-mix(in oklab, var(--color-zinc-500) 50%, var(--color-zinc-600));
+  --color-zinc-650: color-mix(in oklab, var(--color-zinc-600) 50%, var(--color-zinc-700));
+  --color-zinc-655: color-mix(in oklab, var(--color-zinc-600) 45%, var(--color-zinc-700));
+  --color-zinc-805: color-mix(in oklab, var(--color-zinc-800) 95%, var(--color-zinc-900));
+  --color-zinc-815: color-mix(in oklab, var(--color-zinc-800) 85%, var(--color-zinc-900));
+  --color-zinc-820: color-mix(in oklab, var(--color-zinc-800) 80%, var(--color-zinc-900));
+  --color-zinc-850: color-mix(in oklab, var(--color-zinc-800) 50%, var(--color-zinc-900));
+  --color-zinc-855: color-mix(in oklab, var(--color-zinc-800) 45%, var(--color-zinc-900));
+  --color-zinc-90: color-mix(in oklab, var(--color-zinc-50) 20%, var(--color-zinc-100));
+  --color-zinc-905: color-mix(in oklab, var(--color-zinc-900) 90%, var(--color-zinc-950));
+}
+
+
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
