@@ -145,7 +145,7 @@ export default function MainNavigation({
         <div className="flex items-center justify-between">
           
           <div className="flex items-center gap-1">
-            {activeTab !== 'home' && activeTab !== 'library' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Filtres de la bibliothèque" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
+            {activeTab !== 'home' && activeTab !== 'library' && <button id="sidebar-toggle-btn" onClick={onOpenSidebar} aria-label="Ouvrir le menu" className="p-1.5 text-zinc-500"><Menu className="h-5 w-5" /></button>}
             <button aria-label="Accueil PLUME" onClick={() => onChangeTab('home')} className="h-11 w-[104px] flex items-center shrink-0">
               <HeaderLogo />
             </button>
@@ -193,7 +193,7 @@ export default function MainNavigation({
                     onClick={() => setIsNotificationsOpen(false)}
                     aria-hidden="true"
                   />
-                <div className="absolute right-0 top-11 w-80 max-w-[88vw] bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-zinc-850 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                <div className="fixed inset-x-3 top-[calc(3.5rem+env(safe-area-inset-top))] sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-80 bg-white dark:bg-[#0E0E14] border border-gray-150 dark:border-zinc-850 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100 dark:border-zinc-850 flex items-center justify-between">
                     <div>
                       <h3 className="text-xs font-serif font-black text-gray-950 dark:text-white">Notifications</h3>

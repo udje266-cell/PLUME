@@ -1058,7 +1058,10 @@ export default function ReadingView({
     {
       const saved = getBookProgress(currentUser.id, story.id);
       const hasPara = saved && typeof saved.paragraphIndex === 'number' && saved.paragraphIndex > 0;
-      if (saved && (hasPara || saved.scrollRatio > 0.01)) {
+      // Un AUTRE chapitre choisi dans le sommaire : on l'ouvre en haut, la
+      // position sauvegardée concerne un autre chapitre.
+      const otherChapter = saved && typeof initialChapterIndex === 'number' && initialChapterIndex !== saved.chapterIndex;
+      if (saved && !otherChapter && (hasPara || saved.scrollRatio > 0.01)) {
         restoring = true;
         const apply = () => {
           // Reprise AU PARAGRAPHE si connu ; repli sur l'ancien ratio de pixels.
@@ -1400,8 +1403,8 @@ export default function ReadingView({
   );
   const chapterLeftMin = Math.ceil((chapterWords * (1 - chapterProgress)) / 230);
   useEffect(() => {
-    const scroller = getScrollParent(readerRootRef.current);
-    const target: any = scroller || window;
+    // Écoute en phase de capture sur le document : capte le défilement quel que
+    // soit le conteneur qui défile réellement (sinon la barre restait à 0 %).
     const onScroll = () => {
       const art = activeChapter ? document.getElementById(`chapter-content-${activeChapter.id}`) : null;
       if (!art) return;
@@ -1410,9 +1413,10 @@ export default function ReadingView({
       const total = Math.max(1, r.height - vh * 0.5);
       setChapterProgress(Math.min(1, Math.max(0, (-r.top + vh * 0.25) / total)));
     };
-    target.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('resize', onScroll);
     onScroll();
-    return () => target.removeEventListener('scroll', onScroll);
+    return () => { document.removeEventListener('scroll', onScroll, { capture: true } as any); window.removeEventListener('resize', onScroll); };
   }, [activeChapter?.id]);
 
   // ── Défilement automatique (vitesse en mots/minute) ──────────────────────
@@ -2817,7 +2821,7 @@ export default function ReadingView({
                 </div>
               ) : (
                 drawerComments.map((com) => (
-                  <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2shadow-xs">
+                  <div key={com.id} className="p-3.5 bg-gray-55 dark:bg-[#0E0E14] rounded-xl border border-gray-100 dark:border-purple-900/15 text-left space-y-2 shadow-xs">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <img

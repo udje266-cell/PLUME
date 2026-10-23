@@ -3250,6 +3250,49 @@ export async function createServerInstance() {
 
   // Signalement d'un compte : tout utilisateur connecté peut signaler, mais
   // seul ce flux (et non un PUT arbitraire) peut positionner isFlagged.
+  // Signalement d'une ŒUVRE par un lecteur. Avant, l'app passait par la
+  // modification de l'œuvre (réservée à l'auteur) : le serveur refusait en
+  // silence et l'admin ne recevait rien. Les admins sont notifiés à chaque
+  // signalement ; l'œuvre n'est masquée qu'au-delà d'un seuil de lecteurs
+  // distincts (un compte isolé ne peut pas faire disparaître un livre).
+  app.post('/api/stories/:id/report', requireAuth, async (req: any, res) => {
+    try {
+      const story = await prisma.story.findUnique({ where: { id: req.params.id }, select: { id: true, title: true, authorId: true, isFlagged: true } });
+      if (!story) return res.status(404).json({ error: 'Œuvre introuvable' });
+      if (story.authorId === req.user.id) return res.status(400).json({ error: 'Vous ne pouvez pas signaler votre propre œuvre.' });
+      const reason = typeof req.body?.reason === 'string' && req.body.reason.trim() ? req.body.reason.trim().slice(0, 500) : null;
+      await prisma.storyReport.upsert({
+        where: { reporterId_storyId: { reporterId: req.user.id, storyId: story.id } },
+        update: { reason },
+        create: { reporterId: req.user.id, storyId: story.id, reason },
+      });
+      const count = await prisma.storyReport.count({ where: { storyId: story.id } });
+      let flagged = story.isFlagged;
+      if (!story.isFlagged && count >= REPORT_FLAG_THRESHOLD) {
+        await prisma.story.update({ where: { id: story.id }, data: { isFlagged: true, flagReason: reason || `Signalée par ${count} lecteurs` } });
+        flagged = true;
+      }
+      const admins = await prisma.user.findMany({ where: { role: 'Administrateur' }, select: { id: true } });
+      for (const a of admins) {
+        const notification = await prisma.notification.create({
+          data: {
+            userId: a.id,
+            type: 'STORY_REPORT' as any,
+            title: 'Œuvre signalée',
+            message: `@${req.user.username || 'Un lecteur'} a signalé « ${story.title} »${reason ? ` : ${reason.slice(0, 120)}` : ''} (${count} signalement${count > 1 ? 's' : ''})`,
+            data: { storyId: story.id, storyTitle: story.title, actorId: req.user.id, actorName: req.user.username, actorAvatar: req.user.avatar || '' } as any,
+          },
+        });
+        notifyUser(a.id, notification);
+      }
+      console.log(`[REPORT] oeuvre ${story.id} signalee par ${req.user.id} (total distinct: ${count})`);
+      res.json({ success: true, reportCount: count, isFlagged: flagged });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Erreur lors du signalement.' });
+    }
+  });
+
   app.post('/api/users/:id/report', requireAuth, async (req: any, res) => {
     try {
       const reportedId = req.params.id;
@@ -4246,6 +4289,35 @@ export async function createServerInstance() {
   });
 
   // Notifications
+  // « Signaler un problème technique » (Réglages) : avant, le formulaire ne
+  // transmettait rien. Le rapport est maintenant envoyé aux administrateurs
+  // sous forme de notification (temps réel + push).
+  app.post('/api/support/report', requireAuth, contentLimiter, async (req: any, res) => {
+    try {
+      const text = String(req.body?.text || '').trim().slice(0, 2000);
+      if (text.length < 5) return res.status(400).json({ error: 'Décris le problème en quelques mots.' });
+      const device = String(req.body?.device || '').slice(0, 200);
+      const admins = await prisma.user.findMany({ where: { role: 'Administrateur' }, select: { id: true } });
+      for (const a of admins) {
+        const notification = await prisma.notification.create({
+          data: {
+            userId: a.id,
+            type: 'SUPPORT_REPORT' as any,
+            title: 'Problème signalé',
+            message: `@${req.user.username || 'Un utilisateur'} : ${text.length > 180 ? text.slice(0, 177) + '…' : text}`,
+            data: { actorId: req.user.id, actorName: req.user.username, actorAvatar: req.user.avatar || '', excerpt: text, device } as any,
+          },
+        });
+        notifyUser(a.id, notification);
+      }
+      console.log(`[SUPPORT] rapport de ${req.user.id} (${text.length} car.) -> ${admins.length} admin(s)`);
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      console.error('[SUPPORT]', error);
+      res.status(500).json({ error: "Le rapport n'a pas pu être envoyé." });
+    }
+  });
+
   app.get('/api/notifications/:userId', requireAuth, async (req: any, res) => {
     if (req.user.id !== req.params.userId && req.user.role !== 'Administrateur') return res.status(403).json({ error: 'Action interdite' });
     // Borné : le client n'affiche que les ~120 dernières de toute façon.
@@ -4425,7 +4497,7 @@ export async function createServerInstance() {
       if (!conv) return res.status(404).json({ error: 'Conversation introuvable' });
       if (!conv.participants.some((p) => p.id === req.user.id)) return res.status(403).json({ error: 'Action interdite' });
       if (conv.requestStatus !== 'PENDING') return res.status(400).json({ error: 'Aucune demande en attente' });
-      if (conv.requesterId === req.user.id) return res.status(403).json({ error: "Vous ne pouvez pas repondre a votre propre demande" });
+      if (conv.requesterId === req.user.id) return res.status(403).json({ error: "Vous ne pouvez pas répondre à votre propre demande." });
 
       const newStatus = action === 'accept' ? 'ACCEPTED' : 'REJECTED';
       await prisma.conversation.update({ where: { id: conv.id }, data: { requestStatus: newStatus } });
@@ -4697,7 +4769,7 @@ export async function createServerInstance() {
         if (senderId === conversation.requesterId) {
           // Initiateur soumis a la limite.
           if (conversation.requestStatus === 'REJECTED') {
-            return res.status(403).json({ error: 'Votre demande de message a ete declinee.', code: 'MESSAGE_REQUEST_REJECTED' });
+            return res.status(403).json({ error: 'Votre demande de message a été déclinée.', code: 'MESSAGE_REQUEST_REJECTED' });
           }
           const sentCount = await prisma.message.count({ where: { conversationId, senderId } });
           if (sentCount >= MESSAGE_REQUEST_LIMIT) {
@@ -6484,15 +6556,19 @@ export async function createServerInstance() {
 
   app.get('/api/me/reading-state', requireAuth, async (req: any, res) => {
     try {
-      const [entries, reads] = await Promise.all([
+      const [entries, reads, progress] = await Promise.all([
         prisma.readingListEntry.findMany({ where: { userId: req.user.id }, select: { storyId: true, list: true } }),
         prisma.chapterRead.findMany({ where: { userId: req.user.id }, select: { storyId: true, chapterId: true } }),
+        prisma.readingProgress.findMany({ where: { userId: req.user.id, chapter: { isPublished: true } }, distinct: ['storyId'], select: { storyId: true } }),
       ]);
       res.json({
         currentlyReading: entries.filter((e) => e.list === 'currently').map((e) => e.storyId),
         completedStories: entries.filter((e) => e.list === 'completed').map((e) => e.storyId),
         readLater: entries.filter((e) => e.list === 'later').map((e) => e.storyId),
         fullyRead: reads,
+        // Récits commencés (position de lecture ou chapitre lu) : la Bibliothèque
+        // les classe « En cours » ; le profil doit afficher la même chose.
+        started: [...new Set([...progress.map((p) => p.storyId), ...reads.map((r) => r.storyId)])],
       });
     } catch (error) {
       console.error('[READING-STATE] chargement:', error);
@@ -6807,11 +6883,11 @@ export async function createServerInstance() {
     lastAiTimes.set(req.user.id, now);
     try {
       const result = await callGemini(conf.sys, text, conf.max);
-      if (!result) return res.status(502).json({ error: 'Reponse vide de l’assistant IA.' });
+      if (!result) return res.status(502).json({ error: 'Réponse vide de l’assistant IA.' });
       res.json({ result });
     } catch (e: any) {
       console.error('[AI] ', e?.message || e);
-      res.status(502).json({ error: 'Echec de l’assistant IA.', detail: String(e?.message || '').slice(0, 200) });
+      res.status(502).json({ error: 'Échec de l’assistant IA.', detail: String(e?.message || '').slice(0, 200) });
     }
   });
 

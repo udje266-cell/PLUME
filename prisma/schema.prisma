@@ -811,3 +811,15 @@ model CollectionBook {
   @@id([collectionId, storyId])
   @@index([storyId])
 }
+
+// Signalement d'une œuvre par un lecteur (un par lecteur et par œuvre).
+model StoryReport {
+  id         String   @id @default(cuid())
+  reporterId String
+  storyId    String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([reporterId, storyId])
+  @@index([storyId])
+}

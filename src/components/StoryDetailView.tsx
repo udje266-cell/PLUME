@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, BookOpen, Heart, Eye, Clock, Check, Play, Bookmark } from 'lucide-react';
 import { Story, User } from '../types';
 import { chapterMinutes, formatMinutes, storyMinutes } from '../utils/readingTime';
 import { getBookProgress } from '../utils/readingProgress';
 import { generateCoverDataUri } from '../utils/coverImage';
+import { authHeaders } from '../utils/auth';
 
 /**
  * FICHE D'ŒUVRE — écran d'entrée d'un récit.
@@ -25,7 +26,8 @@ export default function StoryDetailView({
   story: Story;
   currentUser: User;
   onBack: () => void;
-  onStartReading: (chapterIndex: number) => void;
+  /** Index dans story.chapters ; null = reprendre là où l'on s'était arrêté. */
+  onStartReading: (chapterIndex: number | null) => void;
   onViewProfile?: (userId: string) => void;
   isFavorited?: boolean;
   onToggleFavorite?: (storyId: string) => void;
@@ -35,8 +37,26 @@ export default function StoryDetailView({
 
   const chapters = (story.chapters || []).filter((c) => c.isPublished !== false);
   const progress = getBookProgress(currentUser.id, story.id);
-  const startedIndex = progress && progress.chapterIndex > 0 ? progress.chapterIndex : 0;
-  const hasStarted = !!progress && (progress.chapterIndex > 0 || (progress.percent || 0) > 0);
+  // Pas de position locale (nouvel appareil, réinstallation) : on interroge la
+  // position SERVEUR pour proposer « Reprendre » plutôt que « Commencer ».
+  const [serverChapterId, setServerChapterId] = useState<string | null>(null);
+  useEffect(() => {
+    if (progress) return;
+    let cancelled = false;
+    fetch(`/api/me/progress/${story.id}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((sp) => { if (!cancelled && sp?.chapterId) setServerChapterId(sp.chapterId); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
+  // Les index de progression portent sur story.chapters ; le sommaire n'affiche
+  // que les chapitres publiés -> on raisonne par identifiant de chapitre.
+  const startedChapterId = progress
+    ? (progress.chapterIndex > 0 || (progress.percent || 0) > 0 ? story.chapters[progress.chapterIndex]?.id : undefined)
+    : serverChapterId || undefined;
+  const startedIndex = Math.max(0, chapters.findIndex((c) => c.id === startedChapterId));
+  const hasStarted = !!startedChapterId && chapters.some((c) => c.id === startedChapterId);
   const genres = (Array.isArray(story.genres) && story.genres.length ? story.genres : [story.genre]).filter(Boolean);
 
   // Regroupement par tome quand l'œuvre est structurée en volumes.
@@ -106,7 +126,7 @@ export default function StoryDetailView({
         {/* Bouton principal : commencer ou reprendre */}
         {chapters.length > 0 && (
           <button
-            onClick={() => onStartReading(hasStarted ? startedIndex : 0)}
+            onClick={() => onStartReading(hasStarted ? null : story.chapters.findIndex((c) => c.id === chapters[0]?.id))}
             className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider shadow-md active:scale-[0.99] transition"
           >
             <Play className="w-4 h-4" />
@@ -151,7 +171,7 @@ export default function StoryDetailView({
                       return (
                         <button
                           key={ch.id}
-                          onClick={() => onStartReading(idx)}
+                          onClick={() => onStartReading(isCurrent ? null : story.chapters.findIndex((c) => c.id === ch.id))}
                           className={`w-full text-left px-4 py-3 flex items-center gap-3 transition hover:bg-purple-500/5 ${isCurrent ? 'bg-purple-500/10' : ''}`}
                         >
                           <span className={`w-6 text-[11px] font-mono shrink-0 ${isRead ? 'text-purple-500' : 'text-gray-400'}`}>

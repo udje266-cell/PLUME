@@ -329,6 +329,7 @@ const isOwnProfile = !freshViewedUser || freshViewedUser.id === freshCurrentUser
 const user = freshViewedUser || freshCurrentUser;
 
   const carouselRef = React.useRef<HTMLDivElement>(null);
+  const parcoursDetailsRef = React.useRef<HTMLDetailsElement>(null);
 
   const scrollCarousel = (direction: 'left' | 'right') => {
     if (carouselRef.current) {
@@ -593,15 +594,20 @@ const user = freshViewedUser || freshCurrentUser;
         alert("Oups ! Une erreur réseau s'est produite lors de l'enregistrement du signalement.");
       });
     } else if (reportTarget === 'story' && reportedStory) {
-      onUpdateStory(reportedStory.id, {
-        isFlagged: true,
-        flagReason: finalReason
-      });
-      
-      alert(`L'œuvre "${reportedStory.title}" a été signalée avec succès pour : "${selectedReportReason}". Notre équipe éditoriale va réinterpréter la conformité de ce grimoire.`);
-      setIsReportModalOpen(false);
-      setReportedStory(null);
-      setCustomReportDetails('');
+      const st = reportedStory;
+      fetch(`/api/stories/${st.id}/report`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ reason: finalReason }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Échec du signalement');
+          alert(`Merci : « ${st.title} » a été signalée pour « ${selectedReportReason} ». L'équipe de modération va l'examiner.`);
+          setIsReportModalOpen(false);
+          setReportedStory(null);
+          setCustomReportDetails('');
+        })
+        .catch((e) => alert(`Le signalement n'a pas pu être envoyé : ${e.message || 'erreur réseau'}.`));
     }
   };
   
@@ -1959,13 +1965,17 @@ const user = freshViewedUser || freshCurrentUser;
           const snapshot = isOwnProfile && showcaseEnabled
             ? myAchievementsList.find(a => a.id === showcase[slot] && a.isUnlocked)
             : !isOwnProfile ? user.showcase?.[slot] : null;
-          return <div key={slot} className={`rounded-xl border px-2 py-3 flex flex-col sm:flex-row items-center gap-1.5 text-center sm:text-left ${snapshot ? 'border-amber-500/40 bg-amber-500/10' : 'border-zinc-200 dark:border-zinc-800'}`}>
+          const pickable = isOwnProfile && showcaseEnabled;
+          return <button key={slot} type="button" disabled={!pickable}
+            // Mon profil : ouvre l'étagère (dans le volet replié) et le choix du trophée.
+            onClick={() => { if (!pickable) return; if (parcoursDetailsRef.current) parcoursDetailsRef.current.open = true; setPickerSlot(slot); }}
+            className={`rounded-xl border px-2 py-3 flex flex-col sm:flex-row items-center gap-1.5 text-center sm:text-left ${pickable ? 'cursor-pointer active:scale-95 transition' : 'cursor-default'} ${snapshot ? 'border-amber-500/40 bg-amber-500/10' : 'border-zinc-200 dark:border-zinc-800'}`}>
             <Trophy className={`w-5 h-5 shrink-0 ${snapshot ? 'text-amber-500' : 'text-zinc-400 dark:text-zinc-600'}`} />
             <span className="text-[10px] leading-snug text-zinc-600 dark:text-zinc-300">{snapshot?.title || (isOwnProfile ? 'À mettre en avant' : 'À découvrir')}</span>
-          </div>;
+          </button>;
         })}
       </div>
-      <details className="group/parcours border-t border-zinc-200 dark:border-zinc-800 pt-2">
+      <details ref={parcoursDetailsRef} className="group/parcours border-t border-zinc-200 dark:border-zinc-800 pt-2">
         <summary className="list-none cursor-pointer flex items-center gap-2 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 [&::-webkit-details-marker]:hidden">
           <Trophy className="w-4 h-4 text-amber-500" /> {isOwnProfile ? 'Voir mes trophées et légendes' : 'Voir ses trophées et légendes'}
           <ChevronRight className="w-4 h-4 ml-auto transition-transform group-open/parcours:rotate-90" />
@@ -2129,7 +2139,7 @@ const user = freshViewedUser || freshCurrentUser;
           if (!displaysRead && !displaysWritten) return null;
 
           return (
-            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-3.5 rounded-2xl text-left space-y-2.5 shadow-xs select-none animation-fade-in">
+            <div className="w-full bg-white dark:bg-[#0E0E14] border border-purple-500/10 dark:border-purple-900/15 p-3.5 rounded-2xl text-left space-y-2.5 shadow-xs select-none animate-fade-in">
               <div className="flex items-center space-x-2 text-[10px] font-mono font-black uppercase text-zinc-450 dark:text-zinc-500 tracking-wider">
                 <BookOpen className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
                 <span>Activité Littéraire</span>
@@ -2282,22 +2292,22 @@ const user = freshViewedUser || freshCurrentUser;
           <div id="profile-readings" role="tabpanel" aria-labelledby="profile-tab-favorites" className="space-y-6 animate-fade-in text-left">
             
             {/* Elegant headers filters */}
-            <div className="flex flex-wrap gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl border border-zinc-200/50 dark:border-zinc-805 select-none">
+            <div className="flex gap-1 p-1 overflow-x-auto scrollbar-none bg-zinc-100 dark:bg-zinc-900 rounded-2xl border border-zinc-200/50 dark:border-zinc-805 select-none">
               {(['all', 'in_progress', 'completed', 'favorites', 'read_later'] as const).map((filter) => (
                 <button
                   key={filter}
                   id={`lib-filter-${filter}`}
                   onClick={() => setLibFilter(filter)}
-                  className={`flex-1 text-center py-2 rounded-xl text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  className={`flex-1 shrink-0 whitespace-nowrap text-center px-2.5 py-2 rounded-xl text-[9.5px] font-black uppercase tracking-wide transition-all cursor-pointer ${
                     libFilter === filter
                       ? 'bg-purple-600 text-white shadow font-bold'
                       : 'text-zinc-500 dark:text-zinc-400 hover:text-purple-600 dark:hover:text-purple-450'
                   }`}
                 >
                   {filter === 'all' ? 'Tout' :
-                   filter === 'in_progress' ? 'En Cours' :
+                   filter === 'in_progress' ? 'En cours' :
                    filter === 'completed' ? 'Terminés' :
-                   filter === 'favorites' ? 'Mes Favoris' : 'À Parcourir'}
+                   filter === 'favorites' ? 'Favoris' : 'À lire'}
                 </button>
               ))}
             </div>
@@ -2492,9 +2502,9 @@ const user = freshViewedUser || freshCurrentUser;
                         <p className="text-[11px] font-sans font-black text-zinc-800 dark:text-zinc-100 truncate leading-tight group-hover:text-purple-500 transition">
                           {su.username}
                         </p>
-                        {currentUser.role === 'Administrateur' && (
-                          <p className="text-[8.5px] text-zinc-400 font-mono truncate leading-tight mt-0.5">
-                            @{su.id}
+                        {su.showFollowers !== false && (
+                          <p className="text-[9px] text-zinc-400 truncate leading-tight mt-0.5">
+                            {su.followers.length} abonné{su.followers.length > 1 ? 's' : ''}
                           </p>
                         )}
                       </div>
@@ -2969,7 +2979,7 @@ const user = freshViewedUser || freshCurrentUser;
       {/* 9. DETAILED ACCOMPLISHMENTS VIEW OVERLAY */}
       {showAllAchievements && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animation-fade-in font-sans"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in font-sans"
           onClick={() => { setShowAllAchievements(false); setAchievementsSearch(''); }}
         >
           <div
@@ -3518,7 +3528,7 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 10. EDIT STORY METADATA OVERLAY MODAL */}
       {editingStoryMeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animation-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in font-sans">
           <div className="bg-white dark:bg-[#15151F] border border-gray-150 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative text-left">
             <button
               onClick={() => setEditingStoryMeta(null)}
@@ -3620,7 +3630,7 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 11. STORY METADATA DELETE CONFIRMATION OVERLAY MODAL */}
       {storyToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animation-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in font-sans">
           <div className="bg-white dark:bg-[#15151F] border border-gray-150 dark:border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
             <div className="space-y-4">
               <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
@@ -3658,7 +3668,7 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 12. PLUME SETTINGS OVERLAY MODAL */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animation-fade-in font-sans select-none">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animate-fade-in font-sans select-none">
           <div className="bg-white dark:bg-[#0E0E14] border border-gray-200 dark:border-purple-950/40 rounded-2xl max-w-xl w-full h-[85vh] sm:h-[620px] shadow-[0_24px_70px_rgba(0,0,0,0.65)] relative flex flex-col overflow-hidden text-left">
             
             {selectedSettingsSection === null ? (
@@ -3981,27 +3991,27 @@ const user = freshViewedUser || freshCurrentUser;
                         Ces indices d'audience confidentiels ne sont visibles que par vous sous vos paramètres pour guider le perfectionnement de vos récits.
                       </p>
 
-                      <div className="grid grid-cols-4 gap-2 text-center pt-1">
-                        <div className="p-2.5 bg-black/45 rounded-xl border border-white/5">
-                          <span className="text-[8px] block text-zinc-400 uppercase font-bold tracking-wider">Vues</span>
+                      <div className="grid grid-cols-2 min-[420px]:grid-cols-4 gap-2 text-center pt-1">
+                        <div className="p-2.5 bg-white/70 dark:bg-black/45 rounded-xl border border-purple-500/10 dark:border-white/5">
+                          <span className="text-[8px] block text-zinc-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Vues</span>
                           <span className="font-mono text-sm font-black text-purple-400 block mt-1">{totalViews}</span>
                           <span className="text-[7px] text-zinc-500 block leading-tight mt-0.5">Visites</span>
                         </div>
 
-                        <div className="p-2.5 bg-black/45 rounded-xl border border-white/5">
-                          <span className="text-[8px] block text-zinc-400 uppercase font-bold tracking-wider">Lectures</span>
+                        <div className="p-2.5 bg-white/70 dark:bg-black/45 rounded-xl border border-purple-500/10 dark:border-white/5">
+                          <span className="text-[8px] block text-zinc-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Lectures</span>
                           <span className="font-mono text-sm font-black text-emerald-400 block mt-1">{totalReads}</span>
                           <span className="text-[7px] text-zinc-500 block leading-tight mt-0.5">Finition</span>
                         </div>
 
-                        <div className="p-2.5 bg-black/45 rounded-xl border border-white/5">
-                          <span className="text-[8px] block text-zinc-400 uppercase font-bold tracking-wider">Mentions</span>
+                        <div className="p-2.5 bg-white/70 dark:bg-black/45 rounded-xl border border-purple-500/10 dark:border-white/5">
+                          <span className="text-[8px] block text-zinc-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Mentions</span>
                           <span className="font-mono text-sm font-black text-rose-400 block mt-1">{totalLikes}</span>
                           <span className="text-[7px] text-zinc-500 block leading-tight mt-0.5">Votes</span>
                         </div>
 
-                        <div className="p-2.5 bg-black/45 rounded-xl border border-white/5">
-                          <span className="text-[8px] block text-zinc-400 uppercase font-bold tracking-wider">Fidélité</span>
+                        <div className="p-2.5 bg-white/70 dark:bg-black/45 rounded-xl border border-purple-500/10 dark:border-white/5">
+                          <span className="text-[8px] block text-zinc-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Fidélité</span>
                           <span className="font-mono text-sm font-black text-indigo-400 block mt-1">
                             {totalViews > 0 ? ((totalReads / totalViews) * 100).toFixed(1) : "0.0"}%
                           </span>
@@ -4054,7 +4064,7 @@ const user = freshViewedUser || freshCurrentUser;
                     )}
 
                     {/* Section: Déconnexion (garde la session sinon persistante) */}
-                    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl flex items-center justify-between">
+                    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <span className="text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-300 tracking-wider block">Session</span>
                         <span className="text-[9px] text-zinc-450 block font-medium">Fermer votre session sur cet appareil.</span>
@@ -4067,14 +4077,14 @@ const user = freshViewedUser || freshCurrentUser;
                             onLogout?.();
                           }
                         }}
-                        className="py-2 px-3 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-100 rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer flex items-center gap-1.5"
+                        className="shrink-0 whitespace-nowrap py-2 px-3 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-100 rounded-xl text-[9px] font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5"
                       >
                         <LogOut className="w-3.5 h-3.5" /> Déconnexion
                       </button>
                     </div>
 
                     {/* Section: Supprimer le compte */}
-                    <div className="p-4 bg-red-500/5 id-deletesection border border-red-500/10 rounded-2xl flex items-center justify-between">
+                    <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-2xl flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <span className="text-[10px] font-black uppercase text-red-500 tracking-wider block">Zone dangereuse</span>
                         <span className="text-[9px] text-zinc-450 block font-medium">Cette action effacera définitivement toutes vos données Plume.</span>
@@ -4099,7 +4109,7 @@ const user = freshViewedUser || freshCurrentUser;
                             alert(`La suppression a échoué : ${err.message || 'erreur serveur'}. Réessayez plus tard.`);
                           }
                         }}
-                        className="py-2 px-3 bg-red-650 hover:bg-red-750 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer"
+                        className="shrink-0 whitespace-nowrap py-2 px-3 bg-red-650 hover:bg-red-750 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition cursor-pointer"
                       >
                         Supprimer
                       </button>
@@ -4664,7 +4674,7 @@ const user = freshViewedUser || freshCurrentUser;
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <label className="text-[11.5px] font-bold text-gray-905 dark:text-white block">Réponses aux commentaires</label>
-                          <span className="text-[9px] text-zinc-455 block text-medium">Alerte quand quelqu'un répond sous votre fil de discussion.</span>
+                          <span className="text-[9px] text-zinc-455 block font-medium">Alerte quand quelqu'un répond sous votre fil de discussion.</span>
                         </div>
                         <input 
                           type="checkbox" 
@@ -4678,7 +4688,7 @@ const user = freshViewedUser || freshCurrentUser;
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <label className="text-[11.5px] font-bold text-gray-905 dark:text-white block">Nouveaux abonnés</label>
-                          <span className="text-[9px] text-zinc-455 block text-medium">Recevoir des encouragements quand un nouveau lecteur vous suit.</span>
+                          <span className="text-[9px] text-zinc-455 block font-medium">Recevoir des encouragements quand un nouveau lecteur vous suit.</span>
                         </div>
                         <input 
                           type="checkbox" 
@@ -4692,7 +4702,7 @@ const user = freshViewedUser || freshCurrentUser;
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <label className="text-[11.5px] font-bold text-gray-905 dark:text-white block">Accomplissements débloqués</label>
-                          <span className="text-[9px] text-zinc-455 block text-medium">Fêter de nouveaux insignes ou accomplissements débloqués.</span>
+                          <span className="text-[9px] text-zinc-455 block font-medium">Fêter de nouveaux insignes ou accomplissements débloqués.</span>
                         </div>
                         <input 
                           type="checkbox" 
@@ -4706,7 +4716,7 @@ const user = freshViewedUser || freshCurrentUser;
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <label className="text-[11.5px] font-bold text-gray-905 dark:text-white block">Messages privés</label>
-                          <span className="text-[9px] text-zinc-455 block text-medium">Alerte enveloppe lorsqu'un nouveau message d'écrivain est reçu.</span>
+                          <span className="text-[9px] text-zinc-455 block font-medium">Alerte enveloppe lorsqu'un nouveau message d'écrivain est reçu.</span>
                         </div>
                         <input 
                           type="checkbox" 
@@ -4887,10 +4897,19 @@ const user = freshViewedUser || freshCurrentUser;
                         <button
                           onClick={() => {
                             if (helpProblemText.trim()) {
-                              alert("Merci pour votre rapport ! Plume va analyser ce dysfonctionnement de l'application.");
-                              setHelpProblemText('');
-                              setShowStatusToast("Rapport envoyé avec succès !");
-                              setTimeout(() => setShowStatusToast(null), 3500);
+                              const text = helpProblemText.trim();
+                              fetch('/api/support/report', {
+                                method: 'POST',
+                                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                                body: JSON.stringify({ text, device: navigator.userAgent }),
+                              })
+                                .then(async (r) => {
+                                  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+                                  setHelpProblemText('');
+                                  setShowStatusToast('Merci ! Ton rapport a été envoyé à l’équipe PLUME.');
+                                  setTimeout(() => setShowStatusToast(null), 3500);
+                                })
+                                .catch((err) => alert(`Le rapport n'a pas pu être envoyé : ${err.message || 'connexion'}. Réessaie.`));
                             } else {
                               alert("Veuillez saisir une explication avant d'envoyer.");
                             }
@@ -4951,7 +4970,7 @@ const user = freshViewedUser || freshCurrentUser;
 
       {/* 13. SETTINGS ACCOUNT TYPE CHANGE CONFIRMATION OVERLAY */}
       {showRoleChangeConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animation-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in font-sans">
           <div className="bg-white dark:bg-black border border-gray-200 dark:border-purple-900/25 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
             <div className="space-y-4">
               <div className="w-12 h-12 bg-purple-500/10 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -4997,7 +5016,7 @@ const user = freshViewedUser || freshCurrentUser;
       {/* 14. SOCIAL LIST MODAL POPUP (Abonnés, Suivis, Amis, Mentions) */}
       {activeUserListModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animation-fade-in font-sans select-none"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animate-fade-in font-sans select-none"
           onClick={() => setActiveUserListModal(null)}
         >
           <div
