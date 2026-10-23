@@ -7,6 +7,8 @@ Le montage utilise les véritables écrans de PLUME, des livres et comptes de d�
 
 Le projet s'ouvre et se modifie dans **HyperFrames desktop app**, ou avec le CLI épinglé :
 
+Lien de téléchargement fourni par l'outil pour Linux : https://hyperframes.dev/studio/download?os=linux . Le bouton **Edit with Framey** de l'aperçu ouvre l'application pour continuer les retouches.
+
 ```sh
 npm run dev
 npm run check
