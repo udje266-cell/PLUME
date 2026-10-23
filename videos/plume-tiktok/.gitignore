@@ -1,0 +1,6 @@
+.hyperframes/
+.media/
+.waveform-cache/
+node_modules/
+renders/
+*.tmp

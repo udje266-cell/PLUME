@@ -1,0 +1,172 @@
+{
+  "source": "PLUME local, genuine UI and HTTP APIs; disposable demonstration accounts/books",
+  "date": "2026-10-23T09:45:15.050Z",
+  "shots": [
+    {
+      "name": "home",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "explorer",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "library",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "library-grid",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "library-list",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "collection-create",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "book",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-audio",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-download",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-settings",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-highlight",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-note",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "plumecard",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "reader-comments",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "profile",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "journey",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "inbox",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "chat",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "chat-reveal",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "chat-attachments",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "chat-send",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "live-reading-before",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "live-reading-after",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "club",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "write",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "author-stats",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "story-create",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "workshop",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "workshop-ready",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "editor",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "editor-written",
+      "width": 780,
+      "height": 1688
+    },
+    {
+      "name": "editor-chapters",
+      "width": 780,
+      "height": 1688
+    }
+  ],
+  "cleanup": "All fixture accounts and books removed in finally"
+}

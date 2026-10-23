@@ -1,0 +1,354 @@
+{
+  "narration": "Audio du propriétaire, aucune nouvelle voix générée",
+  "outside_advertising_footage": false,
+  "assets": [
+    {
+      "path": "assets/audio/SFX-CREDITS.md",
+      "bytes": 1183,
+      "sha256": "79590c7738b0427b10f362f76b02cfd2643158a40e1d5fd787f9ac6b33bcf4ce",
+      "origin": "Documentation de provenance et de licence"
+    },
+    {
+      "path": "assets/audio/chime.mp3",
+      "bytes": 27309,
+      "sha256": "74823b1b27703c56e0652db838f503c150ce9c2442d47d27430af3d5121d6d12",
+      "origin": "Effet sonore fourni dans le projet PLUME existant ; licence Pixabay selon SFX-CREDITS.md"
+    },
+    {
+      "path": "assets/audio/click-soft.mp3",
+      "bytes": 11702,
+      "sha256": "075e17bdac5c13662a1c9530050e0046f81d4138e00eb3bf30427a7b4404103d",
+      "origin": "Effet sonore fourni dans le projet PLUME existant ; licence Pixabay selon SFX-CREDITS.md"
+    },
+    {
+      "path": "assets/audio/music.mp3",
+      "bytes": 3241316,
+      "sha256": "640dead516869e856bddbddd1d7c34d6c66daab9bd5fc2ae758334bf31a86957",
+      "origin": "Composition instrumentale originale, synthèse déterministe tools/music.py, sans échantillon externe"
+    },
+    {
+      "path": "assets/audio/pop.mp3",
+      "bytes": 23040,
+      "sha256": "19ab7193f626ff57fdeef60b45543bac416fcbcec803cfb417abe4b271c1b352",
+      "origin": "Effet sonore fourni dans le projet PLUME existant ; licence Pixabay selon SFX-CREDITS.md"
+    },
+    {
+      "path": "assets/audio/voix-off-normalisee.wav",
+      "bytes": 12568948,
+      "sha256": "c7317ad3ed0cb50af1fbd0a0397dacc6c07e538eea5e7f672344788ea89bc7bf",
+      "origin": "Voix fournie par le propriétaire le 23 octobre 2026 ; normalisation de niveau seulement pour la piste WAV"
+    },
+    {
+      "path": "assets/audio/voix-off.mp3",
+      "bytes": 2111748,
+      "sha256": "20832b43a97803d972511aa447b950d0cc00965c36ecb38c98078200ef14cd9b",
+      "origin": "Voix fournie par le propriétaire le 23 octobre 2026 ; normalisation de niveau seulement pour la piste WAV"
+    },
+    {
+      "path": "assets/audio/whoosh-short.mp3",
+      "bytes": 18390,
+      "sha256": "c2efd9d902a59bf9ec5019035d7deadd17762136896b6e3cb6dd99ea50997a30",
+      "origin": "Effet sonore fourni dans le projet PLUME existant ; licence Pixabay selon SFX-CREDITS.md"
+    },
+    {
+      "path": "assets/demo/clara.svg",
+      "bytes": 229,
+      "sha256": "aaaf8d7b4b76b044ff01b3283ba3f974671c52a1cd9af46cc5b4b999a0a471e0",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-0.svg",
+      "bytes": 1196,
+      "sha256": "fe47edea1bebf8916ea7f736a2297f8f24a45e4525023e01a09f0bc93fbc1680",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-1.svg",
+      "bytes": 1191,
+      "sha256": "008a364d7f0f9be9c26652c99e0bdb4410eba7840d2d331a8ee0e66e5489c128",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-2.svg",
+      "bytes": 1195,
+      "sha256": "8c4bbe42ca22c142931f1d7935f55cf5392d0f6bcf9d7e9f1d44ad536b330b88",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-3.svg",
+      "bytes": 1192,
+      "sha256": "0ef4c43296374bbb7554bc6f2bcc212c5e0a79a0320f303e0bd45da510b3f837",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-4.svg",
+      "bytes": 1188,
+      "sha256": "77021a155965a9cb1c9c69bad9bd20305342853162f9f9210d288880f215413b",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/cover-5.svg",
+      "bytes": 1193,
+      "sha256": "f07b8a2f78bb3064df68d893180cefc14d292def0979ba2c87e590f9d38c8295",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/lea.svg",
+      "bytes": 229,
+      "sha256": "c7ba18cfd3d7ff9663e84d85b6bf9278198204c7f0cd3d86c23e1bb2ae6d2da7",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/demo/noe.svg",
+      "bytes": 229,
+      "sha256": "c41b0395cbc125daa7c70d8bbfe86600df5ceb0e0961db0d2e8985a7b222ec9e",
+      "origin": "Illustration originale de démonstration, créée pour PLUME et utilisée par la vraie application lors des captures"
+    },
+    {
+      "path": "assets/fonts/Inter-OFL.txt",
+      "bytes": 4377,
+      "sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/fonts/SourceSerif-OFL.txt",
+      "bytes": 4400,
+      "sha256": "5f94c3fd3a23131a417ab5a0c8452de57e70c3cfb9f604d88241f7065ebf9fd9",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/fonts/inter-400.woff2",
+      "bytes": 23664,
+      "sha256": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/fonts/inter-600.woff2",
+      "bytes": 24452,
+      "sha256": "f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/fonts/inter-700.woff2",
+      "bytes": 24356,
+      "sha256": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/fonts/source-serif-4-600.woff2",
+      "bytes": 21532,
+      "sha256": "f2b7e1cf1d277b7608231868135648f8ad8e2b58d8e97ca088bee15dc357bee7",
+      "origin": "Google Fonts, licence SIL Open Font License incluse"
+    },
+    {
+      "path": "assets/plume.png",
+      "bytes": 82848,
+      "sha256": "fe62a733e56d430cc7aacec3ddaafe0103ee4e0094d25ed7f77c7badafa42090",
+      "origin": "Documentation de provenance et de licence"
+    },
+    {
+      "path": "assets/screens/author-stats.png",
+      "bytes": 172027,
+      "sha256": "3db6964689377f135c980a1ee322ac7c75480bb14dbf5287d5d9deabc2281eea",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/book.png",
+      "bytes": 148832,
+      "sha256": "5029495ee6228bc714063bc84127890b2189169153368248fcd84ced7be58f7d",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/chat-attachments.png",
+      "bytes": 169368,
+      "sha256": "852318f4f1e63e48dd60a930e552637da93f03e938476e6251ea34f720de7100",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/chat-reveal.png",
+      "bytes": 205680,
+      "sha256": "035cb42fa74714d1081f74da42ff968c3e581b6f58fc553e77eb172a3a8368dd",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/chat-send.png",
+      "bytes": 200119,
+      "sha256": "1de3c63be44aef170ad1c1c7db82eacc67b132ac8eba1b95fe91fa7aef87897f",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/chat.png",
+      "bytes": 190845,
+      "sha256": "64bb037bb1868f3768b62885c00ef05b7529d420b8dfb580cb34e3948cf776ac",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/club.png",
+      "bytes": 170495,
+      "sha256": "76ca9c545296135d03cd10770e12ff33f9be50f7ae817e1f481bfa78008ee1b8",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/collection-create.png",
+      "bytes": 215908,
+      "sha256": "b4cba5218ac888c0609c7728c2ef98b2aeb8934a2e0905711f8e0b4a8bf5e2b0",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/editor-chapters.png",
+      "bytes": 65541,
+      "sha256": "228b2259c08617516bf625551cee3a486d773a3235e3176f72ccba732c281900",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/editor-written.png",
+      "bytes": 52094,
+      "sha256": "dc210c0745b433a2a03d5a548e592f384baccb67f3378856840af25f39c74b38",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/editor.png",
+      "bytes": 43136,
+      "sha256": "4ea36a156fac20c607933acb367a0854c8160c7bbce0de8b9ecb0a61996c84eb",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/explorer.png",
+      "bytes": 213327,
+      "sha256": "2267a8e27836c6aece3ffc8f7f81abbae0a8092e1b1468317fceb2fd5e7b279b",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/home.png",
+      "bytes": 332702,
+      "sha256": "85c397e9f6bf63c58394c450772e15be8c30db0ac213251c0f838b77bda1046d",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/inbox.png",
+      "bytes": 254716,
+      "sha256": "0592ce18efd949977a9134c48b8ddc265ae79bf8770a40015a39896caf8d18ad",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/journey.png",
+      "bytes": 150901,
+      "sha256": "d99a8b830a5600cca4b5a216df58573c364c71e1562af9fb993a2c4fffd6ada0",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/library-grid.png",
+      "bytes": 162587,
+      "sha256": "f7706283bb96c93e174e65e4c73d396ec2f70749041e092fe555b66c177a4e7d",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/library-list.png",
+      "bytes": 167096,
+      "sha256": "03deeae8be6d95177a18b00767a16256ca159b99859375e7dd818ffe8feff64f",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/library.png",
+      "bytes": 216587,
+      "sha256": "2c546a5b53b2b3727890aff36542df7d84a560eed120cead5b58f8b198a89d1a",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/live-reading-after.png",
+      "bytes": 163105,
+      "sha256": "73e2c4bb4575f3e92be73e1ecc893453d6925d0910d1f752b012371178314ff9",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/live-reading-before.png",
+      "bytes": 163129,
+      "sha256": "a31e52383c7db76cebd80fc03fc6519058cfbc2bfdd4653c9ef59ea08e245a35",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/plumecard.png",
+      "bytes": 179690,
+      "sha256": "8420fb6b185c9b334e85f530ee19dbf34389330d0c9fb52a5d6f02604abdd375",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/profile.png",
+      "bytes": 185674,
+      "sha256": "23c83c3b934604566a21311f4029b1dc1e99e405817f636dcccd7b2cc76d5277",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-audio.png",
+      "bytes": 158525,
+      "sha256": "dddd39513eb84576f21e29b5bee87acd4341517ccb722c8162006dd80ba8601c",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-comments.png",
+      "bytes": 104541,
+      "sha256": "d83d73575c20a786cf85c9a2cc75a82a8f93b846d300b8b72eb8c07b97b871f5",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-download.png",
+      "bytes": 159364,
+      "sha256": "ecda6af455f7421f666e427fd3322161ce969cfeb273cdc29fd87368412b5830",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-highlight.png",
+      "bytes": 165801,
+      "sha256": "95c7ec0d63a649f7b34b9c37c450fb9a6e48e80768257c9aae1acdbe4a768fa6",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-note.png",
+      "bytes": 150988,
+      "sha256": "ac8ba86627626229a6e3e77dc55d24d1abba8d498db6fc920b055842aa065343",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader-settings.png",
+      "bytes": 132773,
+      "sha256": "c8c80cb22555eb3cdb0cbc0b1ff66b234ff0cb5d8ce9aa36c780b0520c618aa4",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/reader.png",
+      "bytes": 147379,
+      "sha256": "66af8479276a4b3f0611a64bb9a24bafd4886198567ee206827886ddfe330418",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/story-create.png",
+      "bytes": 178684,
+      "sha256": "fc9910ae6fef78ea13bc6b0ffd639ae8e7993b12baae7a1d144cb1b2f5f6e3d5",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/workshop-ready.png",
+      "bytes": 93800,
+      "sha256": "70bf3c9e30f8ad8186e12b44554209acabfdc3b5e9cb8426bb1fbba355dd399d",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/workshop.png",
+      "bytes": 94165,
+      "sha256": "f854a7796ad4c10a37db2fdcae0542318f765b93ae4f1b49fd89b5d8220285f1",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/screens/write.png",
+      "bytes": 233218,
+      "sha256": "57c83860613c7fbdcb798a3ecc37bf042016587139e1a05b0926b313a5888450",
+      "origin": "Vraie interface PLUME, build de production local ; comptes et livres de démonstration supprimés"
+    },
+    {
+      "path": "assets/vendor/gsap.min.js",
+      "bytes": 72779,
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+      "origin": "GSAP 3.14.2 ; en-tête de licence conservé dans le fichier"
+    }
+  ]
+}

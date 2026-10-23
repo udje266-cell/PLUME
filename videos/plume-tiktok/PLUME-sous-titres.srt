@@ -1,0 +1,463 @@
+1
+00:00:00,100 --> 00:00:01,060
+Tu connais ce moment
+
+2
+00:00:01,060 --> 00:00:01,990
+où une histoire te
+
+3
+00:00:01,990 --> 00:00:02,980
+donne envie de tout
+
+4
+00:00:02,980 --> 00:00:03,710
+oublier…
+
+5
+00:00:03,710 --> 00:00:05,010
+juste pour lire encore
+
+6
+00:00:05,010 --> 00:00:05,680
+un chapitre ?
+
+7
+00:00:05,740 --> 00:00:06,355
+Et si elle te
+
+8
+00:00:06,355 --> 00:00:07,600
+donnait aussi envie d’écrire
+
+9
+00:00:07,600 --> 00:00:08,280
+le tien ?
+
+10
+00:00:08,410 --> 00:00:09,840
+Bienvenue sur PLUME.
+
+11
+00:00:09,840 --> 00:00:10,910
+Un lieu pour découvrir
+
+12
+00:00:10,910 --> 00:00:12,380
+des histoires, faire vivre
+
+13
+00:00:12,380 --> 00:00:13,680
+les tiennes, et rencontrer
+
+14
+00:00:13,680 --> 00:00:14,640
+les personnes qui aiment
+
+15
+00:00:14,640 --> 00:00:15,750
+les mêmes univers que
+
+16
+00:00:15,750 --> 00:00:15,960
+toi.
+
+17
+00:00:16,380 --> 00:00:18,940
+Fantasy, romance, thriller, poésie…
+
+18
+00:00:18,940 --> 00:00:20,610
+Explore les genres, cherche
+
+19
+00:00:20,610 --> 00:00:21,360
+un livre ou un
+
+20
+00:00:21,360 --> 00:00:22,320
+auteur, et laisse les
+
+21
+00:00:22,320 --> 00:00:23,850
+recommandations t’emmener vers ta
+
+22
+00:00:23,850 --> 00:00:24,800
+prochaine lecture.
+
+23
+00:00:24,965 --> 00:00:25,900
+Ouvre une histoire.
+
+24
+00:00:25,900 --> 00:00:27,310
+Choisis ton chapitre.
+
+25
+00:00:27,310 --> 00:00:27,950
+Installe-toi.
+
+26
+00:00:27,950 --> 00:00:29,250
+Adapte la taille du
+
+27
+00:00:29,250 --> 00:00:30,640
+texte, la police et
+
+28
+00:00:30,640 --> 00:00:31,960
+l’ambiance de lecture.
+
+29
+00:00:32,060 --> 00:00:33,130
+Tu préfères écouter ?
+
+30
+00:00:33,130 --> 00:00:34,310
+Active la lecture audio.
+
+31
+00:00:34,310 --> 00:00:35,566
+Et pour continuer sans
+
+32
+00:00:35,566 --> 00:00:37,153
+connexion, télécharge tes chapitres
+
+33
+00:00:37,153 --> 00:00:37,880
+à l’avance.
+
+34
+00:00:37,980 --> 00:00:39,165
+Un passage te touche
+
+35
+00:00:39,165 --> 00:00:39,660
+?
+
+36
+00:00:39,660 --> 00:00:41,590
+Aime-le, surligne-le, ajoute une
+
+37
+00:00:41,590 --> 00:00:41,790
+note.
+
+38
+00:00:41,790 --> 00:00:43,040
+Garde tes citations dans
+
+39
+00:00:43,040 --> 00:00:44,470
+ton carnet, ou transforme-les
+
+40
+00:00:44,470 --> 00:00:45,960
+en PlumeCards à partager.
+
+41
+00:00:46,025 --> 00:00:47,110
+Tu peux aussi commenter
+
+42
+00:00:47,110 --> 00:00:48,040
+au fil de l’histoire
+
+43
+00:00:48,040 --> 00:00:49,000
+et échanger avec son
+
+44
+00:00:49,000 --> 00:00:49,600
+auteur.
+
+45
+00:00:49,700 --> 00:00:51,160
+Ta bibliothèque garde toutes
+
+46
+00:00:51,160 --> 00:00:52,190
+tes envies à portée
+
+47
+00:00:52,190 --> 00:00:52,730
+de main : en
+
+48
+00:00:52,730 --> 00:00:54,110
+cours, à lire, terminés.
+
+49
+00:00:54,110 --> 00:00:55,675
+Crée tes collections, choisis
+
+50
+00:00:55,675 --> 00:00:56,950
+la grille ou la
+
+51
+00:00:56,950 --> 00:00:58,150
+liste, et retrouve tes
+
+52
+00:00:58,150 --> 00:00:59,290
+livres par titre, par
+
+53
+00:00:59,290 --> 00:01:00,270
+auteur ou par ajout
+
+54
+00:01:00,270 --> 00:01:00,880
+récent.
+
+55
+00:01:00,980 --> 00:01:02,060
+Ta progression suit ta
+
+56
+00:01:02,060 --> 00:01:02,700
+lecture.
+
+57
+00:01:02,700 --> 00:01:03,905
+Quand tu reviens, tu
+
+58
+00:01:03,905 --> 00:01:04,590
+reprends là où tu
+
+59
+00:01:04,590 --> 00:01:05,680
+t’étais arrêté.
+
+60
+00:01:05,980 --> 00:01:07,150
+Derrière chaque histoire, il
+
+61
+00:01:07,150 --> 00:01:07,920
+y a quelqu’un.
+
+62
+00:01:08,170 --> 00:01:09,310
+Découvre des profils, suis
+
+63
+00:01:09,310 --> 00:01:10,690
+tes auteurs préférés, et
+
+64
+00:01:10,690 --> 00:01:11,750
+partage ta lecture en
+
+65
+00:01:11,750 --> 00:01:13,320
+direct avec ta communauté…
+
+66
+00:01:13,320 --> 00:01:14,320
+si tu le souhaites.
+
+67
+00:01:14,320 --> 00:01:15,560
+C’est toi qui décides.
+
+68
+00:01:15,660 --> 00:01:16,710
+Une recommandation ?
+
+69
+00:01:16,710 --> 00:01:17,610
+Envoie le livre dans
+
+70
+00:01:17,610 --> 00:01:18,470
+une discussion.
+
+71
+00:01:18,470 --> 00:01:19,670
+Partage des photos, des
+
+72
+00:01:19,670 --> 00:01:20,833
+fichiers ou une note
+
+73
+00:01:20,833 --> 00:01:21,257
+vocale.
+
+74
+00:01:21,257 --> 00:01:22,435
+Réponds à un message,
+
+75
+00:01:22,435 --> 00:01:23,760
+réagis avec un emoji,
+
+76
+00:01:23,760 --> 00:01:25,000
+et masque les spoilers
+
+77
+00:01:25,000 --> 00:01:26,240
+pour laisser la surprise
+
+78
+00:01:26,240 --> 00:01:26,840
+intacte.
+
+79
+00:01:26,940 --> 00:01:28,900
+Retrouve tes conversations épinglées,
+
+80
+00:01:28,900 --> 00:01:29,900
+tes messages non lus,
+
+81
+00:01:29,900 --> 00:01:30,730
+ou rejoins un club
+
+82
+00:01:30,730 --> 00:01:31,570
+de lecture pour en
+
+83
+00:01:31,570 --> 00:01:32,520
+parler ensemble.
+
+84
+00:01:32,620 --> 00:01:33,670
+Et cette histoire que
+
+85
+00:01:33,670 --> 00:01:34,455
+tu gardes dans un
+
+86
+00:01:34,455 --> 00:01:34,980
+coin de ta tête
+
+87
+00:01:34,980 --> 00:01:35,160
+?
+
+88
+00:01:35,160 --> 00:01:36,320
+Donne-lui une place.
+
+89
+00:01:36,320 --> 00:01:37,380
+Crée ton livre, sa
+
+90
+00:01:37,380 --> 00:01:38,895
+couverture, son univers.
+
+91
+00:01:38,895 --> 00:01:40,193
+Écris dans ton atelier,
+
+92
+00:01:40,193 --> 00:01:41,717
+organise tes chapitres et
+
+93
+00:01:41,717 --> 00:01:42,680
+tes tomes, ou importe
+
+94
+00:01:42,680 --> 00:01:44,040
+un document pour reprendre
+
+95
+00:01:44,040 --> 00:01:45,400
+un texte déjà commencé.
+
+96
+00:01:45,555 --> 00:01:46,700
+Garde tes brouillons, puis
+
+97
+00:01:46,700 --> 00:01:47,490
+publie quand tu es
+
+98
+00:01:47,490 --> 00:01:47,960
+prêt.
+
+99
+00:01:48,060 --> 00:01:48,750
+Les retours de tes
+
+100
+00:01:48,750 --> 00:01:49,803
+lecteurs et les statistiques
+
+101
+00:01:49,803 --> 00:01:51,020
+t’aident à suivre la
+
+102
+00:01:51,020 --> 00:01:51,960
+vie de ton histoire.
+
+103
+00:01:52,080 --> 00:01:53,780
+Lecture après lecture, chapitre
+
+104
+00:01:53,780 --> 00:01:55,282
+après chapitre, ton parcours
+
+105
+00:01:55,282 --> 00:01:57,360
+évolue : niveaux, expérience
+
+106
+00:01:57,360 --> 00:01:58,980
+et trophées racontent aussi
+
+107
+00:01:58,980 --> 00:01:59,920
+ton aventure.
+
+108
+00:02:00,030 --> 00:02:01,240
+Sur PLUME, une histoire
+
+109
+00:02:01,240 --> 00:02:02,880
+peut devenir une rencontre.
+
+110
+00:02:02,880 --> 00:02:03,720
+Et une envie peut
+
+111
+00:02:03,720 --> 00:02:05,240
+devenir ton premier roman.
+
+112
+00:02:05,697 --> 00:02:06,153
+Lis.
+
+113
+00:02:06,153 --> 00:02:06,610
+Écris.
+
+114
+00:02:06,610 --> 00:02:07,500
+Partage.
+
+115
+00:02:07,500 --> 00:02:09,900
+PLUME, bientôt disponible sur
+
+116
+00:02:09,900 --> 00:02:10,920
+Android et iOS.

@@ -1,0 +1,2378 @@
+[
+  {
+    "id": "w0",
+    "text": "Tu",
+    "start": 0.1,
+    "end": 0.13
+  },
+  {
+    "id": "w1",
+    "text": "connais",
+    "start": 0.13,
+    "end": 0.56
+  },
+  {
+    "id": "w2",
+    "text": "ce",
+    "start": 0.56,
+    "end": 0.68
+  },
+  {
+    "id": "w3",
+    "text": "moment",
+    "start": 0.68,
+    "end": 1.06
+  },
+  {
+    "id": "w4",
+    "text": "où",
+    "start": 1.06,
+    "end": 1.18
+  },
+  {
+    "id": "w5",
+    "text": "une",
+    "start": 1.18,
+    "end": 1.37
+  },
+  {
+    "id": "w6",
+    "text": "histoire",
+    "start": 1.37,
+    "end": 1.87
+  },
+  {
+    "id": "w7",
+    "text": "te",
+    "start": 1.87,
+    "end": 1.99
+  },
+  {
+    "id": "w8",
+    "text": "donne",
+    "start": 1.99,
+    "end": 2.3
+  },
+  {
+    "id": "w9",
+    "text": "envie",
+    "start": 2.3,
+    "end": 2.61
+  },
+  {
+    "id": "w10",
+    "text": "de",
+    "start": 2.61,
+    "end": 2.77
+  },
+  {
+    "id": "w11",
+    "text": "tout",
+    "start": 2.77,
+    "end": 2.98
+  },
+  {
+    "id": "w12",
+    "text": "oublier…",
+    "start": 2.98,
+    "end": 3.71
+  },
+  {
+    "id": "w13",
+    "text": "juste",
+    "start": 3.71,
+    "end": 4.1
+  },
+  {
+    "id": "w14",
+    "text": "pour",
+    "start": 4.1,
+    "end": 4.35
+  },
+  {
+    "id": "w15",
+    "text": "lire",
+    "start": 4.35,
+    "end": 4.66
+  },
+  {
+    "id": "w16",
+    "text": "encore",
+    "start": 4.66,
+    "end": 5.01
+  },
+  {
+    "id": "w17",
+    "text": "un",
+    "start": 5.01,
+    "end": 5.14
+  },
+  {
+    "id": "w18",
+    "text": "chapitre",
+    "start": 5.14,
+    "end": 5.41
+  },
+  {
+    "id": "w19",
+    "text": "?",
+    "start": 5.41,
+    "end": 5.68
+  },
+  {
+    "id": "w20",
+    "text": "Et",
+    "start": 5.74,
+    "end": 5.8
+  },
+  {
+    "id": "w21",
+    "text": "si",
+    "start": 5.8,
+    "end": 5.93
+  },
+  {
+    "id": "w22",
+    "text": "elle",
+    "start": 5.93,
+    "end": 6.13
+  },
+  {
+    "id": "w23",
+    "text": "te",
+    "start": 6.13,
+    "end": 6.355
+  },
+  {
+    "id": "w24",
+    "text": "donnait",
+    "start": 6.355,
+    "end": 6.58
+  },
+  {
+    "id": "w25",
+    "text": "aussi",
+    "start": 6.58,
+    "end": 6.87
+  },
+  {
+    "id": "w26",
+    "text": "envie",
+    "start": 6.87,
+    "end": 7.16
+  },
+  {
+    "id": "w27",
+    "text": "d’écrire",
+    "start": 7.16,
+    "end": 7.6
+  },
+  {
+    "id": "w28",
+    "text": "le",
+    "start": 7.6,
+    "end": 7.827
+  },
+  {
+    "id": "w29",
+    "text": "tien",
+    "start": 7.827,
+    "end": 8.053
+  },
+  {
+    "id": "w30",
+    "text": "?",
+    "start": 8.053,
+    "end": 8.28
+  },
+  {
+    "id": "w31",
+    "text": "Bienvenue",
+    "start": 8.41,
+    "end": 9.03
+  },
+  {
+    "id": "w32",
+    "text": "sur",
+    "start": 9.03,
+    "end": 9.28
+  },
+  {
+    "id": "w33",
+    "text": "PLUME.",
+    "start": 9.28,
+    "end": 9.84
+  },
+  {
+    "id": "w34",
+    "text": "Un",
+    "start": 9.84,
+    "end": 9.94
+  },
+  {
+    "id": "w35",
+    "text": "lieu",
+    "start": 9.94,
+    "end": 10.17
+  },
+  {
+    "id": "w36",
+    "text": "pour",
+    "start": 10.17,
+    "end": 10.4
+  },
+  {
+    "id": "w37",
+    "text": "découvrir",
+    "start": 10.4,
+    "end": 10.91
+  },
+  {
+    "id": "w38",
+    "text": "des",
+    "start": 10.91,
+    "end": 11.09
+  },
+  {
+    "id": "w39",
+    "text": "histoires,",
+    "start": 11.09,
+    "end": 11.99
+  },
+  {
+    "id": "w40",
+    "text": "faire",
+    "start": 11.99,
+    "end": 12.07
+  },
+  {
+    "id": "w41",
+    "text": "vivre",
+    "start": 12.07,
+    "end": 12.38
+  },
+  {
+    "id": "w42",
+    "text": "les",
+    "start": 12.38,
+    "end": 12.56
+  },
+  {
+    "id": "w43",
+    "text": "tiennes,",
+    "start": 12.56,
+    "end": 13.0
+  },
+  {
+    "id": "w44",
+    "text": "et",
+    "start": 13.0,
+    "end": 13.11
+  },
+  {
+    "id": "w45",
+    "text": "rencontrer",
+    "start": 13.11,
+    "end": 13.68
+  },
+  {
+    "id": "w46",
+    "text": "les",
+    "start": 13.68,
+    "end": 14.2
+  },
+  {
+    "id": "w47",
+    "text": "personnes",
+    "start": 14.2,
+    "end": 14.24
+  },
+  {
+    "id": "w48",
+    "text": "qui",
+    "start": 14.24,
+    "end": 14.34
+  },
+  {
+    "id": "w49",
+    "text": "aiment",
+    "start": 14.34,
+    "end": 14.64
+  },
+  {
+    "id": "w50",
+    "text": "les",
+    "start": 14.64,
+    "end": 14.76
+  },
+  {
+    "id": "w51",
+    "text": "mêmes",
+    "start": 14.76,
+    "end": 15.09
+  },
+  {
+    "id": "w52",
+    "text": "univers",
+    "start": 15.09,
+    "end": 15.55
+  },
+  {
+    "id": "w53",
+    "text": "que",
+    "start": 15.55,
+    "end": 15.75
+  },
+  {
+    "id": "w54",
+    "text": "toi.",
+    "start": 15.75,
+    "end": 15.96
+  },
+  {
+    "id": "w55",
+    "text": "Fantasy,",
+    "start": 16.38,
+    "end": 16.8
+  },
+  {
+    "id": "w56",
+    "text": "romance,",
+    "start": 16.8,
+    "end": 17.57
+  },
+  {
+    "id": "w57",
+    "text": "thriller,",
+    "start": 17.57,
+    "end": 18.26
+  },
+  {
+    "id": "w58",
+    "text": "poésie…",
+    "start": 18.26,
+    "end": 18.94
+  },
+  {
+    "id": "w59",
+    "text": "Explore",
+    "start": 18.94,
+    "end": 19.66
+  },
+  {
+    "id": "w60",
+    "text": "les",
+    "start": 19.66,
+    "end": 19.94
+  },
+  {
+    "id": "w61",
+    "text": "genres,",
+    "start": 19.94,
+    "end": 20.22
+  },
+  {
+    "id": "w62",
+    "text": "cherche",
+    "start": 20.22,
+    "end": 20.61
+  },
+  {
+    "id": "w63",
+    "text": "un",
+    "start": 20.61,
+    "end": 20.77
+  },
+  {
+    "id": "w64",
+    "text": "livre",
+    "start": 20.77,
+    "end": 21.06
+  },
+  {
+    "id": "w65",
+    "text": "ou",
+    "start": 21.06,
+    "end": 21.23
+  },
+  {
+    "id": "w66",
+    "text": "un",
+    "start": 21.23,
+    "end": 21.36
+  },
+  {
+    "id": "w67",
+    "text": "auteur,",
+    "start": 21.36,
+    "end": 21.625
+  },
+  {
+    "id": "w68",
+    "text": "et",
+    "start": 21.625,
+    "end": 21.89
+  },
+  {
+    "id": "w69",
+    "text": "laisse",
+    "start": 21.89,
+    "end": 22.13
+  },
+  {
+    "id": "w70",
+    "text": "les",
+    "start": 22.13,
+    "end": 22.32
+  },
+  {
+    "id": "w71",
+    "text": "recommandations",
+    "start": 22.32,
+    "end": 22.935
+  },
+  {
+    "id": "w72",
+    "text": "t’emmener",
+    "start": 22.935,
+    "end": 23.55
+  },
+  {
+    "id": "w73",
+    "text": "vers",
+    "start": 23.55,
+    "end": 23.76
+  },
+  {
+    "id": "w74",
+    "text": "ta",
+    "start": 23.76,
+    "end": 23.85
+  },
+  {
+    "id": "w75",
+    "text": "prochaine",
+    "start": 23.85,
+    "end": 24.48
+  },
+  {
+    "id": "w76",
+    "text": "lecture.",
+    "start": 24.48,
+    "end": 24.8
+  },
+  {
+    "id": "w77",
+    "text": "Ouvre",
+    "start": 24.965,
+    "end": 25.13
+  },
+  {
+    "id": "w78",
+    "text": "une",
+    "start": 25.13,
+    "end": 25.33
+  },
+  {
+    "id": "w79",
+    "text": "histoire.",
+    "start": 25.33,
+    "end": 25.9
+  },
+  {
+    "id": "w80",
+    "text": "Choisis",
+    "start": 25.9,
+    "end": 26.47
+  },
+  {
+    "id": "w81",
+    "text": "ton",
+    "start": 26.47,
+    "end": 26.67
+  },
+  {
+    "id": "w82",
+    "text": "chapitre.",
+    "start": 26.67,
+    "end": 27.31
+  },
+  {
+    "id": "w83",
+    "text": "Installe-toi.",
+    "start": 27.31,
+    "end": 27.95
+  },
+  {
+    "id": "w84",
+    "text": "Adapte",
+    "start": 27.95,
+    "end": 28.59
+  },
+  {
+    "id": "w85",
+    "text": "la",
+    "start": 28.59,
+    "end": 28.72
+  },
+  {
+    "id": "w86",
+    "text": "taille",
+    "start": 28.72,
+    "end": 29.12
+  },
+  {
+    "id": "w87",
+    "text": "du",
+    "start": 29.12,
+    "end": 29.25
+  },
+  {
+    "id": "w88",
+    "text": "texte,",
+    "start": 29.25,
+    "end": 29.71
+  },
+  {
+    "id": "w89",
+    "text": "la",
+    "start": 29.71,
+    "end": 29.84
+  },
+  {
+    "id": "w90",
+    "text": "police",
+    "start": 29.84,
+    "end": 30.24
+  },
+  {
+    "id": "w91",
+    "text": "et",
+    "start": 30.24,
+    "end": 30.64
+  },
+  {
+    "id": "w92",
+    "text": "l’ambiance",
+    "start": 30.64,
+    "end": 31.04
+  },
+  {
+    "id": "w93",
+    "text": "de",
+    "start": 31.04,
+    "end": 31.17
+  },
+  {
+    "id": "w94",
+    "text": "lecture.",
+    "start": 31.17,
+    "end": 31.96
+  },
+  {
+    "id": "w95",
+    "text": "Tu",
+    "start": 32.06,
+    "end": 32.09
+  },
+  {
+    "id": "w96",
+    "text": "préfères",
+    "start": 32.09,
+    "end": 32.58
+  },
+  {
+    "id": "w97",
+    "text": "écouter",
+    "start": 32.58,
+    "end": 32.855
+  },
+  {
+    "id": "w98",
+    "text": "?",
+    "start": 32.855,
+    "end": 33.13
+  },
+  {
+    "id": "w99",
+    "text": "Active",
+    "start": 33.13,
+    "end": 33.52
+  },
+  {
+    "id": "w100",
+    "text": "la",
+    "start": 33.52,
+    "end": 33.63
+  },
+  {
+    "id": "w101",
+    "text": "lecture",
+    "start": 33.63,
+    "end": 34.07
+  },
+  {
+    "id": "w102",
+    "text": "audio.",
+    "start": 34.07,
+    "end": 34.31
+  },
+  {
+    "id": "w103",
+    "text": "Et",
+    "start": 34.31,
+    "end": 34.55
+  },
+  {
+    "id": "w104",
+    "text": "pour",
+    "start": 34.55,
+    "end": 34.75
+  },
+  {
+    "id": "w105",
+    "text": "continuer",
+    "start": 34.75,
+    "end": 35.158
+  },
+  {
+    "id": "w106",
+    "text": "sans",
+    "start": 35.158,
+    "end": 35.566
+  },
+  {
+    "id": "w107",
+    "text": "connexion,",
+    "start": 35.566,
+    "end": 35.974
+  },
+  {
+    "id": "w108",
+    "text": "télécharge",
+    "start": 35.974,
+    "end": 36.382
+  },
+  {
+    "id": "w109",
+    "text": "tes",
+    "start": 36.382,
+    "end": 36.79
+  },
+  {
+    "id": "w110",
+    "text": "chapitres",
+    "start": 36.79,
+    "end": 37.153
+  },
+  {
+    "id": "w111",
+    "text": "à",
+    "start": 37.153,
+    "end": 37.517
+  },
+  {
+    "id": "w112",
+    "text": "l’avance.",
+    "start": 37.517,
+    "end": 37.88
+  },
+  {
+    "id": "w113",
+    "text": "Un",
+    "start": 37.98,
+    "end": 38.02
+  },
+  {
+    "id": "w114",
+    "text": "passage",
+    "start": 38.02,
+    "end": 38.345
+  },
+  {
+    "id": "w115",
+    "text": "te",
+    "start": 38.345,
+    "end": 38.67
+  },
+  {
+    "id": "w116",
+    "text": "touche",
+    "start": 38.67,
+    "end": 39.165
+  },
+  {
+    "id": "w117",
+    "text": "?",
+    "start": 39.165,
+    "end": 39.66
+  },
+  {
+    "id": "w118",
+    "text": "Aime-le,",
+    "start": 39.66,
+    "end": 40.155
+  },
+  {
+    "id": "w119",
+    "text": "surligne-le,",
+    "start": 40.155,
+    "end": 40.65
+  },
+  {
+    "id": "w120",
+    "text": "ajoute",
+    "start": 40.65,
+    "end": 41.08
+  },
+  {
+    "id": "w121",
+    "text": "une",
+    "start": 41.08,
+    "end": 41.59
+  },
+  {
+    "id": "w122",
+    "text": "note.",
+    "start": 41.59,
+    "end": 41.79
+  },
+  {
+    "id": "w123",
+    "text": "Garde",
+    "start": 41.79,
+    "end": 42.14
+  },
+  {
+    "id": "w124",
+    "text": "tes",
+    "start": 42.14,
+    "end": 42.27
+  },
+  {
+    "id": "w125",
+    "text": "citations",
+    "start": 42.27,
+    "end": 42.8
+  },
+  {
+    "id": "w126",
+    "text": "dans",
+    "start": 42.8,
+    "end": 43.04
+  },
+  {
+    "id": "w127",
+    "text": "ton",
+    "start": 43.04,
+    "end": 43.21
+  },
+  {
+    "id": "w128",
+    "text": "carnet,",
+    "start": 43.21,
+    "end": 43.63
+  },
+  {
+    "id": "w129",
+    "text": "ou",
+    "start": 43.63,
+    "end": 44.05
+  },
+  {
+    "id": "w130",
+    "text": "transforme-les",
+    "start": 44.05,
+    "end": 44.47
+  },
+  {
+    "id": "w131",
+    "text": "en",
+    "start": 44.47,
+    "end": 44.865
+  },
+  {
+    "id": "w132",
+    "text": "PlumeCards",
+    "start": 44.865,
+    "end": 45.26
+  },
+  {
+    "id": "w133",
+    "text": "à",
+    "start": 45.26,
+    "end": 45.32
+  },
+  {
+    "id": "w134",
+    "text": "partager.",
+    "start": 45.32,
+    "end": 45.96
+  },
+  {
+    "id": "w135",
+    "text": "Tu",
+    "start": 46.025,
+    "end": 46.09
+  },
+  {
+    "id": "w136",
+    "text": "peux",
+    "start": 46.09,
+    "end": 46.3
+  },
+  {
+    "id": "w137",
+    "text": "aussi",
+    "start": 46.3,
+    "end": 46.58
+  },
+  {
+    "id": "w138",
+    "text": "commenter",
+    "start": 46.58,
+    "end": 47.11
+  },
+  {
+    "id": "w139",
+    "text": "au",
+    "start": 47.11,
+    "end": 47.2
+  },
+  {
+    "id": "w140",
+    "text": "fil",
+    "start": 47.2,
+    "end": 47.48
+  },
+  {
+    "id": "w141",
+    "text": "de",
+    "start": 47.48,
+    "end": 47.76
+  },
+  {
+    "id": "w142",
+    "text": "l’histoire",
+    "start": 47.76,
+    "end": 48.04
+  },
+  {
+    "id": "w143",
+    "text": "et",
+    "start": 48.04,
+    "end": 48.16
+  },
+  {
+    "id": "w144",
+    "text": "échanger",
+    "start": 48.16,
+    "end": 48.6
+  },
+  {
+    "id": "w145",
+    "text": "avec",
+    "start": 48.6,
+    "end": 48.83
+  },
+  {
+    "id": "w146",
+    "text": "son",
+    "start": 48.83,
+    "end": 49.0
+  },
+  {
+    "id": "w147",
+    "text": "auteur.",
+    "start": 49.0,
+    "end": 49.6
+  },
+  {
+    "id": "w148",
+    "text": "Ta",
+    "start": 49.7,
+    "end": 49.73
+  },
+  {
+    "id": "w149",
+    "text": "bibliothèque",
+    "start": 49.73,
+    "end": 50.45
+  },
+  {
+    "id": "w150",
+    "text": "garde",
+    "start": 50.45,
+    "end": 50.76
+  },
+  {
+    "id": "w151",
+    "text": "toutes",
+    "start": 50.76,
+    "end": 51.16
+  },
+  {
+    "id": "w152",
+    "text": "tes",
+    "start": 51.16,
+    "end": 51.42
+  },
+  {
+    "id": "w153",
+    "text": "envies",
+    "start": 51.42,
+    "end": 51.69
+  },
+  {
+    "id": "w154",
+    "text": "à",
+    "start": 51.69,
+    "end": 51.94
+  },
+  {
+    "id": "w155",
+    "text": "portée",
+    "start": 51.94,
+    "end": 52.19
+  },
+  {
+    "id": "w156",
+    "text": "de",
+    "start": 52.19,
+    "end": 52.24
+  },
+  {
+    "id": "w157",
+    "text": "main",
+    "start": 52.24,
+    "end": 52.425
+  },
+  {
+    "id": "w158",
+    "text": ":",
+    "start": 52.425,
+    "end": 52.61
+  },
+  {
+    "id": "w159",
+    "text": "en",
+    "start": 52.61,
+    "end": 52.73
+  },
+  {
+    "id": "w160",
+    "text": "cours,",
+    "start": 52.73,
+    "end": 53.02
+  },
+  {
+    "id": "w161",
+    "text": "à",
+    "start": 53.02,
+    "end": 53.31
+  },
+  {
+    "id": "w162",
+    "text": "lire,",
+    "start": 53.31,
+    "end": 53.71
+  },
+  {
+    "id": "w163",
+    "text": "terminés.",
+    "start": 53.71,
+    "end": 54.11
+  },
+  {
+    "id": "w164",
+    "text": "Crée",
+    "start": 54.11,
+    "end": 54.51
+  },
+  {
+    "id": "w165",
+    "text": "tes",
+    "start": 54.51,
+    "end": 54.7
+  },
+  {
+    "id": "w166",
+    "text": "collections,",
+    "start": 54.7,
+    "end": 55.188
+  },
+  {
+    "id": "w167",
+    "text": "choisis",
+    "start": 55.188,
+    "end": 55.675
+  },
+  {
+    "id": "w168",
+    "text": "la",
+    "start": 55.675,
+    "end": 56.163
+  },
+  {
+    "id": "w169",
+    "text": "grille",
+    "start": 56.163,
+    "end": 56.65
+  },
+  {
+    "id": "w170",
+    "text": "ou",
+    "start": 56.65,
+    "end": 56.8
+  },
+  {
+    "id": "w171",
+    "text": "la",
+    "start": 56.8,
+    "end": 56.95
+  },
+  {
+    "id": "w172",
+    "text": "liste,",
+    "start": 56.95,
+    "end": 57.36
+  },
+  {
+    "id": "w173",
+    "text": "et",
+    "start": 57.36,
+    "end": 57.49
+  },
+  {
+    "id": "w174",
+    "text": "retrouve",
+    "start": 57.49,
+    "end": 58.11
+  },
+  {
+    "id": "w175",
+    "text": "tes",
+    "start": 58.11,
+    "end": 58.15
+  },
+  {
+    "id": "w176",
+    "text": "livres",
+    "start": 58.15,
+    "end": 58.435
+  },
+  {
+    "id": "w177",
+    "text": "par",
+    "start": 58.435,
+    "end": 58.72
+  },
+  {
+    "id": "w178",
+    "text": "titre,",
+    "start": 58.72,
+    "end": 59.005
+  },
+  {
+    "id": "w179",
+    "text": "par",
+    "start": 59.005,
+    "end": 59.29
+  },
+  {
+    "id": "w180",
+    "text": "auteur",
+    "start": 59.29,
+    "end": 59.68
+  },
+  {
+    "id": "w181",
+    "text": "ou",
+    "start": 59.68,
+    "end": 59.81
+  },
+  {
+    "id": "w182",
+    "text": "par",
+    "start": 59.81,
+    "end": 60.04
+  },
+  {
+    "id": "w183",
+    "text": "ajout",
+    "start": 60.04,
+    "end": 60.27
+  },
+  {
+    "id": "w184",
+    "text": "récent.",
+    "start": 60.27,
+    "end": 60.88
+  },
+  {
+    "id": "w185",
+    "text": "Ta",
+    "start": 60.98,
+    "end": 61.02
+  },
+  {
+    "id": "w186",
+    "text": "progression",
+    "start": 61.02,
+    "end": 61.367
+  },
+  {
+    "id": "w187",
+    "text": "suit",
+    "start": 61.367,
+    "end": 61.713
+  },
+  {
+    "id": "w188",
+    "text": "ta",
+    "start": 61.713,
+    "end": 62.06
+  },
+  {
+    "id": "w189",
+    "text": "lecture.",
+    "start": 62.06,
+    "end": 62.7
+  },
+  {
+    "id": "w190",
+    "text": "Quand",
+    "start": 62.7,
+    "end": 62.93
+  },
+  {
+    "id": "w191",
+    "text": "tu",
+    "start": 62.93,
+    "end": 63.05
+  },
+  {
+    "id": "w192",
+    "text": "reviens,",
+    "start": 63.05,
+    "end": 63.6
+  },
+  {
+    "id": "w193",
+    "text": "tu",
+    "start": 63.6,
+    "end": 63.905
+  },
+  {
+    "id": "w194",
+    "text": "reprends",
+    "start": 63.905,
+    "end": 64.21
+  },
+  {
+    "id": "w195",
+    "text": "là",
+    "start": 64.21,
+    "end": 64.22
+  },
+  {
+    "id": "w196",
+    "text": "où",
+    "start": 64.22,
+    "end": 64.405
+  },
+  {
+    "id": "w197",
+    "text": "tu",
+    "start": 64.405,
+    "end": 64.59
+  },
+  {
+    "id": "w198",
+    "text": "t’étais",
+    "start": 64.59,
+    "end": 65.14
+  },
+  {
+    "id": "w199",
+    "text": "arrêté.",
+    "start": 65.14,
+    "end": 65.68
+  },
+  {
+    "id": "w200",
+    "text": "Derrière",
+    "start": 65.98,
+    "end": 66.28
+  },
+  {
+    "id": "w201",
+    "text": "chaque",
+    "start": 66.28,
+    "end": 66.58
+  },
+  {
+    "id": "w202",
+    "text": "histoire,",
+    "start": 66.58,
+    "end": 67.08
+  },
+  {
+    "id": "w203",
+    "text": "il",
+    "start": 67.08,
+    "end": 67.15
+  },
+  {
+    "id": "w204",
+    "text": "y",
+    "start": 67.15,
+    "end": 67.22
+  },
+  {
+    "id": "w205",
+    "text": "a",
+    "start": 67.22,
+    "end": 67.29
+  },
+  {
+    "id": "w206",
+    "text": "quelqu’un.",
+    "start": 67.29,
+    "end": 67.92
+  },
+  {
+    "id": "w207",
+    "text": "Découvre",
+    "start": 68.17,
+    "end": 68.42
+  },
+  {
+    "id": "w208",
+    "text": "des",
+    "start": 68.42,
+    "end": 68.58
+  },
+  {
+    "id": "w209",
+    "text": "profils,",
+    "start": 68.58,
+    "end": 68.945
+  },
+  {
+    "id": "w210",
+    "text": "suis",
+    "start": 68.945,
+    "end": 69.31
+  },
+  {
+    "id": "w211",
+    "text": "tes",
+    "start": 69.31,
+    "end": 69.675
+  },
+  {
+    "id": "w212",
+    "text": "auteurs",
+    "start": 69.675,
+    "end": 70.04
+  },
+  {
+    "id": "w213",
+    "text": "préférés,",
+    "start": 70.04,
+    "end": 70.53
+  },
+  {
+    "id": "w214",
+    "text": "et",
+    "start": 70.53,
+    "end": 70.69
+  },
+  {
+    "id": "w215",
+    "text": "partage",
+    "start": 70.69,
+    "end": 71.08
+  },
+  {
+    "id": "w216",
+    "text": "ta",
+    "start": 71.08,
+    "end": 71.62
+  },
+  {
+    "id": "w217",
+    "text": "lecture",
+    "start": 71.62,
+    "end": 71.65
+  },
+  {
+    "id": "w218",
+    "text": "en",
+    "start": 71.65,
+    "end": 71.75
+  },
+  {
+    "id": "w219",
+    "text": "direct",
+    "start": 71.75,
+    "end": 72.18
+  },
+  {
+    "id": "w220",
+    "text": "avec",
+    "start": 72.18,
+    "end": 72.37
+  },
+  {
+    "id": "w221",
+    "text": "ta",
+    "start": 72.37,
+    "end": 72.58
+  },
+  {
+    "id": "w222",
+    "text": "communauté…",
+    "start": 72.58,
+    "end": 73.32
+  },
+  {
+    "id": "w223",
+    "text": "si",
+    "start": 73.32,
+    "end": 73.45
+  },
+  {
+    "id": "w224",
+    "text": "tu",
+    "start": 73.45,
+    "end": 73.58
+  },
+  {
+    "id": "w225",
+    "text": "le",
+    "start": 73.58,
+    "end": 73.84
+  },
+  {
+    "id": "w226",
+    "text": "souhaites.",
+    "start": 73.84,
+    "end": 74.32
+  },
+  {
+    "id": "w227",
+    "text": "C’est",
+    "start": 74.32,
+    "end": 74.69
+  },
+  {
+    "id": "w228",
+    "text": "toi",
+    "start": 74.69,
+    "end": 74.8
+  },
+  {
+    "id": "w229",
+    "text": "qui",
+    "start": 74.8,
+    "end": 75.18
+  },
+  {
+    "id": "w230",
+    "text": "décides.",
+    "start": 75.18,
+    "end": 75.56
+  },
+  {
+    "id": "w231",
+    "text": "Une",
+    "start": 75.66,
+    "end": 75.73
+  },
+  {
+    "id": "w232",
+    "text": "recommandation",
+    "start": 75.73,
+    "end": 76.22
+  },
+  {
+    "id": "w233",
+    "text": "?",
+    "start": 76.22,
+    "end": 76.71
+  },
+  {
+    "id": "w234",
+    "text": "Envoie",
+    "start": 76.71,
+    "end": 76.98
+  },
+  {
+    "id": "w235",
+    "text": "le",
+    "start": 76.98,
+    "end": 77.12
+  },
+  {
+    "id": "w236",
+    "text": "livre",
+    "start": 77.12,
+    "end": 77.38
+  },
+  {
+    "id": "w237",
+    "text": "dans",
+    "start": 77.38,
+    "end": 77.61
+  },
+  {
+    "id": "w238",
+    "text": "une",
+    "start": 77.61,
+    "end": 77.77
+  },
+  {
+    "id": "w239",
+    "text": "discussion.",
+    "start": 77.77,
+    "end": 78.47
+  },
+  {
+    "id": "w240",
+    "text": "Partage",
+    "start": 78.47,
+    "end": 78.87
+  },
+  {
+    "id": "w241",
+    "text": "des",
+    "start": 78.87,
+    "end": 79.27
+  },
+  {
+    "id": "w242",
+    "text": "photos,",
+    "start": 79.27,
+    "end": 79.5
+  },
+  {
+    "id": "w243",
+    "text": "des",
+    "start": 79.5,
+    "end": 79.67
+  },
+  {
+    "id": "w244",
+    "text": "fichiers",
+    "start": 79.67,
+    "end": 80.21
+  },
+  {
+    "id": "w245",
+    "text": "ou",
+    "start": 80.21,
+    "end": 80.23
+  },
+  {
+    "id": "w246",
+    "text": "une",
+    "start": 80.23,
+    "end": 80.41
+  },
+  {
+    "id": "w247",
+    "text": "note",
+    "start": 80.41,
+    "end": 80.833
+  },
+  {
+    "id": "w248",
+    "text": "vocale.",
+    "start": 80.833,
+    "end": 81.257
+  },
+  {
+    "id": "w249",
+    "text": "Réponds",
+    "start": 81.257,
+    "end": 81.68
+  },
+  {
+    "id": "w250",
+    "text": "à",
+    "start": 81.68,
+    "end": 81.74
+  },
+  {
+    "id": "w251",
+    "text": "un",
+    "start": 81.74,
+    "end": 81.92
+  },
+  {
+    "id": "w252",
+    "text": "message,",
+    "start": 81.92,
+    "end": 82.435
+  },
+  {
+    "id": "w253",
+    "text": "réagis",
+    "start": 82.435,
+    "end": 82.95
+  },
+  {
+    "id": "w254",
+    "text": "avec",
+    "start": 82.95,
+    "end": 83.27
+  },
+  {
+    "id": "w255",
+    "text": "un",
+    "start": 83.27,
+    "end": 83.45
+  },
+  {
+    "id": "w256",
+    "text": "emoji,",
+    "start": 83.45,
+    "end": 83.76
+  },
+  {
+    "id": "w257",
+    "text": "et",
+    "start": 83.76,
+    "end": 84.07
+  },
+  {
+    "id": "w258",
+    "text": "masque",
+    "start": 84.07,
+    "end": 84.38
+  },
+  {
+    "id": "w259",
+    "text": "les",
+    "start": 84.38,
+    "end": 84.69
+  },
+  {
+    "id": "w260",
+    "text": "spoilers",
+    "start": 84.69,
+    "end": 85.0
+  },
+  {
+    "id": "w261",
+    "text": "pour",
+    "start": 85.0,
+    "end": 85.52
+  },
+  {
+    "id": "w262",
+    "text": "laisser",
+    "start": 85.52,
+    "end": 85.65
+  },
+  {
+    "id": "w263",
+    "text": "la",
+    "start": 85.65,
+    "end": 85.77
+  },
+  {
+    "id": "w264",
+    "text": "surprise",
+    "start": 85.77,
+    "end": 86.24
+  },
+  {
+    "id": "w265",
+    "text": "intacte.",
+    "start": 86.24,
+    "end": 86.84
+  },
+  {
+    "id": "w266",
+    "text": "Retrouve",
+    "start": 86.94,
+    "end": 87.28
+  },
+  {
+    "id": "w267",
+    "text": "tes",
+    "start": 87.28,
+    "end": 87.45
+  },
+  {
+    "id": "w268",
+    "text": "conversations",
+    "start": 87.45,
+    "end": 88.175
+  },
+  {
+    "id": "w269",
+    "text": "épinglées,",
+    "start": 88.175,
+    "end": 88.9
+  },
+  {
+    "id": "w270",
+    "text": "tes",
+    "start": 88.9,
+    "end": 89.07
+  },
+  {
+    "id": "w271",
+    "text": "messages",
+    "start": 89.07,
+    "end": 89.347
+  },
+  {
+    "id": "w272",
+    "text": "non",
+    "start": 89.347,
+    "end": 89.623
+  },
+  {
+    "id": "w273",
+    "text": "lus,",
+    "start": 89.623,
+    "end": 89.9
+  },
+  {
+    "id": "w274",
+    "text": "ou",
+    "start": 89.9,
+    "end": 90.123
+  },
+  {
+    "id": "w275",
+    "text": "rejoins",
+    "start": 90.123,
+    "end": 90.347
+  },
+  {
+    "id": "w276",
+    "text": "un",
+    "start": 90.347,
+    "end": 90.57
+  },
+  {
+    "id": "w277",
+    "text": "club",
+    "start": 90.57,
+    "end": 90.73
+  },
+  {
+    "id": "w278",
+    "text": "de",
+    "start": 90.73,
+    "end": 90.84
+  },
+  {
+    "id": "w279",
+    "text": "lecture",
+    "start": 90.84,
+    "end": 91.24
+  },
+  {
+    "id": "w280",
+    "text": "pour",
+    "start": 91.24,
+    "end": 91.49
+  },
+  {
+    "id": "w281",
+    "text": "en",
+    "start": 91.49,
+    "end": 91.57
+  },
+  {
+    "id": "w282",
+    "text": "parler",
+    "start": 91.57,
+    "end": 91.91
+  },
+  {
+    "id": "w283",
+    "text": "ensemble.",
+    "start": 91.91,
+    "end": 92.52
+  },
+  {
+    "id": "w284",
+    "text": "Et",
+    "start": 92.62,
+    "end": 92.65
+  },
+  {
+    "id": "w285",
+    "text": "cette",
+    "start": 92.65,
+    "end": 92.94
+  },
+  {
+    "id": "w286",
+    "text": "histoire",
+    "start": 92.94,
+    "end": 93.42
+  },
+  {
+    "id": "w287",
+    "text": "que",
+    "start": 93.42,
+    "end": 93.67
+  },
+  {
+    "id": "w288",
+    "text": "tu",
+    "start": 93.67,
+    "end": 93.72
+  },
+  {
+    "id": "w289",
+    "text": "gardes",
+    "start": 93.72,
+    "end": 94.08
+  },
+  {
+    "id": "w290",
+    "text": "dans",
+    "start": 94.08,
+    "end": 94.34
+  },
+  {
+    "id": "w291",
+    "text": "un",
+    "start": 94.34,
+    "end": 94.455
+  },
+  {
+    "id": "w292",
+    "text": "coin",
+    "start": 94.455,
+    "end": 94.57
+  },
+  {
+    "id": "w293",
+    "text": "de",
+    "start": 94.57,
+    "end": 94.685
+  },
+  {
+    "id": "w294",
+    "text": "ta",
+    "start": 94.685,
+    "end": 94.8
+  },
+  {
+    "id": "w295",
+    "text": "tête",
+    "start": 94.8,
+    "end": 94.98
+  },
+  {
+    "id": "w296",
+    "text": "?",
+    "start": 94.98,
+    "end": 95.16
+  },
+  {
+    "id": "w297",
+    "text": "Donne-lui",
+    "start": 95.16,
+    "end": 95.7
+  },
+  {
+    "id": "w298",
+    "text": "une",
+    "start": 95.7,
+    "end": 96.01
+  },
+  {
+    "id": "w299",
+    "text": "place.",
+    "start": 96.01,
+    "end": 96.32
+  },
+  {
+    "id": "w300",
+    "text": "Crée",
+    "start": 96.32,
+    "end": 96.61
+  },
+  {
+    "id": "w301",
+    "text": "ton",
+    "start": 96.61,
+    "end": 96.78
+  },
+  {
+    "id": "w302",
+    "text": "livre,",
+    "start": 96.78,
+    "end": 97.25
+  },
+  {
+    "id": "w303",
+    "text": "sa",
+    "start": 97.25,
+    "end": 97.38
+  },
+  {
+    "id": "w304",
+    "text": "couverture,",
+    "start": 97.38,
+    "end": 97.915
+  },
+  {
+    "id": "w305",
+    "text": "son",
+    "start": 97.915,
+    "end": 98.45
+  },
+  {
+    "id": "w306",
+    "text": "univers.",
+    "start": 98.45,
+    "end": 98.895
+  },
+  {
+    "id": "w307",
+    "text": "Écris",
+    "start": 98.895,
+    "end": 99.34
+  },
+  {
+    "id": "w308",
+    "text": "dans",
+    "start": 99.34,
+    "end": 99.59
+  },
+  {
+    "id": "w309",
+    "text": "ton",
+    "start": 99.59,
+    "end": 99.77
+  },
+  {
+    "id": "w310",
+    "text": "atelier,",
+    "start": 99.77,
+    "end": 100.193
+  },
+  {
+    "id": "w311",
+    "text": "organise",
+    "start": 100.193,
+    "end": 100.617
+  },
+  {
+    "id": "w312",
+    "text": "tes",
+    "start": 100.617,
+    "end": 101.04
+  },
+  {
+    "id": "w313",
+    "text": "chapitres",
+    "start": 101.04,
+    "end": 101.5
+  },
+  {
+    "id": "w314",
+    "text": "et",
+    "start": 101.5,
+    "end": 101.717
+  },
+  {
+    "id": "w315",
+    "text": "tes",
+    "start": 101.717,
+    "end": 101.933
+  },
+  {
+    "id": "w316",
+    "text": "tomes,",
+    "start": 101.933,
+    "end": 102.15
+  },
+  {
+    "id": "w317",
+    "text": "ou",
+    "start": 102.15,
+    "end": 102.48
+  },
+  {
+    "id": "w318",
+    "text": "importe",
+    "start": 102.48,
+    "end": 102.68
+  },
+  {
+    "id": "w319",
+    "text": "un",
+    "start": 102.68,
+    "end": 102.88
+  },
+  {
+    "id": "w320",
+    "text": "document",
+    "start": 102.88,
+    "end": 103.27
+  },
+  {
+    "id": "w321",
+    "text": "pour",
+    "start": 103.27,
+    "end": 103.51
+  },
+  {
+    "id": "w322",
+    "text": "reprendre",
+    "start": 103.51,
+    "end": 104.04
+  },
+  {
+    "id": "w323",
+    "text": "un",
+    "start": 104.04,
+    "end": 104.38
+  },
+  {
+    "id": "w324",
+    "text": "texte",
+    "start": 104.38,
+    "end": 104.45
+  },
+  {
+    "id": "w325",
+    "text": "déjà",
+    "start": 104.45,
+    "end": 104.69
+  },
+  {
+    "id": "w326",
+    "text": "commencé.",
+    "start": 104.69,
+    "end": 105.4
+  },
+  {
+    "id": "w327",
+    "text": "Garde",
+    "start": 105.555,
+    "end": 105.71
+  },
+  {
+    "id": "w328",
+    "text": "tes",
+    "start": 105.71,
+    "end": 105.9
+  },
+  {
+    "id": "w329",
+    "text": "brouillons,",
+    "start": 105.9,
+    "end": 106.55
+  },
+  {
+    "id": "w330",
+    "text": "puis",
+    "start": 106.55,
+    "end": 106.7
+  },
+  {
+    "id": "w331",
+    "text": "publie",
+    "start": 106.7,
+    "end": 107.02
+  },
+  {
+    "id": "w332",
+    "text": "quand",
+    "start": 107.02,
+    "end": 107.29
+  },
+  {
+    "id": "w333",
+    "text": "tu",
+    "start": 107.29,
+    "end": 107.39
+  },
+  {
+    "id": "w334",
+    "text": "es",
+    "start": 107.39,
+    "end": 107.49
+  },
+  {
+    "id": "w335",
+    "text": "prêt.",
+    "start": 107.49,
+    "end": 107.96
+  },
+  {
+    "id": "w336",
+    "text": "Les",
+    "start": 108.06,
+    "end": 108.12
+  },
+  {
+    "id": "w337",
+    "text": "retours",
+    "start": 108.12,
+    "end": 108.49
+  },
+  {
+    "id": "w338",
+    "text": "de",
+    "start": 108.49,
+    "end": 108.59
+  },
+  {
+    "id": "w339",
+    "text": "tes",
+    "start": 108.59,
+    "end": 108.75
+  },
+  {
+    "id": "w340",
+    "text": "lecteurs",
+    "start": 108.75,
+    "end": 109.17
+  },
+  {
+    "id": "w341",
+    "text": "et",
+    "start": 109.17,
+    "end": 109.27
+  },
+  {
+    "id": "w342",
+    "text": "les",
+    "start": 109.27,
+    "end": 109.43
+  },
+  {
+    "id": "w343",
+    "text": "statistiques",
+    "start": 109.43,
+    "end": 109.803
+  },
+  {
+    "id": "w344",
+    "text": "t’aident",
+    "start": 109.803,
+    "end": 110.175
+  },
+  {
+    "id": "w345",
+    "text": "à",
+    "start": 110.175,
+    "end": 110.547
+  },
+  {
+    "id": "w346",
+    "text": "suivre",
+    "start": 110.547,
+    "end": 110.92
+  },
+  {
+    "id": "w347",
+    "text": "la",
+    "start": 110.92,
+    "end": 111.02
+  },
+  {
+    "id": "w348",
+    "text": "vie",
+    "start": 111.02,
+    "end": 111.18
+  },
+  {
+    "id": "w349",
+    "text": "de",
+    "start": 111.18,
+    "end": 111.425
+  },
+  {
+    "id": "w350",
+    "text": "ton",
+    "start": 111.425,
+    "end": 111.67
+  },
+  {
+    "id": "w351",
+    "text": "histoire.",
+    "start": 111.67,
+    "end": 111.96
+  },
+  {
+    "id": "w352",
+    "text": "Lecture",
+    "start": 112.08,
+    "end": 112.39
+  },
+  {
+    "id": "w353",
+    "text": "après",
+    "start": 112.39,
+    "end": 112.7
+  },
+  {
+    "id": "w354",
+    "text": "lecture,",
+    "start": 112.7,
+    "end": 113.25
+  },
+  {
+    "id": "w355",
+    "text": "chapitre",
+    "start": 113.25,
+    "end": 113.78
+  },
+  {
+    "id": "w356",
+    "text": "après",
+    "start": 113.78,
+    "end": 114.22
+  },
+  {
+    "id": "w357",
+    "text": "chapitre,",
+    "start": 114.22,
+    "end": 114.66
+  },
+  {
+    "id": "w358",
+    "text": "ton",
+    "start": 114.66,
+    "end": 114.84
+  },
+  {
+    "id": "w359",
+    "text": "parcours",
+    "start": 114.84,
+    "end": 115.282
+  },
+  {
+    "id": "w360",
+    "text": "évolue",
+    "start": 115.282,
+    "end": 115.725
+  },
+  {
+    "id": "w361",
+    "text": ":",
+    "start": 115.725,
+    "end": 116.168
+  },
+  {
+    "id": "w362",
+    "text": "niveaux,",
+    "start": 116.168,
+    "end": 116.61
+  },
+  {
+    "id": "w363",
+    "text": "expérience",
+    "start": 116.61,
+    "end": 117.36
+  },
+  {
+    "id": "w364",
+    "text": "et",
+    "start": 117.36,
+    "end": 117.77
+  },
+  {
+    "id": "w365",
+    "text": "trophées",
+    "start": 117.77,
+    "end": 118.18
+  },
+  {
+    "id": "w366",
+    "text": "racontent",
+    "start": 118.18,
+    "end": 118.59
+  },
+  {
+    "id": "w367",
+    "text": "aussi",
+    "start": 118.59,
+    "end": 118.98
+  },
+  {
+    "id": "w368",
+    "text": "ton",
+    "start": 118.98,
+    "end": 119.21
+  },
+  {
+    "id": "w369",
+    "text": "aventure.",
+    "start": 119.21,
+    "end": 119.92
+  },
+  {
+    "id": "w370",
+    "text": "Sur",
+    "start": 120.03,
+    "end": 120.11
+  },
+  {
+    "id": "w371",
+    "text": "PLUME,",
+    "start": 120.11,
+    "end": 120.54
+  },
+  {
+    "id": "w372",
+    "text": "une",
+    "start": 120.54,
+    "end": 120.73
+  },
+  {
+    "id": "w373",
+    "text": "histoire",
+    "start": 120.73,
+    "end": 121.24
+  },
+  {
+    "id": "w374",
+    "text": "peut",
+    "start": 121.24,
+    "end": 121.53
+  },
+  {
+    "id": "w375",
+    "text": "devenir",
+    "start": 121.53,
+    "end": 121.94
+  },
+  {
+    "id": "w376",
+    "text": "une",
+    "start": 121.94,
+    "end": 122.11
+  },
+  {
+    "id": "w377",
+    "text": "rencontre.",
+    "start": 122.11,
+    "end": 122.88
+  },
+  {
+    "id": "w378",
+    "text": "Et",
+    "start": 122.88,
+    "end": 123.0
+  },
+  {
+    "id": "w379",
+    "text": "une",
+    "start": 123.0,
+    "end": 123.17
+  },
+  {
+    "id": "w380",
+    "text": "envie",
+    "start": 123.17,
+    "end": 123.63
+  },
+  {
+    "id": "w381",
+    "text": "peut",
+    "start": 123.63,
+    "end": 123.72
+  },
+  {
+    "id": "w382",
+    "text": "devenir",
+    "start": 123.72,
+    "end": 124.18
+  },
+  {
+    "id": "w383",
+    "text": "ton",
+    "start": 124.18,
+    "end": 124.32
+  },
+  {
+    "id": "w384",
+    "text": "premier",
+    "start": 124.32,
+    "end": 124.74
+  },
+  {
+    "id": "w385",
+    "text": "roman.",
+    "start": 124.74,
+    "end": 125.24
+  },
+  {
+    "id": "w386",
+    "text": "Lis.",
+    "start": 125.697,
+    "end": 126.153
+  },
+  {
+    "id": "w387",
+    "text": "Écris.",
+    "start": 126.153,
+    "end": 126.61
+  },
+  {
+    "id": "w388",
+    "text": "Partage.",
+    "start": 126.61,
+    "end": 127.5
+  },
+  {
+    "id": "w389",
+    "text": "PLUME,",
+    "start": 127.5,
+    "end": 128.07
+  },
+  {
+    "id": "w390",
+    "text": "bientôt",
+    "start": 128.07,
+    "end": 128.95
+  },
+  {
+    "id": "w391",
+    "text": "disponible",
+    "start": 128.95,
+    "end": 129.5
+  },
+  {
+    "id": "w392",
+    "text": "sur",
+    "start": 129.5,
+    "end": 129.9
+  },
+  {
+    "id": "w393",
+    "text": "Android",
+    "start": 129.9,
+    "end": 130.33
+  },
+  {
+    "id": "w394",
+    "text": "et",
+    "start": 130.33,
+    "end": 130.51
+  },
+  {
+    "id": "w395",
+    "text": "iOS.",
+    "start": 130.51,
+    "end": 130.92
+  }
+]

@@ -1,0 +1,86 @@
+{
+  "video": "PLUME-TikTok-motion-design.mp4",
+  "sha256": "949ae1e9d3afa0ed7265ff7734732e473999a2997aa77f7fe026dad20a19ffb7",
+  "technical": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_type": "video",
+        "width": 1080,
+        "height": 1920,
+        "r_frame_rate": "30/1",
+        "start_time": "0.000000",
+        "duration": "134.000000",
+        "nb_frames": "4020"
+      },
+      {
+        "index": 1,
+        "codec_name": "aac",
+        "codec_type": "audio",
+        "sample_rate": "48000",
+        "channels": 2,
+        "r_frame_rate": "0/0",
+        "start_time": "0.000000",
+        "duration": "134.000000",
+        "nb_frames": "6283"
+      }
+    ],
+    "format": {
+      "duration": "134.000000",
+      "size": "17708347"
+    }
+  },
+  "hyperframes_checks": {
+    "lint": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 7
+    },
+    "runtime": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    "layout": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    "motion": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    "contrast": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    "craft": {
+      "ok": true,
+      "errorCount": 0,
+      "warningCount": 0
+    }
+  },
+  "audio": {
+    "integrated_lufs": -14.26,
+    "true_peak_dbtp": -1.5,
+    "voice_correlation": 0.983,
+    "human_listening_review": false
+  },
+  "render": {
+    "duration_seconds": 134,
+    "frames": 4020,
+    "quality": "delivery",
+    "fps": 30,
+    "workers": 4
+  },
+  "demo_cleanup": {
+    "accounts_remaining": 0,
+    "books_remaining": 0,
+    "database": "local only"
+  }
+}
