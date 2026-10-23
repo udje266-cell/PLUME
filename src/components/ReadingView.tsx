@@ -2785,8 +2785,8 @@ export default function ReadingView({
           <div className="relative w-full max-w-xl bg-white dark:bg-black rounded-t-[2rem] lg:rounded-t-none lg:rounded-l-2xl shadow-2xl border-t lg:border-t-0 lg:border-l border-gray-150 dark:border-purple-900/20 flex flex-col h-[82vh] lg:h-full lg:max-w-md transition-transform animate-slide-up overflow-hidden">
             <div className="w-12 h-1.5 bg-gray-300 dark:bg-purple-950/40 rounded-full mx-auto my-3 pointer-events-none opacity-6 w-full" />
 
-            <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between font-sans">
-              <div className="text-left">
+            <div className="px-5 pb-3 border-b border-gray-100 dark:border-purple-900/15 flex items-center justify-between gap-3 font-sans">
+              <div className="min-w-0 flex-1 text-left">
                 <span className="text-[9px] uppercase font-mono tracking-widest text-[#7C3AED] font-bold">{commentParagraph === null ? 'Retour sur ce chapitre' : `Paragraphe ${commentParagraph + 1}`}</span>
                 <h3 className="font-serif font-black text-sm text-gray-900 dark:text-white mt-0.5">
                   Commentaires ({drawerComments.length})
@@ -2802,7 +2802,7 @@ export default function ReadingView({
               <button
                 id="close-comments-drawer"
                 onClick={() => { setIsCommentsOpen(false); setCommentParagraph(null); }}
-                className="p-1 text-xs font-black text-gray-550"
+                className="shrink-0 whitespace-nowrap p-1 text-xs font-black text-gray-550"
               >
                 Fermer
               </button>
