@@ -3041,7 +3041,13 @@ export default function App() {
   const handleUpdateChapter = (storyId: string, chapterId: string, updatedChapter: Partial<Chapter>) => {
     setStories(prev => prev.map(s => {
       if (s.id === storyId) {
-        const freshChapters = s.chapters.map(ch => ch.id === chapterId ? { ...ch, ...updatedChapter } : ch);
+        // Mise en ligne : on date tout de suite le chapitre (sinon « Publié le
+        // Invalid Date » s'affiche jusqu'au prochain rechargement).
+        const prevCh = s.chapters.find(ch => ch.id === chapterId);
+        const patch = updatedChapter.isPublished && !prevCh?.isPublished && !updatedChapter.publishDate
+          ? { ...updatedChapter, publishDate: new Date().toISOString().split('T')[0] }
+          : updatedChapter;
+        const freshChapters = s.chapters.map(ch => ch.id === chapterId ? { ...ch, ...patch } : ch);
         const matchChapter = freshChapters.find(ch => ch.id === chapterId);
         
         if (matchChapter) {

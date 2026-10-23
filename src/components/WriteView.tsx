@@ -1089,7 +1089,7 @@ export default function WriteView({
                         <p className="text-[10px] text-gray-450 dark:text-gray-400 font-mono mt-0.5">
                           {chapter.isPublished
                             ? (story.status === 'Publié'
-                              ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')} — ${chapter.views || 0} vue${(chapter.views || 0) > 1 ? 's' : ''}`
+                              ? `${chapter.publishDate && !Number.isNaN(Date.parse(chapter.publishDate)) ? `Publié le ${new Date(chapter.publishDate).toLocaleDateString('fr-FR')}` : 'Publié aujourd’hui'} — ${chapter.views || 0} vue${(chapter.views || 0) > 1 ? 's' : ''}`
                               : 'Prêt — visible dès que l\'œuvre sera mise en ligne')
                             : 'Brouillon — non visible des lecteurs'}
                         </p>
