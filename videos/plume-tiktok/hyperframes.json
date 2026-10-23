@@ -24,6 +24,11 @@
       "name": "kinetic-center-build",
       "type": "hyperframes:component",
       "target": "compositions/components/kinetic-center-build.html"
+    },
+    {
+      "name": "device-frame-stage",
+      "type": "hyperframes:component",
+      "target": "compositions/components/device-frame-stage.html"
     }
   ]
 }

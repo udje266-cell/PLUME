@@ -1,6 +1,6 @@
 {
-  "video": "PLUME-TikTok-motion-design.mp4",
-  "sha256": "949ae1e9d3afa0ed7265ff7734732e473999a2997aa77f7fe026dad20a19ffb7",
+  "video": "PLUME-TikTok-ecrans-entiers.mp4",
+  "sha256": "1b06be1fd1369ab4b4cf85da075cd03efb0345f6898a417bd6b338d8b07a720a",
   "technical": {
     "programs": [],
     "stream_groups": [],
@@ -11,6 +11,7 @@
         "codec_type": "video",
         "width": 1080,
         "height": 1920,
+        "pix_fmt": "yuv420p",
         "r_frame_rate": "30/1",
         "start_time": "0.000000",
         "duration": "134.000000",
@@ -30,14 +31,14 @@
     ],
     "format": {
       "duration": "134.000000",
-      "size": "17708347"
+      "size": "14600798"
     }
   },
   "hyperframes_checks": {
     "lint": {
       "ok": true,
       "errorCount": 0,
-      "warningCount": 7
+      "warningCount": 4
     },
     "runtime": {
       "ok": true,
@@ -69,18 +70,131 @@
     "integrated_lufs": -14.26,
     "true_peak_dbtp": -1.5,
     "voice_correlation": 0.983,
-    "human_listening_review": false
+    "human_listening_review": false,
+    "unchanged_encoded_audio_sha256": "80332d739433f041ba15c179777d44cfac7db5c0db96cba216eb31f1b973cc98",
+    "identical_to_previous_checked_mix": true
   },
   "render": {
     "duration_seconds": 134,
     "frames": 4020,
     "quality": "delivery",
     "fps": 30,
-    "workers": 4
+    "workers": 4,
+    "full_decode_errors": 0
   },
   "demo_cleanup": {
     "accounts_remaining": 0,
     "books_remaining": 0,
     "database": "local only"
+  },
+  "revision": "Écrans entiers dans un téléphone ; icônes Android et Apple en fin de vidéo",
+  "full_screen_layout": {
+    "ok": true,
+    "scene_count": 20,
+    "full_screen_placements": 44,
+    "caption_count": 111,
+    "maximum_caption_width": 745.40625,
+    "original_logo_preserved": true
+  },
+  "encoded_video_full_screen_comparisons": {
+    "ok": true,
+    "comparisons": [
+      {
+        "frame": 0,
+        "capture": "reader",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 1.979,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 1,
+        "capture": "home",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 2.26,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 2,
+        "capture": "explorer",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 2.153,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 3,
+        "capture": "library-grid",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 1.508,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 4,
+        "capture": "live-reading-after",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 1.757,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 5,
+        "capture": "chat-attachments",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 2.363,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 6,
+        "capture": "editor-written",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 2.419,
+        "all_edges_preserved": true
+      },
+      {
+        "frame": 7,
+        "capture": "workshop-ready",
+        "whole_capture_bounds": [
+          318,
+          340,
+          762,
+          1301
+        ],
+        "mean_absolute_rgb_error": 0.915,
+        "all_edges_preserved": true
+      }
+    ]
   }
 }

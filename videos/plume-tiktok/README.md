@@ -15,7 +15,7 @@ npm run check
 npm run render -- --quality delivery --fps 30 --workers 4 --output renders/PLUME-TikTok.mp4
 ```
 
-Pour les agents, lancer `npx hyperframes preview --background`, puis vérifier l'URL du projet avant rendu. Ne pas importer les captures dans un dessin de téléphone ni modifier les interfaces à la main.
+Pour les agents, lancer `npx hyperframes preview --background`, puis vérifier l'URL du projet avant rendu. Les captures entières sont placées dans un téléphone vertical de face, avec leurs proportions d’origine. Le cadre et les légendes restent hors de l’écran ; ne pas redessiner les interfaces.
 
 - `index.html` : séquence principale et pistes sonores.
 - `compositions/` : un fichier par scène et une piste de sous-titres.
@@ -28,4 +28,6 @@ Pour les agents, lancer `npx hyperframes preview --background`, puis vérifier l
 
 `tools/capture.mjs` crée des données jetables dans une base **locale uniquement** et nettoie dans `finally`. Il se lance depuis la racine du dépôt avec Prisma, un serveur PLUME local sur le port 3001, et Playwright. Aucun compte de production n'est nécessaire. `tools/build.py` reconstruit les scènes à partir des captures et de l'alignement audio déjà inclus ; il ne télécharge aucun modèle. `tools/music.py` synthétise la musique originale avec NumPy/SciPy et FFmpeg.
 
-Les durées des scènes suivent la voix de Claire fournie par le propriétaire. Changer la narration nécessite de refaire les points de coupe et les sous-titres. L'annonce finale exprime une disponibilité **à venir**, sans date ni badge de store.
+Les durées des scènes suivent la voix de Claire fournie par le propriétaire. Changer la narration nécessite de refaire les points de coupe et les sous-titres. L'annonce finale exprime une disponibilité **à venir**, sans date ni badge de téléchargement. Les icônes Android et Apple accompagnent les noms des plateformes, sous « Bientôt disponible ».
+
+Révision demandée : les cadrages carrés ont été remplacés par les captures complètes, du haut au bas de l’écran, dans un téléphone. La plume reste l’image originale `assets/plume.png`, également exportée séparément en PNG 1024 × 1024.
