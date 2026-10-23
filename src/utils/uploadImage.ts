@@ -1,3 +1,4 @@
+import { CHAT_DOCUMENT_TYPES, CHAT_FILE_LIMIT } from './chatContent';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -47,6 +48,7 @@ function postToCloudinary(
   cloudName: string,
   uploadPreset: string,
   onProgress?: (pct: number) => void,
+  resource: 'image' | 'raw' = 'image',
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const form = new FormData();
@@ -55,7 +57,7 @@ function postToCloudinary(
     form.append('folder', 'plume');
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/${resource}/upload`);
     xhr.timeout = UPLOAD_TIMEOUT_MS;
 
     if (onProgress) {
@@ -203,4 +205,12 @@ export async function uploadImageToCloudinary(file: File, onProgress?: (pct: num
     }
     throw e;
   }
+}
+
+/** Documents keep their original bytes; the message contains only a validated URL. */
+export async function uploadChatDocument(file: File, onProgress?: (pct: number) => void): Promise<string> {
+  if (!file || !CHAT_DOCUMENT_TYPES.test(file.name)) throw new Error('Choisissez un document PDF, EPUB, TXT, DOCX, ODT, RTF, MD ou CSV.');
+  if (!file.size || file.size > CHAT_FILE_LIMIT) throw new Error('Le fichier doit contenir entre 1 octet et 10 Mo.');
+  const { cloudName, uploadPreset } = await getCloudinaryConfig();
+  return postToCloudinary(file, cloudName, uploadPreset, onProgress, 'raw');
 }

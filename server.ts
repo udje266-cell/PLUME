@@ -15,6 +15,9 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/server/prisma';
 import { registerLibraryRoutes } from './src/server/library';
+import { registerChatRoutes, hydrateDirectMessages, validateChatShare } from './src/server/chat';
+import { messagePreview } from './src/utils/inbox';
+import { parseChatShare } from './src/utils/chatContent';
 import { redis } from './src/server/redis';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { recommendStories, weightsForDiscovery, explorationRatioForDiscovery } from './src/utils/recommendation';
@@ -4450,7 +4453,7 @@ export async function createServerInstance() {
             orderBy: { createdAt: 'desc' },
             take: 1,
             include: {
-              sender: { select: SAFE_USER_SELECT }
+              sender: { select: SAFE_USER_SELECT }, reactions: true
             }
           }
         },
@@ -4486,6 +4489,7 @@ export async function createServerInstance() {
           const { pins, ...conversation } = conv;
           return {
             ...conversation,
+            messages: await hydrateDirectMessages(prisma, conversation.messages),
             isPinned: pins.length > 0,
             pinnedAt: pins[0]?.createdAt ?? null,
             unreadCount,
@@ -4598,13 +4602,13 @@ export async function createServerInstance() {
       const rows = await prisma.message.findMany({
         where,
         include: {
-          sender: { select: SAFE_USER_SELECT }
+          sender: { select: SAFE_USER_SELECT }, reactions: true
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
       });
       const hasMore = rows.length > limit;
-      const messages = rows.slice(0, limit).reverse();
+      const messages = await hydrateDirectMessages(prisma, rows.slice(0, limit).reverse());
 
       if (paged) return res.json({ messages, hasMore });
       res.json(messages);
@@ -4627,6 +4631,7 @@ export async function createServerInstance() {
       }
 
       // Content length limit (anti-spam / validation)
+      if (typeof content !== 'string') return res.status(400).json({ error: 'Contenu invalide.' });
       const trimmed = content.trim();
       if (!trimmed) {
         return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide' });
@@ -4680,6 +4685,10 @@ export async function createServerInstance() {
         }
       }
 
+      const shareError = await validateChatShare(prisma, trimmed);
+      if (shareError) return res.status(400).json({ error: shareError });
+      if (replyToId && (typeof replyToId !== 'string' || !await prisma.message.findFirst({ where: { id: replyToId, conversationId }, select: { id: true } }))) return res.status(400).json({ error: 'Le message cité n’appartient pas à cette discussion.' });
+
       // Demande de message (facon TikTok) : entre deux personnes NON amies,
       // l'initiateur est limite tant que le destinataire n'a pas accepte.
       if (conversation.participants.length === 2
@@ -4726,7 +4735,7 @@ export async function createServerInstance() {
             isRead: false
           },
           include: {
-            sender: { select: SAFE_USER_SELECT }
+            sender: { select: SAFE_USER_SELECT }, reactions: true
           }
         });
         console.log(`[MESSAGE] sauvegarde - messageId: ${message.id}`);
@@ -4751,11 +4760,7 @@ export async function createServerInstance() {
           .map(async (p) => {
             // Aperçu lisible (façon WhatsApp) : nom de l'expéditeur en titre,
             // contenu du message en corps (sticker/note vocale résumés).
-            const preview = trimmed.startsWith('[sticker]')
-              ? '🪶 Sticker'
-              : trimmed.startsWith('[🎙️ Note Vocale')
-                ? '🎙️ Note vocale'
-                : (trimmed.length > 140 ? trimmed.slice(0, 137) + '…' : trimmed);
+            const preview = messagePreview({ content: trimmed }).slice(0, 140);
             const notification = await prisma.notification.create({
               data: {
                 userId: p.id,
@@ -4775,13 +4780,14 @@ export async function createServerInstance() {
           })
       );
 
+      const [serialized] = await hydrateDirectMessages(prisma, [message]);
       // Broadcast message to all conversation participants
       conversation.participants.forEach(p => {
-        io.to(`user:${p.id}`).emit('new_message', message);
+        io.to(`user:${p.id}`).emit('new_message', serialized);
         console.log(`[SOCKET] message émis - conversationId: ${conversationId}, messageId: ${message.id}, destinataire: ${p.id}`);
       });
 
-      res.status(201).json(message);
+      res.status(201).json(serialized);
     } catch (error) {
       console.error('[MESSAGE] Erreur sauvegarde globale :', error);
       res.status(500).json({ error: 'Erreur lors de l’envoi du message' });
@@ -4846,9 +4852,12 @@ export async function createServerInstance() {
       const content = String(req.body?.content || '').trim();
       if (!content) return res.status(400).json({ error: 'Contenu vide.' });
       if (content.length > 2000) return res.status(400).json({ error: 'Message trop long.' });
-      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: { select: SAFE_USER_SELECT } } });
-      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
-      res.json(updated);
+      const shareError = await validateChatShare(prisma, content);
+      if (shareError) return res.status(400).json({ error: shareError });
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: { select: SAFE_USER_SELECT }, reactions: true } });
+      const [serialized] = await hydrateDirectMessages(prisma, [updated]);
+      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', serialized));
+      res.json(serialized);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la modification du message' });
@@ -4865,9 +4874,10 @@ export async function createServerInstance() {
       if (Date.now() - new Date(msg.createdAt).getTime() > 6 * 60 * 1000) {
         return res.status(403).json({ error: 'Delai depasse (6 min) pour supprimer pour tout le monde' });
       }
-      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: { select: SAFE_USER_SELECT } } });
-      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', updated));
-      res.json(updated);
+      const updated = await prisma.message.update({ where: { id: req.params.id }, data: { deletedForEveryone: true, content: '' }, include: { sender: { select: SAFE_USER_SELECT }, reactions: true } });
+      const [serialized] = await hydrateDirectMessages(prisma, [updated]);
+      msg.conversation.participants.forEach((p) => io.to(`user:${p.id}`).emit('message_updated', serialized));
+      res.json(serialized);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Erreur lors de la suppression du message' });
@@ -5022,8 +5032,11 @@ export async function createServerInstance() {
       if (group.messagePermission === 'admins' && !isAdminPlus) {
         return res.status(403).json({ error: 'Seuls les administrateurs peuvent envoyer des messages dans ce groupe.' });
       }
+      const shareError = await validateChatShare(prisma, content);
+      if (shareError) return res.status(400).json({ error: shareError });
+      if (replyToId && !await prisma.groupMessage.findFirst({ where: { id: replyToId, groupId: group.id }, select: { id: true } })) return res.status(400).json({ error: 'Le message cité n’appartient pas à ce club.' });
       // Partage de medias desactive.
-      const isMedia = /^\[(img|🎙️|sticker|video|file)/i.test(content) || content.startsWith('[Image]');
+      const isMedia = /^\[(img|🎙️|sticker|video|file)/i.test(content) || content.startsWith('[Image]') || !!parseChatShare(content);
       if (!group.allowMedia && isMedia) {
         return res.status(403).json({ error: 'Le partage de médias est désactivé dans ce groupe.' });
       }
@@ -5040,15 +5053,7 @@ export async function createServerInstance() {
       // Notification + push aux AUTRES membres (l'app peut etre fermee).
       // Un SPOILER (||…||) ne doit JAMAIS apparaitre en clair dans la notif :
       // on le remplace par une etiquette neutre avant de construire l'apercu.
-      const maskedForPreview = content.replace(/\|\|[\s\S]+?\|\|/g, '🚫 Spoiler');
-      const pollPreview = content.startsWith('[poll]') ? parsePoll(content) : null;
-      const gPreview = content.startsWith('[sticker]')
-        ? '🪶 Sticker'
-        : content.startsWith('[🎙️ Note Vocale')
-          ? '🎙️ Note vocale'
-          : pollPreview
-            ? `📊 Sondage : ${pollPreview.q}`.slice(0, 140)
-            : (maskedForPreview.length > 140 ? maskedForPreview.slice(0, 137) + '…' : maskedForPreview);
+      const gPreview = messagePreview({ content }).slice(0, 140);
 
       // MENTIONS (@pseudo) facon WhatsApp : on repere les membres tagues dans le
       // texte pour leur envoyer une notification DEDIEE (« vous a mentionne »),
@@ -5174,6 +5179,12 @@ export async function createServerInstance() {
       if (msg.deletedForEveryone) return res.status(400).json({ error: 'Message supprimé' });
       if (Date.now() - new Date(msg.createdAt).getTime() > 5 * 60 * 1000) {
         return res.status(403).json({ error: 'Delai depasse (5 min) pour modifier' });
+      }
+      const shareError = await validateChatShare(prisma, content);
+      if (shareError) return res.status(400).json({ error: shareError });
+      if (parseChatShare(content)) {
+        const group = await prisma.readingGroup.findUnique({ where: { id: msg.groupId }, select: { allowMedia: true } });
+        if (group?.allowMedia === false) return res.status(403).json({ error: 'Le partage de médias est désactivé dans ce club.' });
       }
       const updated = await prisma.groupMessage.update({ where: { id: req.params.id }, data: { content, editedAt: new Date() }, include: { sender: { select: SAFE_USER_SELECT } } });
       const serialized = serializeGroupMessage(updated);
@@ -6469,6 +6480,7 @@ export async function createServerInstance() {
   // Listes de lecture + chapitres réellement lus, en une seule requête au
   // démarrage. Le client FUSIONNE (union) avec son état local.
   registerLibraryRoutes(app, prisma, requireAuth, io);
+  registerChatRoutes(app, prisma, requireAuth, io);
 
   app.get('/api/me/reading-state', requireAuth, async (req: any, res) => {
     try {

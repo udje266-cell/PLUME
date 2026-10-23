@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '../types';
+import { chatSharePreview } from './chatContent';
 
 export type InboxFilter = 'all' | 'unread' | 'requests';
 export const normalizeInboxSearch = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase().trim();
@@ -10,6 +11,8 @@ export const inboxTimestamp = (date?: string | null) => date && Number.isFinite(
 export function messagePreview(message?: Pick<Message, 'content' | 'deletedForEveryone'>): string {
   if (!message) return 'Commencez la discussion';
   if (message.deletedForEveryone) return 'Message supprimé';
+  const shared = chatSharePreview(message.content);
+  if (shared) return shared;
   if (message.content.startsWith('[poll]')) return '📊 Sondage';
   if (message.content.startsWith('[sticker]')) return '🪶 Sticker';
   if (message.content.startsWith('[🎙️ Note Vocale')) return '🎙️ Note vocale';

@@ -1,0 +1,44 @@
+// Real HTTP + Socket.IO integration against disposable local fixtures only.
+import 'dotenv/config';
+import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { io } from 'socket.io-client';
+const base=process.env.TEST_BASE_URL||'http://127.0.0.1:3000';
+for(const url of [base,process.env.DATABASE_URL]) assert(['localhost','127.0.0.1'].includes(new URL(url).hostname),'Local fixtures only');
+const db=new PrismaClient(),id='chat-'+randomUUID(),peer=id+'-peer',outside=id+'-outside',book=id+'-book',hidden=id+'-draft';
+const token=userId=>jwt.sign({userId},process.env.JWT_SECRET||'plume_secret_dev_change_later',{expiresIn:'15m'});
+const call=async(userId,method,path,body)=>{if(method==='POST')await new Promise(resolve=>setTimeout(resolve,180));const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+token(userId),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,body:await r.json()};};
+const share=data=>'[plume-share]'+JSON.stringify(data);
+const sockets=[];
+try{
+ for(const userId of [id,peer,outside])await db.user.create({data:{id:userId,username:userId,email:userId+'@example.invalid',birthDate:new Date('1995-01-01'),emailVerified:true}});
+ await db.conversation.create({data:{id,participants:{connect:[{id},{id:peer}]}}});
+ await db.conversation.create({data:{id:outside,participants:{connect:[{id:outside},{id:peer}]},messages:{create:{id:outside,senderId:outside,content:'Confidentiel ailleurs'}}}});
+ for(const [storyId,status]of [[book,'PUBLIE'],[hidden,'BROUILLON']])await db.story.create({data:{id:storyId,title:'Une histoire de test',genre:'Fantasy',description:'Une aventure',authorId:peer,status}});
+ const socket=io(base,{auth:{token:token(peer)},transports:['websocket']});sockets.push(socket);await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('connect_error',reject);});
+ const waitEvent=(event,predicate)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>{socket.off(event,handler);reject(Error('Missing '+event));},8000);const handler=value=>{if(predicate(value)){clearTimeout(timer);socket.off(event,handler);resolve(value);}};socket.on(event,handler);});
+ const joined=waitEvent('joined',()=>true);socket.emit('join');await joined;
+ const incoming=waitEvent('new_message',m=>m.content==='Un livre à conseiller ?');
+ const parent=await call(id,'POST','/api/messages',{conversationId:id,content:'Un livre à conseiller ?'});assert.equal(parent.status,201);assert.equal((await incoming).id,parent.body.id);
+ const quoted=await call(peer,'POST','/api/messages',{conversationId:id,content:'Oui, celui-ci !',replyToId:parent.body.id});assert.equal(quoted.status,201);assert.equal(quoted.body.replyTo.content,parent.body.content);
+ const page=await call(id,'GET',`/api/conversations/${id}/messages?paged=1&limit=1`);assert.equal(page.body.messages.length,1);assert.equal(page.body.messages[0].replyTo.id,parent.body.id);
+ assert.equal((await call(id,'POST','/api/messages',{conversationId:id,content:'Vol de citation',replyToId:outside})).status,400);
+ for(const content of [share({kind:'book',storyId:hidden}),share({kind:'book',storyId:'missing'}),share({kind:'photo',url:'https://evil.test/a.jpg',name:'a.jpg',size:1}),share({})])assert.equal((await call(id,'POST','/api/messages',{conversationId:id,content})).status,400);
+ const shared=await call(id,'POST','/api/messages',{conversationId:id,content:share({kind:'book',storyId:book,caption:'||Ne révèle pas la fin||'})});assert.equal(shared.status,201);
+ const notification=await db.notification.findFirst({where:{userId:peer,message:{contains:'Livre partagé'}},orderBy:{createdAt:'desc'}});assert(notification);assert(!notification.message.includes('révèle'));assert(!notification.message.includes('[plume-share]'));
+ assert.equal((await call(outside,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true})).status,404);
+ assert.equal((await call(peer,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'anything',active:true})).status,400);
+ assert.equal((await call(peer,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:'true'})).status,400);
+ const updated=waitEvent('message_updated',m=>m.id===parent.body.id&&m.reactions?.[0]?.count===1);
+ assert.equal((await call(id,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true})).status,200);assert.equal((await updated).reactions[0].userIds[0],id);
+ await call(id,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true});assert.equal(await db.messageReaction.count({where:{messageId:parent.body.id}}),1);
+ const two=await call(peer,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true});assert.equal(two.body.reactions[0].count,2);
+ await call(id,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:false});assert.equal((await call(id,'GET',`/api/conversations/${id}/messages`)).body.find(m=>m.id===parent.body.id).reactions[0].count,1);
+ await db.blockedUser.create({data:{blockerId:id,blockedId:peer}});assert.equal((await call(peer,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true})).status,403);await db.blockedUser.deleteMany({where:{blockerId:id}});
+ await db.message.update({where:{id:parent.body.id},data:{deletedForEveryone:true,content:''}});assert.equal((await call(peer,'PUT',`/api/messages/${parent.body.id}/reactions`,{emoji:'💜',active:true})).status,400);
+ const deletedQuote=(await call(id,'GET',`/api/conversations/${id}/messages`)).body.find(m=>m.id===quoted.body.id).replyTo;assert.equal(deletedQuote.deletedForEveryone,true);assert.equal(deletedQuote.content,'');
+ await db.conversation.delete({where:{id}});assert.equal(await db.messageReaction.count({where:{userId:peer}}),0);
+ console.log('PASS: actual message delivery, paginated quotes, cross-thread rejection, published book validation, safe notifications, live reactions, access control, idempotence, persistence, blocks, deleted messages and cascades.');
+}finally{for(const socket of sockets)socket.disconnect();await db.conversation.deleteMany({where:{id:{in:[id,outside]}}});await db.story.deleteMany({where:{id:{in:[book,hidden]}}});await db.user.deleteMany({where:{id:{in:[id,peer,outside]}}});await db.$disconnect();}

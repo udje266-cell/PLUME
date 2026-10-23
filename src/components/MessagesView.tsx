@@ -1,5 +1,9 @@
 import LiveReadingProgress from './LiveReadingProgress';
 import MessagesInbox from './MessagesInbox';
+import SharedChatContent from './SharedChatContent';
+import ConversationMenu from './ConversationMenu';
+import { CHAT_SHARE_PREFIX, CHAT_REACTIONS, CHAT_DOCUMENT_TYPES, CHAT_FILE_LIMIT, encodeChatShare, parseChatShare, type ChatShare } from '../utils/chatContent';
+import { messagePreview } from '../utils/inbox';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -43,13 +47,14 @@ import {
   Megaphone,
   EyeOff,
   BarChart3,
-  Image as ImageIcon
+  Image as ImageIcon,
+  FileText
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { Message, User, ReadingGroup, GroupMessage, Story, Conversation } from '../types';
 import { authHeaders } from '../utils/auth';
-import { uploadImageToCloudinary, uploadVideoToCloudinary, uploadVoiceToCloudinary } from '../utils/uploadImage';
+import { uploadImageToCloudinary, uploadVideoToCloudinary, uploadVoiceToCloudinary, uploadChatDocument } from '../utils/uploadImage';
 import { getCroppedImageFile } from '../utils/cropImage';
 import { BASE_STICKERS, getCustomStickers, addCustomSticker, removeCustomSticker, encodeSticker, parseSticker, isStickerUrl, isVideoSticker, buildVideoStickerUrl } from '../utils/stickers';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -123,20 +128,13 @@ function tokenizeInline(text: string, keyPrefix = '', opts: InlineOpts = {}): Re
 // Spoiler « facon Discord » : le contenu entre ||…|| est masque derriere une
 // pastille « Spoil · Afficher ». Chaque destinataire revele de SON cote.
 function SpoilerChip({ content, opts }: { content: string; opts?: InlineOpts }) {
-  const [revealed, setRevealed] = useState(false);
-  if (revealed) {
-    return <span className="rounded bg-purple-500/12 px-1">{tokenizeInline(content, 'sp-', opts)}</span>;
-  }
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); setRevealed(true); }}
-      className="inline-flex items-center gap-1 align-middle rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-zinc-700/90 text-zinc-100 hover:bg-zinc-600 transition select-none"
-      title="Contenu masqué (spoiler) — appuyer pour afficher"
-    >
-      <EyeOff className="w-3 h-3" /> Spoil · Afficher
-    </button>
-  );
+  const [revealed, setRevealed] = useState<string | null>(null);
+  if (revealed === content) return <span className="rounded bg-purple-500/10 px-1">{tokenizeInline(content, 'sp-', opts)}</span>;
+  return <button type="button" onClick={event => { event.stopPropagation(); setRevealed(content); }} aria-label="Toucher pour révéler le spoiler" className="block w-full min-w-40 rounded-xl border border-purple-400/20 bg-purple-500/5 p-3 text-left">
+    <span className="flex items-center gap-2 text-xs font-semibold"><EyeOff className="w-4 h-4" />Spoiler</span>
+    <span aria-hidden="true" className="block h-2.5 w-4/5 rounded bg-current opacity-10 my-3" />
+    <span className="block rounded-full bg-purple-500/20 text-center text-xs px-3 py-2">Toucher pour révéler</span>
+  </button>;
 }
 
 // Un message de groupe est-il un SONDAGE ? Contenu « [poll] » + JSON {q, o}.
@@ -299,7 +297,7 @@ interface MessagesViewProps {
   groupHasMore?: Record<string, boolean>;
   onLoadOlderConversation?: (conversationId: string) => Promise<void>;
   onLoadOlderGroup?: (groupId: string) => Promise<void>;
-  onSendMessage: (conversationId: string, content: string, replyToId?: string | null) => void;
+  onSendMessage: (conversationId: string, content: string, replyToId?: string | null) => Promise<boolean>;
   onStartCall: (peer: { id: string; username?: string; avatar?: string }) => void;
   onlineUserIds: Set<string>;
   typingUserIds?: Set<string>;
@@ -312,7 +310,8 @@ interface MessagesViewProps {
   onSyncStickers?: (stickers: string[]) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onDeleteMessageForEveryone?: (messageId: string) => void;
-  onDeleteConversation: (conversationId: string) => void;
+  onDeleteConversation: (conversationId: string) => Promise<boolean>;
+  onBlockUser?: (id: string, block: boolean) => Promise<boolean>;
   onRespondToMessageRequest?: (conversationId: string, accept: boolean) => void;
   onStartConversation: (participantIds: string[]) => Promise<Conversation>;
   activeConversationId: string;
@@ -322,7 +321,7 @@ interface MessagesViewProps {
   groupMessages: GroupMessage[];
   setGroupMessages: React.Dispatch<React.SetStateAction<GroupMessage[]>>;
   onCreateGroup: (payload: { name: string; description?: string; storyId?: string; memberIds?: string[] }) => Promise<ReadingGroup | null>;
-  onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null, isAnnouncement?: boolean) => void;
+  onSendGroupMessage: (groupId: string, content: string, replyToId?: string | null, isAnnouncement?: boolean) => Promise<boolean>;
   onEditGroupMessage?: (messageId: string, content: string) => void;
   onDeleteGroupMessageForEveryone?: (messageId: string) => void;
   groupReads?: Record<string, Record<string, string>>;
@@ -443,6 +442,7 @@ export default function MessagesView({
   onEditMessage,
   onDeleteMessageForEveryone,
   onDeleteConversation,
+  onBlockUser,
   onRespondToMessageRequest,
   onStartConversation,
   activeConversationId,
@@ -473,6 +473,17 @@ export default function MessagesView({
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
 
   const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [showBookPicker, setShowBookPicker] = useState(false);
+  const [bookSearch, setBookSearch] = useState('');
+  const [pendingShare, setPendingShare] = useState<ChatShare | null>(null);
+  const [attachmentProgress, setAttachmentProgress] = useState<number | null>(null);
+  const [threadError, setThreadError] = useState('');
+  const [showConversationMenu, setShowConversationMenu] = useState(false);
+  const [reactionBusy, setReactionBusy] = useState(false);
+  const photoFileRef = useRef<HTMLInputElement>(null), documentFileRef = useRef<HTMLInputElement>(null);
+
   // Mode « spoiler » (groupes uniquement) : le prochain message envoyé sera
   // masqué derrière une pastille « Spoil · Afficher » (façon Discord).
   const [spoilerMode, setSpoilerMode] = useState(false);
@@ -719,7 +730,7 @@ export default function MessagesView({
   const startLongPress = (msg: Message) => { longPressRef.current = setTimeout(() => setActionMsg(msg), 480); };
   const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
   // Un message peut être modifié s'il est à moi, en texte, et envoyé il y a < 5 min.
-  const canEdit = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && !parseSticker(m.content) && !m.content.startsWith('[🎙️ Note Vocale') && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 5 * 60 * 1000);
+  const canEdit = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && !parseSticker(m.content) && !m.content.startsWith(CHAT_SHARE_PREFIX) && !m.content.startsWith('[🎙️ Note Vocale') && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 5 * 60 * 1000);
   // « Supprimer pour tout le monde » : possible uniquement sur ses propres
   // messages et dans les 6 minutes suivant l'envoi.
   const canDeleteForEveryone = (m: Message) => m.senderId === currentUser.id && !m.deletedForEveryone && (Date.now() - new Date(m.date || m.createdAt || 0).getTime() < 6 * 60 * 1000);
@@ -729,7 +740,7 @@ export default function MessagesView({
     // Édition d'un spoiler de groupe : on retire les ||…|| pour éditer le texte
     // nu, et on réactive le mode spoiler (il sera ré-encadré à l'envoi).
     const spoilerMatch = m.content.match(/^\|\|([\s\S]+)\|\|$/);
-    if (activeGroupId && spoilerMatch) { setMessageText(spoilerMatch[1]); setSpoilerMode(true); }
+    if (spoilerMatch) { setMessageText(spoilerMatch[1]); setSpoilerMode(true); }
     else { setMessageText(m.content); setSpoilerMode(false); }
     setActionMsg(null);
     setTimeout(() => messageInputRef.current?.focus(), 0);
@@ -745,6 +756,10 @@ export default function MessagesView({
   useEffect(() => { autoSizeMessageInput(); }, [messageText]);
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const composingThread = activeGroupId ? `group:${activeGroupId}` : `dm:${activeConversationId}`;
+  const composingThreadRef = useRef(composingThread); composingThreadRef.current = composingThread;
+  useEffect(() => { setMessageText(''); setReplyTo(null); setEditingMsg(null); setPendingShare(null); setSpoilerMode(false); setThreadError(''); setShowAttachments(false); setAttachmentProgress(null); setShowConversationMenu(false); setShowBookPicker(false); setSendingMessage(false); }, [composingThread]);
+
 
   // Ouverture d'un GROUPE depuis l'exterieur (clic sur une notification de
   // message de groupe) : App emet `plume:open-group` ET pose une cle
@@ -1135,6 +1150,36 @@ export default function MessagesView({
     clearTimeout(typingStopRef.current);
     typingStopRef.current = setTimeout(() => onTyping?.(interlocutor.id, false), 1500);
   };
+  const uploadAttachment = async (file: File | null, kind: 'photo' | 'file') => {
+    if (!file || composerLocked || attachmentProgress !== null) return;
+    const target = composingThreadRef.current;
+    setShowAttachments(false); setThreadError('');
+    try {
+      if (!file.size || file.size > CHAT_FILE_LIMIT) throw new Error('Choisissez un fichier de 1 octet à 10 Mo.');
+      if (file.name.length > 180) throw new Error('Le nom du fichier est trop long.');
+      if (kind === 'photo' && !['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'].includes(file.type)) throw new Error('Choisissez une photo JPG, PNG, GIF, WEBP ou HEIC.');
+      if (kind === 'file' && !CHAT_DOCUMENT_TYPES.test(file.name)) throw new Error('Choisissez un document PDF, EPUB, TXT, DOCX, ODT, RTF, MD ou CSV.');
+      setAttachmentProgress(0);
+      const progress = (value: number) => { if (composingThreadRef.current === target) setAttachmentProgress(value); };
+      const url = kind === 'photo' ? await uploadImageToCloudinary(file, progress) : await uploadChatDocument(file, progress);
+      if (composingThreadRef.current === target) setPendingShare({ kind, url, name: file.name, size: file.size });
+    } catch (error: any) { if (composingThreadRef.current === target) setThreadError(error?.message || 'Le fichier n’a pas pu être transféré. Réessayez.'); }
+    finally { if (composingThreadRef.current === target) setAttachmentProgress(null); }
+  };
+  const reactDirectMessage = async (message: Message, emoji: string) => {
+    if (reactionBusy || message.deletedForEveryone || message.id.startsWith('msg_temp_')) return;
+    setReactionBusy(true); setThreadError('');
+    try {
+      const mine = message.reactions?.find(reaction => reaction.emoji === emoji)?.userIds?.includes(currentUser.id);
+      const response = await fetch(`/api/messages/${message.id}/reactions`, { method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ emoji, active: !mine }) });
+      if (!response.ok) throw new Error();
+      const saved = await response.json();
+      setConversations(previous => previous.map(conversation => conversation.id === saved.conversationId ? { ...conversation, messages: conversation.messages.map(existing => existing.id === saved.id ? { ...existing, ...saved } : existing) } : conversation));
+      setActionMsg(null);
+    } catch { setThreadError('La réaction n’a pas pu être enregistrée. Réessayez.'); }
+    finally { setReactionBusy(false); }
+  };
+
   const partnerTyping = !activeGroupId && !!interlocutor && (typingUserIds?.has(interlocutor.id) ?? false);
   const partnerRecording = !activeGroupId && !!interlocutor && (recordingUserIds?.has(interlocutor.id) ?? false);
   const groupRecordingName = activeGroupId ? groupRecording?.[activeGroupId] : undefined;
@@ -1333,42 +1378,30 @@ export default function MessagesView({
   }, [activeThreadCount]);
 
   // Submit send message
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!messageText.trim()) return;
-
-    // Modification d'un message existant (privé OU groupe) plutôt qu'un envoi.
-    if (editingMsg) {
-      if (activeGroupId) {
-        const edited = spoilerMode ? `||${messageText.trim()}||` : messageText.trim();
-        onEditGroupMessage?.(editingMsg.id, edited);
-      } else onEditMessage?.(editingMsg.id, messageText.trim());
-      setEditingMsg(null);
-      setMessageText(''); setMentionActive(false); setStoryTagActive(false); setSpoilerMode(false);
-      return;
-    }
-
-    if (activeGroupId) {
-      // Message de groupe persisté côté serveur (avec éventuelle réponse).
-      // Spoiler : on encadre le texte de ||…|| ; le rendu le masque a la reception.
-      const groupContent = spoilerMode ? `||${messageText.trim()}||` : messageText.trim();
-      onSendGroupMessage(activeGroupId, groupContent, replyTo?.id || null, announceNext && isGroupAdminPlus);
-      setAnnounceNext(false);
-      setSpoilerMode(false);
-    } else if (activeConversationId) {
-      // Envoi privé (avec éventuelle réponse à un message).
-      onSendMessage(activeConversationId, messageText.trim(), replyTo?.id || null);
-    }
-    setReplyTo(null);
-    setMessageText(''); setMentionActive(false); setStoryTagActive(false);
-    // Fin de saisie : on arrête l'indicateur « écrit… » chez l'interlocuteur.
-    if (!activeGroupId && interlocutor) {
-      clearTimeout(typingStopRef.current);
-      onTyping?.(interlocutor.id, false);
-    }
+  const handleSend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if ((!messageText.trim() && !pendingShare) || sendingMessage || composerLocked || attachmentProgress !== null) return;
+    const target = composingThreadRef.current;
+    const text = spoilerMode && messageText.trim() ? `||${messageText.trim()}||` : messageText.trim();
+    if (pendingShare && text.length > 1000) { setThreadError('La légende doit contenir au maximum 1 000 caractères.'); return; }
+    const content = pendingShare ? encodeChatShare({ ...pendingShare, ...(text ? { caption: text } : {}) }) : text;
+    if (content.length > 2000) { setThreadError('Le message est trop long. Raccourcissez sa légende.'); return; }
+    setSendingMessage(true); setThreadError('');
+    try {
+      let saved = true;
+      if (editingMsg) {
+        if (activeGroupId) onEditGroupMessage?.(editingMsg.id, content);
+        else onEditMessage?.(editingMsg.id, content);
+      } else if (activeGroupId) saved = await onSendGroupMessage(activeGroupId, content, replyTo?.id || null, announceNext && isGroupAdminPlus);
+      else saved = await onSendMessage(activeConversationId, content, replyTo?.id || null);
+      if (composingThreadRef.current !== target) return;
+      if (!saved) { setThreadError('Le message n’a pas été envoyé. Votre brouillon est conservé.'); return; }
+      setMessageText(''); setPendingShare(null); setReplyTo(null); setEditingMsg(null); setSpoilerMode(false); setAnnounceNext(false); setShowAttachments(false); setMentionActive(false); setStoryTagActive(false);
+      if (!activeGroupId && interlocutor) { clearTimeout(typingStopRef.current); onTyping?.(interlocutor.id, false); }
+    } catch { if (composingThreadRef.current === target) setThreadError('Le message n’a pas été envoyé. Votre brouillon est conservé.'); }
+    finally { if (composingThreadRef.current === target) setSendingMessage(false); }
   };
 
-  // Démarre l'enregistrement micro réel.
   const startVoiceRecording = async () => {
     if (isRecording || uploadingVoice) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -1663,12 +1696,13 @@ export default function MessagesView({
           const __thread = (
         <div
           style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2147483000 } : undefined}
-          className={`md:col-span-8 ${infoPaneOpen ? 'xl:col-span-6' : ''} flex flex-col justify-between bg-white dark:bg-black h-full overflow-hidden relative ${
+          className={`md:col-span-8 ${infoPaneOpen ? 'xl:col-span-6' : ''} flex flex-col justify-between bg-purple-50/40 dark:bg-[#0d0d1b] h-full overflow-hidden relative ${
           mobileShowThread ? 'flex' : 'hidden md:flex'
         }`}>
           
-          {/* Wallpaper dynamic subtle visual anchor motif */}
-          <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.015] pointer-events-none bg-[radial-gradient(#7C3AED_1px,transparent_1px)] [background-size:16px_16px] bg-repeat"></div>
+          {!chatBg && <div aria-hidden="true" className="absolute inset-0 pointer-events-none overflow-hidden text-purple-500/[0.06] dark:text-purple-500/[0.07]">
+            {[0,1,2,3,4,5].map(index => <Feather key={index} className="absolute w-24 h-24 stroke-1 -rotate-12" style={{ top: `${12 + index * 16}%`, left: index % 2 ? '76%' : '-3%' }} />)}
+          </div>}
 
           {/* Aucune discussion selectionnee (desktop) : on n'affiche PAS un faux
               interlocuteur, mais une invite claire. */}
@@ -1683,7 +1717,7 @@ export default function MessagesView({
           )}
 
           {/* Thread Header (passe SOUS la barre d'etat en plein ecran mobile). */}
-          <div className="px-4 py-3 bg-white dark:bg-black text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+          <div className="px-4 py-3 bg-white/95 dark:bg-[#10101e]/95 text-gray-900 dark:text-white flex items-center justify-between border-b border-gray-100 dark:border-zinc-900 z-10 shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
             <div className="flex items-center space-x-3 min-w-0">
               {/* Back mobile button */}
               <button 
@@ -1692,7 +1726,7 @@ export default function MessagesView({
                   setActiveGroupId(null);
                   setActiveConversationId('');
                 }}
-                className="p-1.5 -ml-1.5 md:hidden hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full text-gray-900 dark:text-white mr-1"
+                className="p-1.5 -ml-1.5 md:hidden hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full text-purple-600 dark:text-purple-400 mr-1"
                 title="Retour à la liste"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -1735,13 +1769,13 @@ export default function MessagesView({
                   <div className="text-left min-w-0">
                     <h4
                       onClick={() => { if (!partnerIsGhost) onViewProfile?.(interlocutor.id); }}
-                      className="text-xs font-serif font-black text-gray-900 dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
+                      className="text-base font-semibold text-gray-900 dark:text-white leading-none flex items-center cursor-pointer hover:opacity-70 transition"
                     >
-                      <span>{interlocutor.username}</span>
+                      <span className="truncate max-w-[145px] sm:max-w-[200px]">{interlocutor.username}</span>
                       {interlocutor.isVerified && <VerifiedBadge size="xs" className="ml-1" />}
                     </h4>
                     <p className="text-[10px] text-gray-500 dark:text-white/80 font-bold mt-1.5">
-                      {onlineUserIds.has(interlocutor.id) ? 'en ligne' : 'hors ligne'}
+                      {onlineUserIds.has(interlocutor.id) ? 'En ligne' : 'Hors ligne'}
                     </p>
                   </div>
                 </>
@@ -1770,29 +1804,7 @@ export default function MessagesView({
               >
                 <Phone className="w-4 h-4 scale-105" />
               </button>
-              <button
-                type="button"
-                className="p-2 hover:bg-purple-50 dark:hover:bg-zinc-900 rounded-full transition text-[#7C3AED] dark:text-purple-400"
-                title="Fond de la discussion"
-                onClick={() => setShowBgPicker(true)}
-              >
-                <ImageIcon className="w-4 h-4" />
-              </button>
-              {!activeGroupId && activeConversationId && (
-                <button
-                  type="button"
-                  id="delete-conversation-btn"
-                  className="p-2 hover:bg-red-500/10 rounded-full transition text-gray-400 hover:text-red-500"
-                  title="Supprimer la conversation"
-                  onClick={() => {
-                    if (confirm(`Supprimer la conversation avec ${interlocutor.username} ? Cette action est définitive.`)) {
-                      onDeleteConversation(activeConversationId);
-                    }
-                  }}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+              <button type="button" aria-label="Options de la conversation" onClick={() => setShowConversationMenu(true)} className="p-2 rounded-full text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"><MoreVertical className="w-5 h-5" /></button>
             </div>
           </div>
 
@@ -1924,8 +1936,8 @@ export default function MessagesView({
                         onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg as any); }}
                         className={`relative max-w-[85.5%] md:max-w-[75%] px-3.5 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
-                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md text-right'
-                          : 'bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-bl-md border border-transparent text-left'
+                          ? 'bg-gradient-to-br from-purple-600 to-violet-600 text-white rounded-br-md text-right'
+                          : 'bg-white dark:bg-[#242435] text-zinc-900 dark:text-zinc-100 rounded-bl-md border border-purple-500/5 text-left'
                       }`}>
 
                         {/* Group member identifier tag top */}
@@ -1973,10 +1985,10 @@ export default function MessagesView({
                             isSentByMe={isSentByMe}
                             audioUrl={msg.content.match(/\|(https?:\/\/[^\]]+)\]/)?.[1]}
                           />
-                        ) : parsePollContent(msg.content) ? (
+                        ) : msg.content.startsWith(CHAT_SHARE_PREFIX) ? <SharedChatContent content={msg.content} stories={stories} onSelectStory={onSelectStory} renderCaption={caption => renderMessageText(caption, true, groupRenderOpts)} /> : parsePollContent(msg.content) ? (
                           (() => { const p = parsePollContent(msg.content)!; return <PollCard messageId={msg.id} question={p.q} options={p.o} />; })()
                         ) : (
-                          <p className="text-xs leading-relaxed break-words text-left">
+                          <p className="text-sm leading-relaxed break-words text-left">
                             {renderMessageText(msg.content, true, groupRenderOpts)}
                           </p>
                         )}
@@ -2021,9 +2033,9 @@ export default function MessagesView({
                   <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/20 flex items-center justify-center mb-4 text-[#7C3AED]">
                     <MessageSquare className="w-8 h-8" />
                   </div>
-                  <h5 className="font-bold text-gray-900 dark:text-white text-sm">Chiffrement de bout en bout</h5>
+                  <h5 className="font-bold text-gray-900 dark:text-white text-sm">Votre conversation commence ici</h5>
                   <p className="text-xs text-gray-400 max-w-xs mt-1 leading-relaxed">
-                    Vos conversations privées sont locales et chiffrées. Échangez avec le romancier {interlocutor.username}.
+                    Commencez une discussion avec {interlocutor.username}. Vos messages sont réservés aux participants.
                   </p>
                 </div>
               ) : (
@@ -2053,7 +2065,7 @@ export default function MessagesView({
                     const savable = !isSentByMe && isStickerUrl(sticker) && !customStickers.includes(sticker);
                     return (
                       <React.Fragment key={msg.id}>{dateSep}
-                      <div className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
+                      <div id={`dmsg-${msg.id}`} data-message-id={msg.id} className={`flex flex-col ${isSentByMe ? 'items-end' : 'items-start'} animate-fade-in`}>
                         <div
                           className="relative group"
                           onTouchStart={() => startLongPress(msg)}
@@ -2061,6 +2073,7 @@ export default function MessagesView({
                           onTouchMove={cancelLongPress}
                           onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg); }}
                         >
+                          <button type="button" aria-label="Actions sur ce message" onClick={() => setActionMsg(msg)} className="absolute -top-2 -right-2 rounded-full p-1 bg-white dark:bg-[#29283c] text-purple-500 border border-purple-500/20 opacity-0 focus:opacity-100 group-hover:opacity-100"><MoreVertical className="w-3 h-3" /></button>
                           {isStickerUrl(sticker)
                             ? (isVideoSticker(sticker)
                                 ? <video src={sticker} className="w-28 h-28 object-contain drop-shadow rounded-lg" muted loop autoPlay playsInline />
@@ -2082,16 +2095,19 @@ export default function MessagesView({
                           <span>{new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
                         </div>
+                        {!!msg.reactions?.length && <div aria-label="Réactions au message" className="flex gap-1.5 mt-1">
+                          {msg.reactions.map(reaction => <button type="button" key={reaction.emoji} disabled={reactionBusy} aria-label={`Réaction ${reaction.emoji} : ${reaction.count}`} aria-pressed={!!reaction.userIds?.includes(currentUser.id)} onClick={() => void reactDirectMessage(msg, reaction.emoji)} className="rounded-full border border-purple-400/30 bg-purple-500/10 px-2 py-0.5 text-xs">{reaction.emoji} {reaction.count}</button>)}
+                        </div>}
                       </div>
                       </React.Fragment>
                     );
                   }
 
-                  const repliedMsg = msg.replyToId ? threadMessages.find((m) => m.id === msg.replyToId) : null;
+                  const repliedMsg = msg.replyToId ? threadMessages.find((m) => m.id === msg.replyToId) || msg.replyTo : null;
                   return (
                     <React.Fragment key={msg.id}>{dateSep}
-                    <div
-                      className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                    <div id={`dmsg-${msg.id}`} data-message-id={msg.id}
+                      className={`group flex ${isSentByMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
                     >
                       <div
                         onTouchStart={() => startLongPress(msg)}
@@ -2100,27 +2116,28 @@ export default function MessagesView({
                         onContextMenu={(e) => { e.preventDefault(); setActionMsg(msg); }}
                         className={`relative max-w-[80.5%] md:max-w-[70%] px-3 py-2 shadow-sm rounded-2xl ${
                         isSentByMe
-                          ? 'bg-purple-600 dark:bg-purple-700 text-white rounded-br-md'
-                          : 'bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white rounded-bl-md border border-transparent'
+                          ? 'bg-gradient-to-br from-purple-600 to-violet-600 text-white rounded-br-md'
+                          : 'bg-white dark:bg-[#242435] text-zinc-900 dark:text-zinc-100 rounded-bl-md border border-purple-500/5'
                       }`}>
 
+                        <button type="button" aria-label="Actions sur ce message" onClick={() => setActionMsg(msg)} className="absolute -top-2 -right-2 rounded-full p-1 bg-white dark:bg-[#29283c] text-purple-500 border border-purple-500/20 opacity-0 focus:opacity-100 group-hover:opacity-100"><MoreVertical className="w-3 h-3" /></button>
                         {/* Citation du message auquel on répond. */}
                         {repliedMsg && (
                           <div className={`mb-1 px-2 py-1 rounded-lg border-l-2 text-left ${isSentByMe ? 'bg-white/15 border-white/60' : 'bg-purple-500/10 border-purple-500'}`}>
                             <p className={`text-[9px] font-black truncate ${isSentByMe ? 'opacity-90' : 'text-purple-600 dark:text-purple-400'}`}>{repliedMsg.senderId === currentUser.id ? 'Vous' : (interlocutor?.username || 'Auteur')}</p>
-                            <p className="text-[10px] opacity-80 truncate">{repliedMsg.deletedForEveryone ? 'Message supprimé' : parseSticker(repliedMsg.content) ? '🪶 Sticker' : repliedMsg.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : repliedMsg.content}</p>
+                            <p className="text-[10px] opacity-80 truncate">{messagePreview(repliedMsg)}</p>
                           </div>
                         )}
 
-                        {isVoiceStr ? (
+                        {msg.content.startsWith(CHAT_SHARE_PREFIX) ? <SharedChatContent content={msg.content} stories={stories} onSelectStory={onSelectStory} renderCaption={caption => renderMessageText(caption, true)} /> : isVoiceStr ? (
                           <VoicePlayerMockup
                             durationStr={msg.content.match(/Note Vocale - ([\d:]+)/)?.[1] || '0:05'}
                             isSentByMe={isSentByMe}
                             audioUrl={msg.content.match(/\|(https?:\/\/[^\]]+)\]/)?.[1]}
                           />
                         ) : (
-                          <p className="text-xs leading-relaxed break-words pr-1 text-left">
-                            {renderMessageText(msg.content)}
+                          <p className="text-sm leading-relaxed break-words pr-1 text-left">
+                            {renderMessageText(msg.content, true)}
                           </p>
                         )}
 
@@ -2134,6 +2151,9 @@ export default function MessagesView({
                           {isSentByMe && <MessageTicks isDelivered={msg.isDelivered} isRead={msg.isRead} />}
                         </div>
 
+                        {!!msg.reactions?.length && <div aria-label="Réactions au message" className="flex flex-wrap gap-1.5 mt-1.5">
+                          {msg.reactions.map(reaction => <button type="button" key={reaction.emoji} disabled={reactionBusy} aria-label={`Réaction ${reaction.emoji} : ${reaction.count}`} aria-pressed={!!reaction.userIds?.includes(currentUser.id)} onClick={() => void reactDirectMessage(msg, reaction.emoji)} className={`rounded-full border px-2 py-0.5 text-xs ${reaction.userIds?.includes(currentUser.id) ? 'border-purple-300 bg-purple-500/20' : 'border-white/10 bg-black/10 dark:bg-white/5'}`}>{reaction.emoji} {reaction.count}</button>)}
+                        </div>}
                       </div>
                     </div>
                     </React.Fragment>
@@ -2167,7 +2187,19 @@ export default function MessagesView({
             </div>
 
             {/* ACTIVE DISCUSSION PANEL CONTROLS FOOTER (au-dessus du home indicator). */}
-            <div className="z-10 bg-white dark:bg-black border-t border-gray-100 dark:border-zinc-900 p-2.5 shrink-0 space-y-2" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
+            <div className="z-10 bg-white/95 dark:bg-[#10101e]/95 border-t border-purple-500/10 p-2.5 shrink-0 space-y-2" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
+
+              {threadError && <p role="alert" className="text-xs px-2 text-rose-500 dark:text-rose-300">{threadError}</p>}
+              <input ref={photoFileRef} aria-label="Choisir une photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif" className="hidden" onChange={event => { void uploadAttachment(event.target.files?.[0] || null, 'photo'); event.target.value = ''; }} />
+              <input ref={documentFileRef} aria-label="Choisir un document" type="file" accept=".pdf,.epub,.txt,.docx,.odt,.rtf,.md,.csv" className="hidden" onChange={event => { void uploadAttachment(event.target.files?.[0] || null, 'file'); event.target.value = ''; }} />
+              {attachmentProgress !== null && <p role="status" className="text-xs text-purple-600 dark:text-purple-300">Transfert du fichier… {attachmentProgress} %</p>}
+              {pendingShare && <div className="flex items-center gap-2 p-2 rounded-xl bg-purple-500/10 text-xs"><BookOpen className="w-4 h-4 shrink-0 text-purple-500" /><span className="flex-1 min-w-0 truncate">{pendingShare.kind === 'book' ? stories.find(book => book.id === pendingShare.storyId)?.title || 'Livre à partager' : pendingShare.name} · prêt à envoyer</span><button type="button" aria-label="Retirer la pièce jointe" disabled={sendingMessage} onClick={() => setPendingShare(null)}><X className="w-4 h-4" /></button></div>}
+              {showAttachments && !composerLocked && <div role="group" aria-label="Ajouter à la conversation" className="grid grid-cols-3 gap-2 rounded-2xl border border-purple-500/15 bg-white dark:bg-[#1c1b2d] p-2">
+                {(!activeGroupId || activeGroup?.allowMedia !== false) && <><button type="button" onClick={() => photoFileRef.current?.click()} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><ImageIcon className="w-5 h-5" />Photos</button><button type="button" onClick={() => { setShowBookPicker(true); setBookSearch(''); setShowAttachments(false); }} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><BookOpen className="w-5 h-5" />Livres</button><button type="button" onClick={() => documentFileRef.current?.click()} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><FileText className="w-5 h-5" />Fichiers</button></>}
+                <button type="button" aria-pressed={spoilerMode} onClick={() => { setSpoilerMode(value => !value); setShowAttachments(false); }} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><EyeOff className="w-5 h-5" />Spoiler</button>
+                <button type="button" onClick={() => { setShowStickers(true); setShowAttachments(false); }} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><Sticker className="w-5 h-5" />Stickers</button>
+                {activeGroupId && <button type="button" onClick={() => { setPollDraft({ q: '', options: ['', ''] }); setShowAttachments(false); }} className="p-2 flex flex-col items-center gap-1.5 text-xs text-purple-600 dark:text-purple-300"><BarChart3 className="w-5 h-5" />Sondage</button>}
+              </div>}
 
               {/* Demande de message — DESTINATAIRE : accepter / refuser. */}
               {requestPendingForMe && (
@@ -2291,10 +2323,7 @@ export default function MessagesView({
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">{editingMsg ? 'Modification' : 'Réponse à'}</p>
                     <p className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
-                      {(editingMsg || replyTo)?.deletedForEveryone ? 'Message supprimé'
-                        : parseSticker((editingMsg || replyTo)!.content) ? '🪶 Sticker'
-                        : (editingMsg || replyTo)!.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale'
-                        : maskSpoilers((editingMsg || replyTo)!.content)}
+                      {messagePreview((editingMsg || replyTo)!)}
                     </p>
                   </div>
                   <button type="button" onClick={() => { setReplyTo(null); setEditingMsg(null); setMessageText(''); }} className="text-gray-400 hover:text-gray-600 shrink-0" aria-label="Annuler"><X className="w-4 h-4" /></button>
@@ -2315,29 +2344,7 @@ export default function MessagesView({
                 </button>
               )}
 
-              {/* Bascule SPOILER (groupes uniquement, tous les membres) : le
-                  prochain message part masqué derrière une pastille « Spoil ». */}
-              {activeGroupId && !composerLocked && (
-                <div className="mb-1.5 flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setSpoilerMode((v) => !v)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${spoilerMode ? 'bg-zinc-700 text-white' : 'bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400'}`}
-                    title="Masquer le prochain message derrière un « Spoiler »"
-                  >
-                    <EyeOff className="w-3.5 h-3.5 shrink-0" />
-                    {spoilerMode ? 'Message masqué (Spoiler)' : 'Spoiler'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPollDraft({ q: '', options: ['', ''] })}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-gray-100 dark:bg-zinc-900 text-gray-500 dark:text-gray-400 hover:text-purple-600 transition"
-                    title="Créer un sondage"
-                  >
-                    <BarChart3 className="w-3.5 h-3.5 shrink-0" /> Sondage
-                  </button>
-                </div>
-              )}
+              {spoilerMode && <p className="text-xs text-purple-600 dark:text-purple-300 flex items-center gap-2"><EyeOff className="w-4 h-4" />Le prochain message sera masqué<button type="button" aria-label="Désactiver le mode spoiler" onClick={() => setSpoilerMode(false)}><X className="w-3.5 h-3.5" /></button></p>}
 
               {/* Standard message input bar */}
               {composerLocked ? (
@@ -2405,23 +2412,7 @@ export default function MessagesView({
                   </div>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className={`p-1.5 rounded-full transition-all shrink-0 ${showEmojiPicker ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
-                      title="Émojis"
-                      onClick={() => { setShowEmojiPicker((v) => !v); setShowStickers(false); }}
-                    >
-                      <Smile className="w-5 h-5 shrink-0" />
-                    </button>
-                    <button
-                      type="button"
-                      className={`p-1.5 rounded-full transition-all shrink-0 ${showStickers ? 'bg-purple-500/15 text-purple-600' : 'text-[#7C3AED] dark:text-purple-400 hover:bg-gray-200/55 dark:hover:bg-zinc-850'}`}
-                      title="Stickers"
-                      onClick={() => { setShowStickers((v) => !v); setShowEmojiPicker(false); }}
-                    >
-                      <Sticker className="w-5 h-5 shrink-0" />
-                    </button>
-
+                    <button type="button" aria-label="Ajouter une pièce jointe" aria-expanded={showAttachments} disabled={attachmentProgress !== null || sendingMessage} onClick={() => { setShowAttachments(value => !value); setShowEmojiPicker(false); setShowStickers(false); }} className="h-11 w-11 shrink-0 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-600 dark:text-purple-300 flex items-center justify-center disabled:opacity-50"><Plus className="w-6 h-6" /></button>
                     <textarea
                       id="message-input-chat-box"
                       ref={messageInputRef}
@@ -2430,6 +2421,8 @@ export default function MessagesView({
                       placeholder={activeGroupId ? "Message de groupe..." : "Rédiger votre message..."}
                       className="flex-1 w-full min-w-0 min-h-[46px] resize-none bg-gray-100 dark:bg-zinc-900 border border-transparent focus:border-[#7C3AED]/35 text-[15px] rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/35 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 leading-relaxed scrollbar-none"
                       value={messageText}
+                      disabled={sendingMessage}
+                      aria-label="Votre message"
                       onChange={(e) => handleTypingChange(e.target.value)}
                       onFocus={() => { setShowEmojiPicker(false); setShowStickers(false); }}
                       onKeyDown={(e) => {
@@ -2441,14 +2434,17 @@ export default function MessagesView({
                       }}
                     />
 
-                    {messageText.trim() ? (
+                    <button type="button" aria-label="Émojis" onClick={() => { setShowEmojiPicker(value => !value); setShowStickers(false); setShowAttachments(false); }} className="self-center p-2 text-purple-500 shrink-0"><Smile className="w-5 h-5" /></button>
+                    {messageText.trim() || pendingShare || sendingMessage ? (
                       <button
                         id="send-message-chat-btn"
                         type="submit"
-                        className="bg-purple-600 hover:bg-purple-700 text-white p-2.5 rounded-full transition shrink-0 shadow-sm flex items-center justify-center active:scale-95"
+                        disabled={sendingMessage || attachmentProgress !== null}
+                        aria-label="Envoyer le message"
+                        className="disabled:opacity-50 bg-purple-600 hover:bg-purple-700 text-white p-2.5 rounded-full transition shrink-0 shadow-sm flex items-center justify-center active:scale-95"
                         title="Envoyer"
                       >
-                        <Send className="w-4 h-4 transform rotate-0 shrink-0" />
+                        {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 shrink-0" />}
                       </button>
                     ) : (
                       <button
@@ -2553,6 +2549,9 @@ export default function MessagesView({
         )}
 
       </div>
+
+      {showConversationMenu && <ConversationMenu name={activeGroup?.name || interlocutor.username} userId={partnerIsGhost || activeGroupId ? undefined : interlocutor.id} blocked={(currentUser.blockedUsers || []).includes(interlocutor.id)} group={!!activeGroupId} onClose={() => setShowConversationMenu(false)} onBackground={() => setShowBgPicker(true)} onProfile={() => activeGroupId ? setShowGroupSettings(true) : onViewProfile?.(interlocutor.id)} onBlock={() => onBlockUser?.(interlocutor.id, !(currentUser.blockedUsers || []).includes(interlocutor.id)) || Promise.resolve(false)} onDelete={async () => { const saved = await onDeleteConversation(activeConversationId); if (saved) { setMobileShowThread(false); setActiveConversationId(''); } return saved; }} />}
+      {showBookPicker && createPortal(<div className="fixed inset-0 z-[2147483100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowBookPicker(false)}><section role="dialog" aria-modal="true" aria-label="Partager un livre" onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setShowBookPicker(false); }} className="w-full max-w-md max-h-[80vh] flex flex-col rounded-3xl bg-white dark:bg-[#171726] text-zinc-900 dark:text-white p-4 border border-purple-500/20"><div className="flex items-center justify-between mb-3"><h2 className="font-serif font-bold text-lg">Partager un livre</h2><button type="button" aria-label="Fermer les livres" onClick={() => setShowBookPicker(false)}><X className="w-5 h-5" /></button></div><input autoFocus type="search" aria-label="Rechercher un livre à partager" value={bookSearch} onChange={event => setBookSearch(event.target.value)} placeholder="Un titre ou un auteur…" className="rounded-xl bg-zinc-100 dark:bg-zinc-900 px-3 py-2 text-sm mb-3" /><div className="overflow-y-auto space-y-1">{stories.filter(book => book.status === 'Publié' && `${book.title} ${book.authorName}`.toLocaleLowerCase().includes(bookSearch.toLocaleLowerCase())).map(book => <button type="button" key={book.id} onClick={() => { setPendingShare({ kind: 'book', storyId: book.id }); setShowBookPicker(false); }} className="w-full flex items-center gap-3 text-left p-2 rounded-xl hover:bg-purple-500/10"><img src={book.cover || generateCoverDataUri(book.title)} alt="" className="w-9 h-14 rounded object-cover" /><span className="min-w-0"><span className="block text-sm font-semibold truncate">{book.title}</span><span className="text-xs text-zinc-500">{book.authorName}</span></span></button>)}{!stories.some(book => book.status === 'Publié' && `${book.title} ${book.authorName}`.toLocaleLowerCase().includes(bookSearch.toLocaleLowerCase())) && <p className="text-sm text-zinc-500 py-6 text-center">Aucun livre disponible pour cette recherche.</p>}</div></section></div>, document.body)}
 
       {/* POPUP MODAL: WRITE A NEW DIRECT MESSAGE */}
       {isNewChatOpen && createPortal(
@@ -2790,10 +2789,10 @@ export default function MessagesView({
         <div className="fixed inset-0 z-[2147483000] bg-black/50 flex items-end justify-center" onClick={() => setActionMsg(null)}>
           <div className="w-full max-w-md bg-white dark:bg-[#0E0E14] rounded-t-3xl p-2 animate-fade-in" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}>
             {/* Reactions rapides (groupe) */}
-            {activeGroupId && activeGroup?.allowReactions !== false && !(actionMsg as any).deletedForEveryone && (
+            {(!activeGroupId || activeGroup?.allowReactions !== false) && !actionMsg.deletedForEveryone && (
               <div className="flex items-center justify-around px-3 py-2 mb-1 border-b border-gray-100 dark:border-zinc-800">
-                {GROUP_EMOJIS.map((e) => (
-                  <button key={e} onClick={() => reactGroupMsg(actionMsg.id, e)} className="text-2xl hover:scale-125 active:scale-95 transition" aria-label={`Réagir ${e}`}>{e}</button>
+                {(activeGroupId ? GROUP_EMOJIS : CHAT_REACTIONS).map((e) => (
+                  <button key={e} disabled={reactionBusy} onClick={() => activeGroupId ? reactGroupMsg(actionMsg.id, e) : void reactDirectMessage(actionMsg, e)} className="text-2xl hover:scale-125 active:scale-95 transition" aria-label={`Réagir ${e}`}>{e}</button>
                 ))}
               </div>
             )}

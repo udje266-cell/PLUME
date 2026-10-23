@@ -170,6 +170,8 @@ export interface Message {
   receiverAvatar?: string;
   createdAt?: string;
   replyToId?: string | null;
+  replyTo?: Pick<Message, 'id' | 'senderId' | 'content' | 'deletedForEveryone'> | null;
+  reactions?: { emoji: string; count: number; userIds?: string[]; mine?: boolean }[];
   editedAt?: string | null;
   deletedForEveryone?: boolean;
 }

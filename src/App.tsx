@@ -39,6 +39,7 @@ import AchievementsView from './components/AchievementsView';
 import HomeView from './components/HomeView';
 import LibraryView from './components/LibraryView';
 import type { ReadingStatus } from './utils/library';
+import { messagePreview } from './utils/inbox';
 import AuthView from './components/AuthView';
 import CallOverlay from './components/CallOverlay';
 import GroupCallOverlay from './components/GroupCallOverlay';
@@ -396,7 +397,7 @@ export default function App() {
   };
 
   const handleSendGroupMessage = async (groupId: string, content: string, replyToId?: string | null, isAnnouncement?: boolean) => {
-    if (!currentUser) return;
+    if (!currentUser) return false;
     // Affichage OPTIMISTE : on montre le message tout de suite, puis on remplace
     // par la version serveur (ou on annule en cas d'echec).
     const tempId = `gmsg_temp_${Date.now()}`;
@@ -418,7 +419,7 @@ export default function App() {
         setGroupMessages((prev) => prev.filter((m) => m.id !== tempId));
         const d = await res.json().catch(() => ({}));
         alert(d.error || "Votre message n'a pas pu être envoyé.");
-        return;
+        return false;
       }
       const msg: GroupMessage = await res.json();
       setGroupMessages((prev) => {
@@ -426,9 +427,11 @@ export default function App() {
         return withoutTemp.some((m) => m.id === msg.id) ? withoutTemp : [...withoutTemp, msg];
       });
       setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, lastMessage: msg.content, lastMessageDate: msg.date } : g)));
+      return true;
     } catch (e) {
       console.error('[PLUME] Erreur envoi message de groupe :', e);
       setGroupMessages((prev) => prev.filter((m) => m.id !== tempId));
+      return false;
     }
   };
 
@@ -930,9 +933,7 @@ export default function App() {
       if (!(isCurrentActive && document.visibilityState === 'visible') && isNotifCategoryEnabled('dms')) {
         playNotificationSound('message');
         const senderName = message.sender?.username || message.senderName || 'Nouveau message';
-        const preview = typeof message.content === 'string'
-          ? (message.content.startsWith('[🎙️ Note Vocale') ? '🎙️ Note vocale' : (message.content.startsWith('[sticker]') ? '🪶 Sticker' : message.content))
-          : 'Nouveau message';
+        const preview = messagePreview(message);
         showAppNotification('message', { title: senderName, body: preview, conversationId: message.conversationId });
       }
 
@@ -1000,7 +1001,7 @@ export default function App() {
       if (updated.deletedForEveryone) fetchConversationsList();
       setConversations((prev) => prev.map((c) => ({
         ...c,
-        messages: c.messages.map((m) => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m),
+        messages: c.messages.map((m) => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m.replyTo?.id === updated.id ? { ...m, replyTo: { ...m.replyTo, ...updated } } : m),
       })));
     });
 
@@ -2366,7 +2367,7 @@ export default function App() {
   // Bloquer / débloquer un utilisateur. Met à jour currentUser.blockedUsers de
   // façon optimiste puis synchronise avec le serveur (endpoints déjà existants).
   const handleBlockUser = async (targetId: string, block: boolean) => {
-    if (!currentUser?.id || !targetId || targetId === currentUser.id) return;
+    if (!currentUser?.id || !targetId || targetId === currentUser.id) return false;
     const prevUser = currentUser;
     const prevAll = allUsers;
     const currentBlocked = currentUser.blockedUsers || [];
@@ -2384,11 +2385,13 @@ export default function App() {
         headers: authHeaders(),
       });
       if (!res.ok && res.status !== 204 && res.status !== 201) throw new Error(`block ${res.status}`);
+      return true;
     } catch (e) {
       console.error('[PLUME] Erreur (dé)blocage :', e);
       alert("L'action de blocage n'a pas pu être enregistrée. Réessayez.");
       setCurrentUser(prevUser);
       setAllUsers(prevAll);
+      return false;
     }
   };
 
@@ -3160,8 +3163,8 @@ export default function App() {
   };
 
   // Messages operations
-  const handleSendMessage = (conversationId: string, content: string, replyToId?: string | null) => {
-    if (!currentUser) return;
+  const handleSendMessage = async (conversationId: string, content: string, replyToId?: string | null) => {
+    if (!currentUser) return false;
 
     const tempMsgId = `msg_temp_${Date.now()}`;
     const newMsg: Message = {
@@ -3188,7 +3191,7 @@ export default function App() {
     }));
 
     // Send new chat message to Express service
-    fetch('/api/messages', {
+    return fetch('/api/messages', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ conversationId, content, replyToId: replyToId || undefined })
@@ -3212,6 +3215,7 @@ export default function App() {
           }
           return c;
         }));
+        return true;
       } else {
         let errMsg = 'Erreur lors de l’envoi du message';
         let errCode = '';
@@ -3238,6 +3242,7 @@ export default function App() {
           }
           return c;
         }));
+        return false;
       }
     })
     .catch(e => {
@@ -3253,13 +3258,14 @@ export default function App() {
         }
         return c;
       }));
+      return false;
     });
   };
 
   // Applique une mise à jour de message (édition / suppression globale) localement.
   const applyMessageUpdate = (updated: Message) => {
     setConversations(prev => prev.map(c => c.id === (updated.conversationId || c.id)
-      ? { ...c, messages: c.messages.map(m => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m) }
+      ? { ...c, messages: c.messages.map(m => m.id === updated.id ? { ...m, ...updated, date: (updated as any).createdAt || m.date } : m.replyTo?.id === updated.id ? { ...m, replyTo: { ...m.replyTo, ...updated } } : m) }
       : c));
   };
 
@@ -3300,13 +3306,16 @@ export default function App() {
       });
       if (res.ok || res.status === 404) {
         removeLocally();
+        return true;
       } else {
         let msg = 'La conversation n’a pas pu être supprimée.';
         try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
         alert(msg);
+        return false;
       }
     } catch {
       alert("Erreur de connexion : la conversation n’a pas pu être supprimée.");
+      return false;
     }
   };
 
@@ -4136,6 +4145,7 @@ export default function App() {
                       onEditMessage={handleEditMessage}
                       onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
                       onDeleteConversation={handleDeleteConversation}
+                      onBlockUser={handleBlockUser}
                       onRespondToMessageRequest={handleRespondToMessageRequest}
                       onStartConversation={handleStartConversation}
                       activeConversationId={activeConversationId}
