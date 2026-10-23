@@ -1,0 +1,58 @@
+<template id="s01-template">
+  <style>
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-var.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-italic-var.woff2') format('woff2');font-weight:200 900;font-style:italic}
+#root{position:absolute;inset:0;overflow:hidden;font-family:'Inter',sans-serif}
+.ground{position:absolute;inset:0}
+.glow{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;border-radius:50%;pointer-events:none}
+.cam{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0}
+.phone{position:absolute;border-radius:70px;background:#17141F;box-shadow:0 46px 90px rgba(24,18,36,.30),0 0 0 2px #2a2533 inset}
+.phone.dark{box-shadow:0 46px 90px rgba(0,0,0,.55),0 0 0 2px #3a3446 inset}
+.screen{position:absolute;overflow:hidden;border-radius:56px;background:#fff}
+.scr{position:absolute;left:0;top:0;width:100%;height:auto;display:block}
+.island{position:absolute;left:50%;top:22px;width:118px;height:34px;margin-left:-59px;border-radius:20px;background:#0b0910}
+.lift{position:absolute;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 40px 80px rgba(24,18,36,.35),0 0 0 1px rgba(124,58,237,.12)}
+.lift img{position:absolute;max-width:none}
+.kin{position:absolute;left:70px;right:70px;text-align:center;font-family:'Source Serif 4',serif;font-weight:700;letter-spacing:-.03em;line-height:1.0}
+.kin span.w{display:inline-block;white-space:pre}
+.cover{position:absolute;border-radius:10px;box-shadow:0 30px 60px rgba(24,18,36,.32);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+
+  </style>
+  <div id="root" data-composition-id="s01" data-width="1080" data-height="1920" data-duration="7.15" data-layout-allow-overflow>
+    <div class="ground" id="s01-ground" style="background:#F4F0FB"></div>
+    <div class="glow" id="s01-glow" style="background:radial-gradient(circle,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 62%)"></div>
+    <div class="cover" id="s01-c0" style="left:36px;top:1112px;width:240px;height:360.0px;transform:rotate(-21deg);z-index:7;"><img src="assets/demo/cover-cartographe.png" alt=""></div><div class="cover" id="s01-c1" style="left:164px;top:1078px;width:240px;height:360.0px;transform:rotate(-14deg);z-index:8;"><img src="assets/demo/cover-nuit.png" alt=""></div><div class="cover" id="s01-c2" style="left:292px;top:1044px;width:240px;height:360.0px;transform:rotate(-7deg);z-index:9;"><img src="assets/demo/cover-chambre.png" alt=""></div><div class="cover" id="s01-c3" style="left:420px;top:1010px;width:240px;height:360.0px;transform:rotate(0deg);z-index:10;"><img src="assets/demo/cover-hostel.jpg" alt=""></div><div class="cover" id="s01-c4" style="left:548px;top:1044px;width:240px;height:360.0px;transform:rotate(7deg);z-index:9;"><img src="assets/demo/cover-lunes.png" alt=""></div><div class="cover" id="s01-c5" style="left:676px;top:1078px;width:240px;height:360.0px;transform:rotate(14deg);z-index:8;"><img src="assets/demo/cover-dakar.png" alt=""></div><div class="cover" id="s01-c6" style="left:804px;top:1112px;width:240px;height:360.0px;transform:rotate(21deg);z-index:7;"><img src="assets/demo/cover-lettres.png" alt=""></div>
+    <div class="cam" id="s01-cam"><div class="phone" id="s01-phone" style="left:319.062px;top:392.0px;width:441.877px;height:926.0px"><div class="screen" style="left:13.0px;top:13.0px;width:415.877px;height:900.0px"><img class="scr" id="s01-s1" src="assets/screens/editor.png" alt=""><img class="scr" id="s01-s4" src="assets/screens/editor-written.png" alt="" style="opacity:0"><img class="scr" id="s01-s5" src="assets/screens/workshop.png" alt="" style="opacity:0"></div><div class="island"></div></div></div>
+    <div class="kin " id="s01-k2" style="top:360px;font-size:132px;color:#181224;text-align:center;line-height:1.0;"><span class="w" id="s01-k2w0" style="">Ton</span> <span class="w" id="s01-k2w1" style="">prochain</span> <br> <span class="w" id="s01-k2w3" style="">livre</span> <span class="w" id="s01-k2w4" style="">préféré…</span></div><div class="kin " id="s01-k3" style="top:700px;font-size:76px;color:#7C3AED;text-align:center;line-height:1.0;"><span class="w" id="s01-k3w0" style="">n’est</span> <span class="w" id="s01-k3w1" style="">pas</span> <span class="w" id="s01-k3w2" style="">encore</span> <br> <span class="w" id="s01-k3w4" style="">en</span> <span class="w" id="s01-k3w5" style="">librairie.</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#s01-k2',{opacity:0,filter:'blur(8px)',duration:.22,ease:'power3.in'},3.95);
+    tl.fromTo('#s01-k3w0',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},2.01);
+    tl.fromTo('#s01-k3w1',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},2.35);
+    tl.fromTo('#s01-k3w2',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},2.46);
+    tl.fromTo('#s01-k3w4',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},2.84);
+    tl.fromTo('#s01-k3w5',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},2.96);
+    tl.to('#s01-k3',{opacity:0,filter:'blur(8px)',duration:.22,ease:'power3.in'},3.95);
+    tl.to('#s01-c0',{x:-780,y:600,rotation:-48,opacity:0,duration:.55,ease:'power3.in'},3.59);
+    tl.to('#s01-c1',{x:-520,y:540,rotation:-32,opacity:0,duration:.55,ease:'power3.in'},3.56);
+    tl.to('#s01-c2',{x:-260,y:480,rotation:-16,opacity:0,duration:.55,ease:'power3.in'},3.53);
+    tl.to('#s01-c3',{x:0,y:420,rotation:0,opacity:0,duration:.55,ease:'power3.in'},3.5);
+    tl.to('#s01-c4',{x:260,y:480,rotation:16,opacity:0,duration:.55,ease:'power3.in'},3.53);
+    tl.to('#s01-c5',{x:520,y:540,rotation:32,opacity:0,duration:.55,ease:'power3.in'},3.56);
+    tl.to('#s01-c6',{x:780,y:600,rotation:48,opacity:0,duration:.55,ease:'power3.in'},3.59);
+    tl.set('#s01-phone',{y:1700},0);
+    tl.to('#s01-phone',{y:0,duration:.8,ease:'expo.out'},3.85);
+    tl.to('#s01-cam',{x:-540.0,y:-950.0,scale:2.0,duration:0.7,ease:'power2.inOut',overwrite:'auto'},4.4);
+    tl.set('#s01-s4',{opacity:1},4.42);
+    tl.set('#s01-s1',{opacity:0},4.42);
+    tl.fromTo('#s01-s4',{clipPath:'inset(0% 0% 92% 0%)'},{clipPath:'inset(0% 0% 0% 0%)',duration:1.1,ease:'power1.inOut'},4.42);
+    tl.to('#s01-cam',{x:0,y:0,scale:1,duration:0.4,ease:'power2.inOut',overwrite:'auto'},4.97);
+    tl.fromTo('#s01-s5',{opacity:1,xPercent:100},{opacity:1,xPercent:0,duration:0.42,ease:'power3.out',immediateRender:false},5.32);
+    tl.to('#s01-s4',{xPercent:-28,filter:'brightness(.72)',duration:0.42,ease:'power3.out'},5.32);
+    tl.set('#s01-s4',{opacity:0},5.76);
+    tl.to('#s01-cam',{x:-297.0,y:-328.893,scale:1.55,duration:0.7,ease:'power2.inOut',overwrite:'auto'},5.67);
+    window.__timelines["s01"] = tl;
+  </script>
+</template>

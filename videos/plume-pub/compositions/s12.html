@@ -1,0 +1,45 @@
+<template id="s12-template">
+  <style>
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-var.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-italic-var.woff2') format('woff2');font-weight:200 900;font-style:italic}
+#root{position:absolute;inset:0;overflow:hidden;font-family:'Inter',sans-serif}
+.ground{position:absolute;inset:0}
+.glow{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;border-radius:50%;pointer-events:none}
+.cam{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0}
+.phone{position:absolute;border-radius:70px;background:#17141F;box-shadow:0 46px 90px rgba(24,18,36,.30),0 0 0 2px #2a2533 inset}
+.phone.dark{box-shadow:0 46px 90px rgba(0,0,0,.55),0 0 0 2px #3a3446 inset}
+.screen{position:absolute;overflow:hidden;border-radius:56px;background:#fff}
+.scr{position:absolute;left:0;top:0;width:100%;height:auto;display:block}
+.island{position:absolute;left:50%;top:22px;width:118px;height:34px;margin-left:-59px;border-radius:20px;background:#0b0910}
+.lift{position:absolute;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 40px 80px rgba(24,18,36,.35),0 0 0 1px rgba(124,58,237,.12)}
+.lift img{position:absolute;max-width:none}
+.kin{position:absolute;left:70px;right:70px;text-align:center;font-family:'Source Serif 4',serif;font-weight:700;letter-spacing:-.03em;line-height:1.0}
+.kin span.w{display:inline-block;white-space:pre}
+.cover{position:absolute;border-radius:10px;box-shadow:0 30px 60px rgba(24,18,36,.32);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+
+  </style>
+  <div id="root" data-composition-id="s12" data-width="1080" data-height="1920" data-duration="6.04" data-layout-allow-overflow>
+    <div class="ground" id="s12-ground" style="background:#F4F0FB"></div>
+    <div class="glow" id="s12-glow" style="background:radial-gradient(circle,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 62%)"></div>
+    
+    <div class="cam" id="s12-cam"><div class="phone" id="s12-phone" style="left:319.062px;top:392.0px;width:441.877px;height:926.0px"><div class="screen" style="left:13.0px;top:13.0px;width:415.877px;height:900.0px"><img class="scr" id="s12-s1" src="assets/screens/profile.png" alt=""><img class="scr" id="s12-s2" src="assets/screens/profile-journey.png" alt="" style="opacity:0"><img class="scr" id="s12-s3" src="assets/screens/trophies.png" alt="" style="opacity:0"><img class="scr" id="s12-s4" src="assets/screens/profile-legends.png" alt="" style="opacity:0"></div><div class="island"></div></div></div>
+    <div class="lift" id="s12-l5" style="opacity:0;left:309.1px;top:613.637px;width:461.801px;height:492.725px;border-radius:40px"><img src="assets/screens/profile-legends.png" alt="" style="width:603.021px;left:-70.61px;top:-375.213px"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo('#s12-s2',{opacity:0},{opacity:1,duration:0.3,ease:'power2.inOut',immediateRender:false},0.15);
+    tl.set('#s12-s1',{opacity:0},0.47);
+    tl.to('#s12-cam',{x:-351.0,y:-391.227,scale:1.65,duration:0.6,ease:'power2.inOut',overwrite:'auto'},0.98);
+    tl.to('#s12-cam',{x:-648.0,y:-529.91,scale:2.2,duration:0.6,ease:'power2.inOut',overwrite:'auto'},2.67);
+    tl.to('#s12-cam',{x:0,y:0,scale:1,duration:0.35,ease:'power2.inOut',overwrite:'auto'},3.34);
+    tl.fromTo('#s12-s3',{opacity:1,clipPath:'inset(100% 0% 0% 0%)'},{opacity:1,clipPath:'inset(0% 0% 0% 0%)',duration:0.5,ease:'expo.out',immediateRender:false},3.54);
+    tl.set('#s12-s2',{opacity:0},4.06);
+    tl.to('#s12-cam',{x:-378.0,y:-450.23,scale:1.7,duration:0.6,ease:'power2.inOut',overwrite:'auto'},4.4);
+    tl.to('#s12-cam',{x:0,y:0,scale:1,duration:0.3,ease:'power2.inOut',overwrite:'auto'},4.61);
+    tl.fromTo('#s12-s4',{opacity:0},{opacity:1,duration:0.2,ease:'power2.inOut',immediateRender:false},4.81);
+    tl.set('#s12-s3',{opacity:0},5.03);
+    tl.fromTo('#s12-l5',{opacity:1,x:0.0,y:-26.327,scale:0.69,boxShadow:'0 0 0 rgba(24,18,36,0)'},{opacity:1,x:0,y:0,scale:1,boxShadow:'0 40px 80px rgba(24,18,36,.35)',duration:.6,ease:'expo.out',immediateRender:false},5.17);
+    window.__timelines["s12"] = tl;
+  </script>
+</template>

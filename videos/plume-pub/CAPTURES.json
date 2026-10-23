@@ -1,0 +1,218 @@
+{
+  "source": "PLUME (code du dépôt) servi en local sur une base de démonstration",
+  "viewport": "390x844 @3x",
+  "shots": [
+    {
+      "name": "home",
+      "note": ""
+    },
+    {
+      "name": "home-scroll",
+      "note": ""
+    },
+    {
+      "name": "home-search",
+      "note": ""
+    },
+    {
+      "name": "home-dark",
+      "note": ""
+    },
+    {
+      "name": "explorer",
+      "note": ""
+    },
+    {
+      "name": "explorer-fantasy",
+      "note": ""
+    },
+    {
+      "name": "library",
+      "note": ""
+    },
+    {
+      "name": "library-collections",
+      "note": ""
+    },
+    {
+      "name": "library-list",
+      "note": ""
+    },
+    {
+      "name": "inbox",
+      "note": ""
+    },
+    {
+      "name": "chat",
+      "note": ""
+    },
+    {
+      "name": "chat-reveal",
+      "note": ""
+    },
+    {
+      "name": "clubs",
+      "note": ""
+    },
+    {
+      "name": "club",
+      "note": ""
+    },
+    {
+      "name": "club-top",
+      "note": ""
+    },
+    {
+      "name": "profile",
+      "note": ""
+    },
+    {
+      "name": "profile-journey",
+      "note": ""
+    },
+    {
+      "name": "profile-legends",
+      "note": ""
+    },
+    {
+      "name": "trophies",
+      "note": ""
+    },
+    {
+      "name": "workshop",
+      "note": ""
+    },
+    {
+      "name": "editor",
+      "note": ""
+    },
+    {
+      "name": "editor-written",
+      "note": ""
+    },
+    {
+      "name": "ai-menu",
+      "note": ""
+    },
+    {
+      "name": "chat",
+      "note": ""
+    },
+    {
+      "name": "chat-reveal",
+      "note": ""
+    },
+    {
+      "name": "trophies",
+      "note": ""
+    },
+    {
+      "name": "trophies-2",
+      "note": ""
+    },
+    {
+      "name": "notifications",
+      "note": ""
+    },
+    {
+      "name": "published",
+      "note": ""
+    },
+    {
+      "name": "notif-malik",
+      "note": ""
+    },
+    {
+      "name": "probe-a",
+      "note": ""
+    },
+    {
+      "name": "detail",
+      "note": ""
+    },
+    {
+      "name": "reader",
+      "note": ""
+    },
+    {
+      "name": "reader-settings",
+      "note": ""
+    },
+    {
+      "name": "reader-clair",
+      "note": ""
+    },
+    {
+      "name": "reader-oled",
+      "note": ""
+    },
+    {
+      "name": "reader-settings-oled",
+      "note": ""
+    },
+    {
+      "name": "reader-sepia",
+      "note": ""
+    },
+    {
+      "name": "reader-autoscroll",
+      "note": ""
+    },
+    {
+      "name": "audio",
+      "note": ""
+    },
+    {
+      "name": "download",
+      "note": ""
+    },
+    {
+      "name": "download-done",
+      "note": ""
+    },
+    {
+      "name": "passage-tools",
+      "note": ""
+    },
+    {
+      "name": "passage-highlight",
+      "note": ""
+    },
+    {
+      "name": "passage-note",
+      "note": ""
+    },
+    {
+      "name": "comments",
+      "note": ""
+    },
+    {
+      "name": "ambience",
+      "note": ""
+    },
+    {
+      "name": "plumecard",
+      "note": ""
+    },
+    {
+      "name": "write",
+      "note": ""
+    },
+    {
+      "name": "stats",
+      "note": ""
+    },
+    {
+      "name": "stats-funnel",
+      "note": ""
+    },
+    {
+      "name": "create",
+      "note": ""
+    },
+    {
+      "name": "create-2",
+      "note": ""
+    }
+  ]
+}

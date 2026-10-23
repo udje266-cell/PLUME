@@ -1,0 +1,43 @@
+<template id="s05-template">
+  <style>
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-var.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-italic-var.woff2') format('woff2');font-weight:200 900;font-style:italic}
+#root{position:absolute;inset:0;overflow:hidden;font-family:'Inter',sans-serif}
+.ground{position:absolute;inset:0}
+.glow{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;border-radius:50%;pointer-events:none}
+.cam{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0}
+.phone{position:absolute;border-radius:70px;background:#17141F;box-shadow:0 46px 90px rgba(24,18,36,.30),0 0 0 2px #2a2533 inset}
+.phone.dark{box-shadow:0 46px 90px rgba(0,0,0,.55),0 0 0 2px #3a3446 inset}
+.screen{position:absolute;overflow:hidden;border-radius:56px;background:#fff}
+.scr{position:absolute;left:0;top:0;width:100%;height:auto;display:block}
+.island{position:absolute;left:50%;top:22px;width:118px;height:34px;margin-left:-59px;border-radius:20px;background:#0b0910}
+.lift{position:absolute;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 40px 80px rgba(24,18,36,.35),0 0 0 1px rgba(124,58,237,.12)}
+.lift img{position:absolute;max-width:none}
+.kin{position:absolute;left:70px;right:70px;text-align:center;font-family:'Source Serif 4',serif;font-weight:700;letter-spacing:-.03em;line-height:1.0}
+.kin span.w{display:inline-block;white-space:pre}
+.cover{position:absolute;border-radius:10px;box-shadow:0 30px 60px rgba(24,18,36,.32);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+
+  </style>
+  <div id="root" data-composition-id="s05" data-width="1080" data-height="1920" data-duration="6.4" data-layout-allow-overflow>
+    <div class="ground" id="s05-ground" style="background:#F4F0FB"></div>
+    <div class="glow" id="s05-glow" style="background:radial-gradient(circle,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 62%)"></div>
+    
+    <div class="cam" id="s05-cam"><div class="phone" id="s05-phone" style="left:319.062px;top:392.0px;width:441.877px;height:926.0px"><div class="screen" style="left:13.0px;top:13.0px;width:415.877px;height:900.0px"><img class="scr" id="s05-s1" src="assets/screens/explorer-fantasy.png" alt=""><img class="scr" id="s05-s2" src="assets/screens/detail.png" alt="" style="opacity:0"></div><div class="island"></div></div></div>
+    <div class="cover" id="s05-cv" style="opacity:0;left:349.123px;top:549.668px;width:119.431px;height:179.147px;border-radius:6px"><img src="assets/demo/cover-cartographe.png" alt=""></div><div id="s05-page" style="opacity:0;position:absolute;inset:0;background:#EFE2CC"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo('#s05-s2',{opacity:1,xPercent:100},{opacity:1,xPercent:0,duration:0.42,ease:'power3.out',immediateRender:false},0.07);
+    tl.to('#s05-s1',{xPercent:-28,filter:'brightness(.72)',duration:0.42,ease:'power3.out'},0.07);
+    tl.set('#s05-s1',{opacity:0},0.51);
+    tl.to('#s05-cam',{x:-297.0,y:-602.386,scale:1.55,duration:0.6,ease:'power2.inOut',overwrite:'auto'},0.85);
+    tl.to('#s05-cam',{x:-297.0,y:-837.089,scale:1.55,duration:0.6,ease:'power2.inOut',overwrite:'auto'},1.61);
+    tl.to('#s05-cam',{x:-594.0,y:-579.6,scale:2.1,duration:0.6,ease:'power2.inOut',overwrite:'auto'},2.63);
+    tl.to('#s05-cam',{x:0,y:0,scale:1,duration:0.45,ease:'power2.inOut',overwrite:'auto'},4.18);
+    tl.set('#s05-cv',{opacity:1},4.82);
+    tl.to('#s05-cv',{x:131.161,y:320.758,scale:11.722,duration:.75,ease:'power3.in'},4.82);
+    tl.to('#s05-page',{opacity:1,duration:.3,ease:'power2.in'},5.32);
+    window.__timelines["s05"] = tl;
+  </script>
+</template>

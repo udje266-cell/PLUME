@@ -1,0 +1,42 @@
+<template id="s03-template">
+  <style>
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-var.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-italic-var.woff2') format('woff2');font-weight:200 900;font-style:italic}
+#root{position:absolute;inset:0;overflow:hidden;font-family:'Inter',sans-serif}
+.ground{position:absolute;inset:0}
+.glow{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;border-radius:50%;pointer-events:none}
+.cam{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0}
+.phone{position:absolute;border-radius:70px;background:#17141F;box-shadow:0 46px 90px rgba(24,18,36,.30),0 0 0 2px #2a2533 inset}
+.phone.dark{box-shadow:0 46px 90px rgba(0,0,0,.55),0 0 0 2px #3a3446 inset}
+.screen{position:absolute;overflow:hidden;border-radius:56px;background:#fff}
+.scr{position:absolute;left:0;top:0;width:100%;height:auto;display:block}
+.island{position:absolute;left:50%;top:22px;width:118px;height:34px;margin-left:-59px;border-radius:20px;background:#0b0910}
+.lift{position:absolute;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 40px 80px rgba(24,18,36,.35),0 0 0 1px rgba(124,58,237,.12)}
+.lift img{position:absolute;max-width:none}
+.kin{position:absolute;left:70px;right:70px;text-align:center;font-family:'Source Serif 4',serif;font-weight:700;letter-spacing:-.03em;line-height:1.0}
+.kin span.w{display:inline-block;white-space:pre}
+.cover{position:absolute;border-radius:10px;box-shadow:0 30px 60px rgba(24,18,36,.32);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+
+  </style>
+  <div id="root" data-composition-id="s03" data-width="1080" data-height="1920" data-duration="7.7" data-layout-allow-overflow>
+    <div class="ground" id="s03-ground" style="background:#F4F0FB"></div>
+    <div class="glow" id="s03-glow" style="background:radial-gradient(circle,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 62%)"></div>
+    
+    <div class="cam" id="s03-cam"><div class="phone" id="s03-phone" style="left:319.062px;top:392.0px;width:441.877px;height:926.0px"><div class="screen" style="left:13.0px;top:13.0px;width:415.877px;height:900.0px"><img class="scr" id="s03-s1" src="assets/screens/home.png" alt=""></div><div class="island"></div></div></div>
+    <div id="s03-flood" style="position:absolute;inset:0;background:#7C3AED"></div><div id="s03-word" class="kin" style="top:730px;font-size:230px;color:#fff;letter-spacing:.02em">PLUME</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#s03-flood',{opacity:0,duration:.45,ease:'power2.inOut'},0.05);
+    tl.to('#s03-word',{x:-133.294,y:-410.142,scale:.12,opacity:0,duration:.55,ease:'power3.inOut'},0.0);
+    tl.fromTo('#s03-phone',{scale:.82,opacity:0},{scale:1,opacity:1,duration:0.7,ease:'expo.out'},0.0);
+    tl.to('#s03-cam',{x:-324.0,y:43.754,scale:1.6,duration:0.7,ease:'power2.inOut',overwrite:'auto'},0.55);
+    tl.to('#s03-cam',{x:-324.0,y:-217.858,scale:1.6,duration:0.6,ease:'power2.inOut',overwrite:'auto'},3.77);
+    tl.to('#s03-cam',{x:-702.0,y:-2002.549,scale:2.3,duration:0.5,ease:'power2.inOut',overwrite:'auto'},4.17);
+    tl.to('#s03-cam',{x:-702.0,y:-2031.98,scale:2.3,duration:0.45,ease:'power2.inOut',overwrite:'auto'},5.12);
+    tl.to('#s03-cam',{x:0,y:0,scale:1,duration:0.6,ease:'power2.inOut',overwrite:'auto'},5.78);
+    tl.to('#s03-cam',{x:-243.0,y:-424.175,scale:1.45,duration:0.7,ease:'power2.inOut',overwrite:'auto'},6.6);
+    window.__timelines["s03"] = tl;
+  </script>
+</template>

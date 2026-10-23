@@ -1,0 +1,1657 @@
+[
+{
+"text": "Ton",
+"start": 0.11,
+"end": 0.23
+},
+{
+"text": "prochain",
+"start": 0.29,
+"end": 0.91
+},
+{
+"text": "livre",
+"start": 0.97,
+"end": 1.38
+},
+{
+"text": "préféré…",
+"start": 1.38,
+"end": 1.75
+},
+{
+"text": "n'est",
+"start": 2.05,
+"end": 2.26
+},
+{
+"text": "pas",
+"start": 2.39,
+"end": 2.5
+},
+{
+"text": "encore",
+"start": 2.5,
+"end": 2.87
+},
+{
+"text": "en",
+"start": 2.88,
+"end": 3
+},
+{
+"text": "librairie.",
+"start": 3,
+"end": 3.84
+},
+{
+"text": "Il",
+"start": 3.95,
+"end": 3.96
+},
+{
+"text": "s'écrit",
+"start": 3.97,
+"end": 4.42
+},
+{
+"text": "en",
+"start": 4.42,
+"end": 4.55
+},
+{
+"text": "ce",
+"start": 4.55,
+"end": 4.67
+},
+{
+"text": "moment,",
+"start": 4.67,
+"end": 5.32
+},
+{
+"text": "chapitre",
+"start": 5.32,
+"end": 5.96
+},
+{
+"text": "après",
+"start": 5.96,
+"end": 6.36
+},
+{
+"text": "chapitre.",
+"start": 6.36,
+"end": 7.08
+},
+{
+"text": "Sur",
+"start": 7.19,
+"end": 7.53
+},
+{
+"text": "PLUME.",
+"start": 7.53,
+"end": 8.28
+},
+{
+"text": "PLUME,",
+"start": 8.39,
+"end": 8.7
+},
+{
+"text": "c'est",
+"start": 8.7,
+"end": 9
+},
+{
+"text": "l'archipel",
+"start": 9,
+"end": 9.6
+},
+{
+"text": "des",
+"start": 9.6,
+"end": 9.78
+},
+{
+"text": "conteurs",
+"start": 9.78,
+"end": 10.31
+},
+{
+"text": "francophones :",
+"start": 10.34,
+"end": 11.12
+},
+{
+"text": "un",
+"start": 11.23,
+"end": 11.24
+},
+{
+"text": "seul",
+"start": 11.25,
+"end": 11.52
+},
+{
+"text": "endroit",
+"start": 11.52,
+"end": 12
+},
+{
+"text": "pour",
+"start": 12,
+"end": 12.25
+},
+{
+"text": "lire,",
+"start": 12.32,
+"end": 12.72
+},
+{
+"text": "écrire,",
+"start": 12.72,
+"end": 13.52
+},
+{
+"text": "et",
+"start": 13.52,
+"end": 13.64
+},
+{
+"text": "partager",
+"start": 13.67,
+"end": 14.19
+},
+{
+"text": "les",
+"start": 14.23,
+"end": 14.38
+},
+{
+"text": "histoires",
+"start": 14.38,
+"end": 14.57
+},
+{
+"text": "qui",
+"start": 14.57,
+"end": 15.05
+},
+{
+"text": "nous",
+"start": 15.05,
+"end": 15.18
+},
+{
+"text": "font",
+"start": 15.25,
+"end": 15.43
+},
+{
+"text": "vibrer.",
+"start": 15.46,
+"end": 16
+},
+{
+"text": "Romance,",
+"start": 16.11,
+"end": 16.74
+},
+{
+"text": "fantasy,",
+"start": 16.74,
+"end": 17.64
+},
+{
+"text": "thriller,",
+"start": 17.64,
+"end": 18.47
+},
+{
+"text": "huis",
+"start": 18.47,
+"end": 18.8
+},
+{
+"text": "clos…",
+"start": 18.8,
+"end": 19.2
+},
+{
+"text": "L'accueil",
+"start": 19.26,
+"end": 19.74
+},
+{
+"text": "te",
+"start": 19.74,
+"end": 19.86
+},
+{
+"text": "propose",
+"start": 19.86,
+"end": 20.29
+},
+{
+"text": "des",
+"start": 20.29,
+"end": 20.47
+},
+{
+"text": "pépites",
+"start": 20.47,
+"end": 20.86
+},
+{
+"text": "rien",
+"start": 20.86,
+"end": 20.95
+},
+{
+"text": "que",
+"start": 21.25,
+"end": 21.31
+},
+{
+"text": "pour",
+"start": 21.31,
+"end": 21.46
+},
+{
+"text": "toi.",
+"start": 21.59,
+"end": 22
+},
+{
+"text": "Cherche",
+"start": 22.11,
+"end": 22.48
+},
+{
+"text": "un",
+"start": 22.52,
+"end": 22.63
+},
+{
+"text": "titre,",
+"start": 22.63,
+"end": 23.11
+},
+{
+"text": "un",
+"start": 23.12,
+"end": 23.26
+},
+{
+"text": "auteur,",
+"start": 23.26,
+"end": 23.75
+},
+{
+"text": "un",
+"start": 24.02,
+"end": 24.06
+},
+{
+"text": "univers,",
+"start": 24.07,
+"end": 24.84
+},
+{
+"text": "et",
+"start": 24.84,
+"end": 25
+},
+{
+"text": "filtre",
+"start": 25,
+"end": 25.4
+},
+{
+"text": "par",
+"start": 25.4,
+"end": 25.93
+},
+{
+"text": "genre",
+"start": 25.93,
+"end": 26.08
+},
+{
+"text": "en",
+"start": 26.13,
+"end": 26.29
+},
+{
+"text": "un",
+"start": 26.29,
+"end": 26.6
+},
+{
+"text": "geste.",
+"start": 26.6,
+"end": 26.91
+},
+{
+"text": "Ouvre",
+"start": 27.22,
+"end": 27.49
+},
+{
+"text": "une",
+"start": 27.49,
+"end": 27.69
+},
+{
+"text": "fiche :",
+"start": 27.69,
+"end": 28.15
+},
+{
+"text": "le",
+"start": 28.15,
+"end": 28.27
+},
+{
+"text": "synopsis,",
+"start": 28.28,
+"end": 28.91
+},
+{
+"text": "les",
+"start": 28.91,
+"end": 29.21
+},
+{
+"text": "chapitres,",
+"start": 29.21,
+"end": 29.83
+},
+{
+"text": "le",
+"start": 29.88,
+"end": 30
+},
+{
+"text": "temps",
+"start": 30,
+"end": 30.33
+},
+{
+"text": "de",
+"start": 30.34,
+"end": 30.47
+},
+{
+"text": "lecture.",
+"start": 30.47,
+"end": 31.32
+},
+{
+"text": "Un",
+"start": 31.43,
+"end": 31.5
+},
+{
+"text": "toucher,",
+"start": 31.5,
+"end": 32.14
+},
+{
+"text": "et",
+"start": 32.14,
+"end": 32.31
+},
+{
+"text": "tu",
+"start": 32.32,
+"end": 32.45
+},
+{
+"text": "plonges.",
+"start": 32.52,
+"end": 33.48
+},
+{
+"text": "Ici,",
+"start": 33.59,
+"end": 33.94
+},
+{
+"text": "la",
+"start": 34,
+"end": 34.12
+},
+{
+"text": "lecture",
+"start": 34.12,
+"end": 34.77
+},
+{
+"text": "se",
+"start": 34.77,
+"end": 34.95
+},
+{
+"text": "fait",
+"start": 34.95,
+"end": 35.18
+},
+{
+"text": "à",
+"start": 35.18,
+"end": 35.53
+},
+{
+"text": "ta",
+"start": 35.53,
+"end": 35.59
+},
+{
+"text": "façon.",
+"start": 35.59,
+"end": 36.12
+},
+{
+"text": "Huit",
+"start": 36.18,
+"end": 36.35
+},
+{
+"text": "thèmes,",
+"start": 36.4,
+"end": 36.88
+},
+{
+"text": "treize",
+"start": 36.88,
+"end": 37.25
+},
+{
+"text": "polices,",
+"start": 37.32,
+"end": 37.82
+},
+{
+"text": "la",
+"start": 37.82,
+"end": 38.17
+},
+{
+"text": "taille,",
+"start": 38.17,
+"end": 38.69
+},
+{
+"text": "l'interligne…",
+"start": 38.69,
+"end": 39.167
+},
+{
+"text": "Lis",
+"start": 39.167,
+"end": 39.643
+},
+{
+"text": "en",
+"start": 39.643,
+"end": 40.12
+},
+{
+"text": "clair,",
+"start": 40.12,
+"end": 40.62
+},
+{
+"text": "en",
+"start": 40.69,
+"end": 40.85
+},
+{
+"text": "sépia,",
+"start": 40.85,
+"end": 41.25
+},
+{
+"text": "ou",
+"start": 41.25,
+"end": 41.39
+},
+{
+"text": "dans",
+"start": 41.39,
+"end": 41.47
+},
+{
+"text": "le",
+"start": 41.78,
+"end": 41.9
+},
+{
+"text": "noir",
+"start": 41.9,
+"end": 42.23
+},
+{
+"text": "complet.",
+"start": 42.23,
+"end": 42.88
+},
+{
+"text": "Et",
+"start": 42.88,
+"end": 42.99
+},
+{
+"text": "laisse",
+"start": 42.99,
+"end": 43.32
+},
+{
+"text": "le",
+"start": 43.32,
+"end": 43.43
+},
+{
+"text": "défilement",
+"start": 43.43,
+"end": 43.98
+},
+{
+"text": "automatique",
+"start": 43.98,
+"end": 44.58
+},
+{
+"text": "tourner",
+"start": 44.59,
+"end": 44.97
+},
+{
+"text": "les",
+"start": 44.97,
+"end": 45.13
+},
+{
+"text": "pages",
+"start": 45.13,
+"end": 45.4
+},
+{
+"text": "pour",
+"start": 45.44,
+"end": 45.62
+},
+{
+"text": "toi.",
+"start": 45.62,
+"end": 46.04
+},
+{
+"text": "Les",
+"start": 46.15,
+"end": 46.25
+},
+{
+"text": "yeux",
+"start": 46.25,
+"end": 46.52
+},
+{
+"text": "fatigués ?",
+"start": 46.56,
+"end": 47.17
+},
+{
+"text": "Écoute",
+"start": 47.24,
+"end": 47.65
+},
+{
+"text": "ton",
+"start": 47.65,
+"end": 47.77
+},
+{
+"text": "livre,",
+"start": 48.09,
+"end": 48.29
+},
+{
+"text": "bercé",
+"start": 48.42,
+"end": 48.89
+},
+{
+"text": "par",
+"start": 48.89,
+"end": 49.11
+},
+{
+"text": "la",
+"start": 49.11,
+"end": 49.27
+},
+{
+"text": "pluie",
+"start": 49.27,
+"end": 49.65
+},
+{
+"text": "ou",
+"start": 49.65,
+"end": 49.79
+},
+{
+"text": "la",
+"start": 49.79,
+"end": 49.97
+},
+{
+"text": "forêt.",
+"start": 49.97,
+"end": 50.4
+},
+{
+"text": "Et",
+"start": 50.51,
+"end": 50.52
+},
+{
+"text": "télécharge-le,",
+"start": 50.53,
+"end": 51.3
+},
+{
+"text": "pour",
+"start": 51.3,
+"end": 51.53
+},
+{
+"text": "le",
+"start": 51.6,
+"end": 51.67
+},
+{
+"text": "lire",
+"start": 51.67,
+"end": 51.91
+},
+{
+"text": "même",
+"start": 51.91,
+"end": 52.1
+},
+{
+"text": "sans",
+"start": 52.14,
+"end": 52.15
+},
+{
+"text": "connexion.",
+"start": 52.46,
+"end": 53.2
+},
+{
+"text": "Une",
+"start": 53.31,
+"end": 53.36
+},
+{
+"text": "phrase",
+"start": 53.36,
+"end": 53.68
+},
+{
+"text": "te",
+"start": 53.72,
+"end": 53.8
+},
+{
+"text": "frappe ?",
+"start": 53.8,
+"end": 54.31
+},
+{
+"text": "Surligne-la,",
+"start": 54.43,
+"end": 55.093
+},
+{
+"text": "annote-la,",
+"start": 55.093,
+"end": 55.757
+},
+{
+"text": "fais-en",
+"start": 55.757,
+"end": 56.42
+},
+{
+"text": "une",
+"start": 56.42,
+"end": 56.58
+},
+{
+"text": "citation",
+"start": 56.71,
+"end": 57.18
+},
+{
+"text": "à",
+"start": 57.18,
+"end": 57.26
+},
+{
+"text": "partager.",
+"start": 57.26,
+"end": 57.9
+},
+{
+"text": "Et",
+"start": 57.9,
+"end": 58.03
+},
+{
+"text": "découvre",
+"start": 58.03,
+"end": 58.49
+},
+{
+"text": "ce",
+"start": 58.49,
+"end": 58.6
+},
+{
+"text": "que",
+"start": 58.6,
+"end": 58.77
+},
+{
+"text": "les",
+"start": 58.77,
+"end": 58.92
+},
+{
+"text": "autres",
+"start": 58.95,
+"end": 59.29
+},
+{
+"text": "lecteurs",
+"start": 59.29,
+"end": 59.65
+},
+{
+"text": "pensent…",
+"start": 59.94,
+"end": 60.18
+},
+{
+"text": "de",
+"start": 60.31,
+"end": 60.39
+},
+{
+"text": "ce",
+"start": 60.39,
+"end": 60.54
+},
+{
+"text": "passage",
+"start": 60.54,
+"end": 61.07
+},
+{
+"text": "précis.",
+"start": 61.07,
+"end": 61.76
+},
+{
+"text": "Ta",
+"start": 61.87,
+"end": 61.9
+},
+{
+"text": "bibliothèque",
+"start": 61.9,
+"end": 62.75
+},
+{
+"text": "garde",
+"start": 62.76,
+"end": 63.13
+},
+{
+"text": "tout :",
+"start": 63.13,
+"end": 63.51
+},
+{
+"text": "tes",
+"start": 63.79,
+"end": 63.86
+},
+{
+"text": "lectures",
+"start": 63.86,
+"end": 64.34
+},
+{
+"text": "en",
+"start": 64.34,
+"end": 64.44
+},
+{
+"text": "cours,",
+"start": 64.45,
+"end": 64.81
+},
+{
+"text": "celles",
+"start": 64.88,
+"end": 65.24
+},
+{
+"text": "à",
+"start": 65.24,
+"end": 65.3
+},
+{
+"text": "venir,",
+"start": 65.3,
+"end": 65.7
+},
+{
+"text": "tes",
+"start": 65.74,
+"end": 65.9
+},
+{
+"text": "collections.",
+"start": 65.9,
+"end": 66.75
+},
+{
+"text": "Tu",
+"start": 66.75,
+"end": 66.87
+},
+{
+"text": "changes",
+"start": 66.87,
+"end": 67.24
+},
+{
+"text": "d'appareil ?",
+"start": 67.27,
+"end": 67.89
+},
+{
+"text": "Tu",
+"start": 67.96,
+"end": 68.08
+},
+{
+"text": "reprends",
+"start": 68.08,
+"end": 68.51
+},
+{
+"text": "au",
+"start": 68.51,
+"end": 68.81
+},
+{
+"text": "paragraphe",
+"start": 68.81,
+"end": 69.27
+},
+{
+"text": "près.",
+"start": 69.32,
+"end": 69.72
+},
+{
+"text": "Parce",
+"start": 69.83,
+"end": 70.05
+},
+{
+"text": "qu'une",
+"start": 70.05,
+"end": 70.43
+},
+{
+"text": "histoire,",
+"start": 70.43,
+"end": 71.09
+},
+{
+"text": "ça",
+"start": 71.09,
+"end": 71.22
+},
+{
+"text": "se",
+"start": 71.22,
+"end": 71.35
+},
+{
+"text": "partage.",
+"start": 71.35,
+"end": 71.98
+},
+{
+"text": "Envoie",
+"start": 72.15,
+"end": 72.4
+},
+{
+"text": "un",
+"start": 72.4,
+"end": 72.52
+},
+{
+"text": "livre",
+"start": 72.56,
+"end": 72.8
+},
+{
+"text": "à",
+"start": 72.82,
+"end": 72.89
+},
+{
+"text": "un",
+"start": 72.89,
+"end": 72.95
+},
+{
+"text": "ami,",
+"start": 73.01,
+"end": 73.44
+},
+{
+"text": "cache",
+"start": 73.5,
+"end": 73.74
+},
+{
+"text": "tes",
+"start": 73.74,
+"end": 73.92
+},
+{
+"text": "spoilers,",
+"start": 73.95,
+"end": 74.57
+},
+{
+"text": "laisse-lui",
+"start": 74.65,
+"end": 75.06
+},
+{
+"text": "une",
+"start": 75.12,
+"end": 75.26
+},
+{
+"text": "note",
+"start": 75.26,
+"end": 75.46
+},
+{
+"text": "vocale…",
+"start": 75.46,
+"end": 75.96
+},
+{
+"text": "ou",
+"start": 75.96,
+"end": 76.07
+},
+{
+"text": "appelle-le",
+"start": 76.07,
+"end": 76.58
+},
+{
+"text": "directement.",
+"start": 76.58,
+"end": 77.36
+},
+{
+"text": "Crée",
+"start": 77.47,
+"end": 77.58
+},
+{
+"text": "ton",
+"start": 77.58,
+"end": 77.75
+},
+{
+"text": "club",
+"start": 77.75,
+"end": 77.98
+},
+{
+"text": "de",
+"start": 77.98,
+"end": 78.09
+},
+{
+"text": "lecture,",
+"start": 78.09,
+"end": 78.72
+},
+{
+"text": "lance",
+"start": 78.83,
+"end": 79.04
+},
+{
+"text": "des",
+"start": 79.04,
+"end": 79.22
+},
+{
+"text": "sondages,",
+"start": 79.23,
+"end": 79.71
+},
+{
+"text": "et",
+"start": 79.73,
+"end": 79.85
+},
+{
+"text": "suis",
+"start": 79.92,
+"end": 80.19
+},
+{
+"text": "en",
+"start": 80.19,
+"end": 80.32
+},
+{
+"text": "direct",
+"start": 80.32,
+"end": 80.45
+},
+{
+"text": "où",
+"start": 80.78,
+"end": 80.84
+},
+{
+"text": "en",
+"start": 80.84,
+"end": 80.97
+},
+{
+"text": "sont",
+"start": 80.97,
+"end": 81.23
+},
+{
+"text": "les",
+"start": 81.23,
+"end": 81.39
+},
+{
+"text": "autres.",
+"start": 81.44,
+"end": 82.06
+},
+{
+"text": "Chaque",
+"start": 82.19,
+"end": 82.41
+},
+{
+"text": "chapitre",
+"start": 82.42,
+"end": 82.745
+},
+{
+"text": "lu",
+"start": 82.745,
+"end": 83.07
+},
+{
+"text": "te",
+"start": 83.07,
+"end": 83.19
+},
+{
+"text": "fait",
+"start": 83.19,
+"end": 83.42
+},
+{
+"text": "gagner",
+"start": 83.42,
+"end": 83.73
+},
+{
+"text": "de",
+"start": 83.73,
+"end": 83.83
+},
+{
+"text": "l'expérience.",
+"start": 83.92,
+"end": 84.75
+},
+{
+"text": "Monte",
+"start": 84.91,
+"end": 85.17
+},
+{
+"text": "en",
+"start": 85.17,
+"end": 85.28
+},
+{
+"text": "niveau,",
+"start": 85.32,
+"end": 85.78
+},
+{
+"text": "débloque",
+"start": 85.78,
+"end": 86.26
+},
+{
+"text": "des",
+"start": 86.26,
+"end": 86.44
+},
+{
+"text": "trophées…",
+"start": 86.44,
+"end": 87
+},
+{
+"text": "et",
+"start": 87,
+"end": 87.05
+},
+{
+"text": "des",
+"start": 87.19,
+"end": 87.32
+},
+{
+"text": "légendes.",
+"start": 87.36,
+"end": 88.11
+},
+{
+"text": "Et",
+"start": 88.23,
+"end": 88.28
+},
+{
+"text": "puis",
+"start": 88.28,
+"end": 88.6
+},
+{
+"text": "un",
+"start": 88.64,
+"end": 88.77
+},
+{
+"text": "jour…",
+"start": 88.77,
+"end": 89.25
+},
+{
+"text": "c'est",
+"start": 89.32,
+"end": 89.59
+},
+{
+"text": "toi",
+"start": 89.59,
+"end": 89.77
+},
+{
+"text": "qui",
+"start": 89.77,
+"end": 89.87
+},
+{
+"text": "prends",
+"start": 90.17,
+"end": 90.36
+},
+{
+"text": "la",
+"start": 90.36,
+"end": 90.37
+},
+{
+"text": "plume.",
+"start": 90.51,
+"end": 91.04
+},
+{
+"text": "Dans",
+"start": 91.15,
+"end": 91.27
+},
+{
+"text": "l'atelier",
+"start": 91.32,
+"end": 91.8
+},
+{
+"text": "d'écriture,",
+"start": 91.82,
+"end": 92.54
+},
+{
+"text": "crée",
+"start": 92.54,
+"end": 92.74
+},
+{
+"text": "ton",
+"start": 92.78,
+"end": 92.79
+},
+{
+"text": "histoire :",
+"start": 93.1,
+"end": 93.64
+},
+{
+"text": "la",
+"start": 93.75,
+"end": 93.78
+},
+{
+"text": "couverture,",
+"start": 93.78,
+"end": 94.62
+},
+{
+"text": "les",
+"start": 94.62,
+"end": 94.77
+},
+{
+"text": "genres,",
+"start": 94.84,
+"end": 95.37
+},
+{
+"text": "l'ambiance,",
+"start": 95.53,
+"end": 96.5
+},
+{
+"text": "en",
+"start": 96.5,
+"end": 96.64
+},
+{
+"text": "chapitres",
+"start": 96.64,
+"end": 97.07
+},
+{
+"text": "ou",
+"start": 97.22,
+"end": 97.35
+},
+{
+"text": "en",
+"start": 97.35,
+"end": 97.57
+},
+{
+"text": "tomes.",
+"start": 97.57,
+"end": 98.04
+},
+{
+"text": "Importe",
+"start": 98.15,
+"end": 98.54
+},
+{
+"text": "ton",
+"start": 98.56,
+"end": 98.77
+},
+{
+"text": "manuscrit,",
+"start": 98.77,
+"end": 99.44
+},
+{
+"text": "ou",
+"start": 99.44,
+"end": 99.56
+},
+{
+"text": "écris",
+"start": 99.56,
+"end": 99.74
+},
+{
+"text": "directement",
+"start": 100.1,
+"end": 100.6
+},
+{
+"text": "dans",
+"start": 100.6,
+"end": 100.84
+},
+{
+"text": "l'éditeur",
+"start": 100.84,
+"end": 101.34
+},
+{
+"text": "immersif.",
+"start": 101.34,
+"end": 102.04
+},
+{
+"text": "Besoin",
+"start": 102.15,
+"end": 102.27
+},
+{
+"text": "d'un",
+"start": 102.32,
+"end": 102.49
+},
+{
+"text": "coup",
+"start": 102.56,
+"end": 102.67
+},
+{
+"text": "de",
+"start": 102.67,
+"end": 102.76
+},
+{
+"text": "main ?",
+"start": 102.76,
+"end": 103.12
+},
+{
+"text": "L'assistant",
+"start": 103.17,
+"end": 103.7
+},
+{
+"text": "découpe",
+"start": 103.7,
+"end": 104.02
+},
+{
+"text": "tes",
+"start": 104.09,
+"end": 104.23
+},
+{
+"text": "paragraphes,",
+"start": 104.23,
+"end": 104.87
+},
+{
+"text": "soigne",
+"start": 105.09,
+"end": 105.35
+},
+{
+"text": "la",
+"start": 105.35,
+"end": 105.37
+},
+{
+"text": "ponctuation,",
+"start": 105.51,
+"end": 106.36
+},
+{
+"text": "te",
+"start": 106.36,
+"end": 106.48
+},
+{
+"text": "suggère",
+"start": 106.48,
+"end": 106.95
+},
+{
+"text": "un",
+"start": 107.05,
+"end": 107.08
+},
+{
+"text": "titre.",
+"start": 107.08,
+"end": 107.63
+},
+{
+"text": "Mais",
+"start": 107.75,
+"end": 107.87
+},
+{
+"text": "l'histoire,",
+"start": 107.92,
+"end": 108.68
+},
+{
+"text": "elle,",
+"start": 108.68,
+"end": 109.07
+},
+{
+"text": "reste",
+"start": 109.07,
+"end": 109.34
+},
+{
+"text": "la",
+"start": 109.34,
+"end": 109.69
+},
+{
+"text": "tienne.",
+"start": 109.69,
+"end": 110.16
+},
+{
+"text": "Publie,",
+"start": 110.31,
+"end": 110.6
+},
+{
+"text": "et",
+"start": 110.6,
+"end": 110.73
+},
+{
+"text": "tes",
+"start": 110.73,
+"end": 110.93
+},
+{
+"text": "abonnés",
+"start": 110.93,
+"end": 111.33
+},
+{
+"text": "sont",
+"start": 111.4,
+"end": 111.66
+},
+{
+"text": "prévenus.",
+"start": 111.66,
+"end": 112.44
+},
+{
+"text": "Suis",
+"start": 112.55,
+"end": 112.67
+},
+{
+"text": "tes",
+"start": 112.72,
+"end": 112.88
+},
+{
+"text": "lectures,",
+"start": 112.88,
+"end": 113.51
+},
+{
+"text": "tes",
+"start": 113.51,
+"end": 113.7
+},
+{
+"text": "commentaires…",
+"start": 113.7,
+"end": 114.52
+},
+{
+"text": "et",
+"start": 114.52,
+"end": 114.66
+},
+{
+"text": "repère",
+"start": 114.66,
+"end": 115.08
+},
+{
+"text": "le",
+"start": 115.08,
+"end": 115.18
+},
+{
+"text": "chapitre",
+"start": 115.18,
+"end": 115.64
+},
+{
+"text": "où",
+"start": 115.64,
+"end": 115.75
+},
+{
+"text": "tes",
+"start": 115.76,
+"end": 115.85
+},
+{
+"text": "lecteurs",
+"start": 116.19,
+"end": 116.44
+},
+{
+"text": "décrochent,",
+"start": 116.44,
+"end": 116.95
+},
+{
+"text": "pour",
+"start": 116.95,
+"end": 117.06
+},
+{
+"text": "qu'ils",
+"start": 117.06,
+"end": 117.31
+},
+{
+"text": "ne",
+"start": 117.31,
+"end": 117.35
+},
+{
+"text": "décrochent",
+"start": 117.59,
+"end": 117.88
+},
+{
+"text": "plus",
+"start": 117.98,
+"end": 118.19
+},
+{
+"text": "jamais.",
+"start": 118.19,
+"end": 118.72
+},
+{
+"text": "Lire.",
+"start": 118.83,
+"end": 119.62
+},
+{
+"text": "Écrire.",
+"start": 119.69,
+"end": 120.42
+},
+{
+"text": "Partager.",
+"start": 120.78,
+"end": 121.36
+},
+{
+"text": "PLUME.",
+"start": 121.47,
+"end": 122.26
+},
+{
+"text": "Bientôt",
+"start": 122.33,
+"end": 122.85
+},
+{
+"text": "disponible",
+"start": 122.85,
+"end": 123.62
+},
+{
+"text": "sur",
+"start": 123.75,
+"end": 123.88
+},
+{
+"text": "Android",
+"start": 123.91,
+"end": 124.43
+},
+{
+"text": "et",
+"start": 124.47,
+"end": 124.63
+},
+{
+"text": "iOS.",
+"start": 124.63,
+"end": 124.94
+}
+]

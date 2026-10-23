@@ -1,0 +1,37 @@
+<template id="s17-template">
+  <style>
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-var.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:'Source Serif 4';src:url('assets/fonts/source-serif-4-italic-var.woff2') format('woff2');font-weight:200 900;font-style:italic}
+#root{position:absolute;inset:0;overflow:hidden;font-family:'Inter',sans-serif}
+.ground{position:absolute;inset:0}
+.glow{position:absolute;left:50%;top:44%;width:1500px;height:1500px;margin:-750px 0 0 -750px;border-radius:50%;pointer-events:none}
+.cam{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0}
+.phone{position:absolute;border-radius:70px;background:#17141F;box-shadow:0 46px 90px rgba(24,18,36,.30),0 0 0 2px #2a2533 inset}
+.phone.dark{box-shadow:0 46px 90px rgba(0,0,0,.55),0 0 0 2px #3a3446 inset}
+.screen{position:absolute;overflow:hidden;border-radius:56px;background:#fff}
+.scr{position:absolute;left:0;top:0;width:100%;height:auto;display:block}
+.island{position:absolute;left:50%;top:22px;width:118px;height:34px;margin-left:-59px;border-radius:20px;background:#0b0910}
+.lift{position:absolute;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 40px 80px rgba(24,18,36,.35),0 0 0 1px rgba(124,58,237,.12)}
+.lift img{position:absolute;max-width:none}
+.kin{position:absolute;left:70px;right:70px;text-align:center;font-family:'Source Serif 4',serif;font-weight:700;letter-spacing:-.03em;line-height:1.0}
+.kin span.w{display:inline-block;white-space:pre}
+.cover{position:absolute;border-radius:10px;box-shadow:0 30px 60px rgba(24,18,36,.32);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+
+  </style>
+  <div id="root" data-composition-id="s17" data-width="1080" data-height="1920" data-duration="2.64" data-layout-allow-overflow>
+    <div class="ground" id="s17-ground" style="background:#7C3AED"></div>
+    
+    
+    
+    <div class="kin " id="s17-k1" style="top:470px;font-size:200px;color:#fff;text-align:center;line-height:1.0;"><span class="w" id="s17-k1w0" style="">Lire.</span></div><div class="kin " id="s17-k2" style="top:720px;font-size:200px;color:#fff;text-align:center;line-height:1.0;"><span class="w" id="s17-k2w0" style="">Écrire.</span></div><div class="kin " id="s17-k3" style="top:970px;font-size:200px;color:#fff;text-align:center;line-height:1.0;"><span class="w" id="s17-k3w0" style="">Partager.</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo('#s17-ground',{clipPath:'inset(100% 0% 0% 0%)'},{clipPath:'inset(0% 0% 0% 0%)',duration:.45,ease:'power3.out'},0);
+    tl.fromTo('#s17-k1w0',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},0.010000000000000002);
+    tl.fromTo('#s17-k2w0',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},0.87);
+    tl.fromTo('#s17-k3w0',{opacity:0,filter:'blur(8px)'},{opacity:1,filter:'blur(0px)',duration:.16,ease:'power2.out'},1.96);
+    window.__timelines["s17"] = tl;
+  </script>
+</template>
